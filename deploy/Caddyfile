@@ -1,0 +1,70 @@
+# Front proxy: the single entry point of the prototype (host :8080 -> :80).
+#
+#   /api/*, /healthz  -> api:8000
+#   /tiles/*.pmtiles  -> static files from the map/ bind mount (range requests + CORS)
+#   /img/<key>        -> MinIO /<bucket>/<key> (anonymous read on photos/* only)
+#   everything else   -> web:80 (static frontend build)
+{
+	auto_https off
+}
+
+:80 {
+	log
+
+	handle /api/* {
+		# Uploads are capped at MAX_UPLOAD_MB (25) by the api; leave room for
+		# multipart overhead.
+		request_body {
+			max_size 30MB
+		}
+		reverse_proxy api:8000
+	}
+
+	handle /healthz {
+		reverse_proxy api:8000
+	}
+
+	handle_path /tiles/* {
+		header {
+			Access-Control-Allow-Origin *
+			Access-Control-Allow-Methods "GET, HEAD, OPTIONS"
+			Access-Control-Allow-Headers "Range, If-Match, If-None-Match"
+			Access-Control-Expose-Headers "Content-Range, Content-Length, ETag, Accept-Ranges"
+		}
+
+		@preflight method OPTIONS
+		respond @preflight 204
+
+		# The map/ directory also holds scripts and the OSM extract; only
+		# expose the tile archives.
+		@notArchive not path *.pmtiles
+		respond @notArchive 404
+
+		root * /srv/tiles
+		file_server
+	}
+
+	handle_path /img/* {
+		@readonly method GET HEAD
+		handle @readonly {
+			rewrite * /{$S3_BUCKET:cartograph}{uri}
+			reverse_proxy minio:9000 {
+				header_up Host {upstream_hostport}
+				header_up -Authorization
+
+				# Object keys contain the photo uuid and never change, so
+				# successful responses can be cached forever. Errors are not.
+				@found status 2xx 304
+				handle_response @found {
+					header Cache-Control "public, max-age=31536000, immutable"
+					copy_response
+				}
+			}
+		}
+		respond 405
+	}
+
+	handle {
+		reverse_proxy web:80
+	}
+}

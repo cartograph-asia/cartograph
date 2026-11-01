@@ -1,0 +1,125 @@
+# Cartograph prototype stack.
+#
+#   cd deploy
+#   cp .env.example .env      # optional: every variable has a default below
+#   docker compose up --build
+#
+# Then open http://localhost:8080. MinIO console: http://localhost:9001.
+# Only two host ports are published: 8080 (caddy) and 9001 (MinIO console).
+
+name: cartograph
+
+services:
+  postgres:
+    # The postgis/postgis images are published for amd64 only. On Apple
+    # Silicon this runs under emulation (Rosetta), which is fine for the
+    # prototype. PostGIS itself is not used yet.
+    image: postgis/postgis:16-3.6
+    platform: linux/amd64
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-cartograph}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cartograph}
+      POSTGRES_DB: ${POSTGRES_DB:-cartograph}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+  minio:
+    # Upstream MinIO no longer publishes container images; pgsty/minio is the
+    # community-maintained build of the same server.
+    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
+    restart: unless-stopped
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-cartograph-admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-cartograph-admin-secret}
+    ports:
+      - "127.0.0.1:9001:9001" # console, for debugging only
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  # One-shot: creates the bucket, makes photos/* anonymously readable and
+  # creates the bucket-scoped access key the api uses. Idempotent.
+  minio-init:
+    image: pgsty/mc:RELEASE.2026-10-18T00-00-00Z
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "/minio-init.sh"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-cartograph-admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-cartograph-admin-secret}
+      S3_BUCKET: ${S3_BUCKET:-cartograph}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-cartograph-app}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-cartograph-app-secret}
+      MC_CONFIG_DIR: /tmp/.mc
+    volumes:
+      - ./minio-init.sh:/minio-init.sh:ro
+    restart: "no"
+
+  api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    environment:
+      API_ADDR: ${API_ADDR:-:8000}
+      DATABASE_URL: ${DATABASE_URL:-postgres://cartograph:cartograph@postgres:5432/cartograph?sslmode=disable}
+      S3_ENDPOINT: ${S3_ENDPOINT:-minio:9000}
+      S3_BUCKET: ${S3_BUCKET:-cartograph}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-cartograph-app}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-cartograph-app-secret}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_USE_PATH_STYLE: ${S3_USE_PATH_STYLE:-true}
+      S3_USE_SSL: ${S3_USE_SSL:-false}
+      IMG_BASE_URL: ${IMG_BASE_URL:-http://localhost:8080/img}
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-25}
+    # No healthcheck: the distroless image has no shell or curl.
+    # caddy proxies GET /healthz to it.
+
+  web:
+    build:
+      context: ../web
+      dockerfile: ../deploy/Dockerfile.web
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2.11.7-alpine
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_started
+      web:
+        condition: service_started
+      minio:
+        condition: service_healthy
+    environment:
+      S3_BUCKET: ${S3_BUCKET:-cartograph}
+    ports:
+      - "${HTTP_PORT:-8080}:80"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ../map:/srv/tiles:ro
+      - caddy-data:/data
+
+volumes:
+  postgres-data:
+  minio-data:
+  caddy-data:

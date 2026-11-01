@@ -1,0 +1,20 @@
+# syntax=docker/dockerfile:1
+#
+# Cartograph frontend. Build context is web/:
+#   docker build -f deploy/Dockerfile.web web
+# Ignore rules: deploy/Dockerfile.web.dockerignore.
+
+FROM node:24.22-bookworm-slim AS build
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci
+
+COPY . .
+RUN npm run build
+
+FROM caddy:2.11.7-alpine
+COPY --from=build /app/dist /srv
+EXPOSE 80
+CMD ["caddy", "file-server", "--root", "/srv", "--listen", ":80"]

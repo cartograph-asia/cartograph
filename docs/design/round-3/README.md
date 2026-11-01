@@ -34,7 +34,8 @@ The three layouts that were compared are in [variants/](variants/), named `{a,b,
 2. **The key on phones** is one line, the status and a "Key +" toggle; the legend and the line about plots open above it. From 768 px it stays open.
 3. **Small maps** colour plots in the three greens by photo count (1, 2–3, 4 or more), like `/map`; the no-JS outline does the same.
 4. **The key follows the zoom:** single plots close in; further out, where the map groups plots, it says how many plots a shape holds (49 or 343) and how it is shaded.
-5. **Groups with photos are clickable:** under the mouse such a group is outlined, and a click zooms until it fills the view. Blank groups only pan.
+5. **Only what has photos is clickable:** a group with photos is outlined under the mouse, and a click zooms until it fills the view (at least to single plots). Close in, a plot with photos is outlined and opens its panel. Blank groups and blank plots only pan; an upload finds its plot from the photo's GPS position.
+6. **Cross-fade between scales:** single plots and groups, and the two group sizes, fade into each other over 350 ms instead of switching at once.
 
 Also fixed on the way:
 

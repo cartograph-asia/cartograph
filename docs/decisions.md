@@ -79,3 +79,6 @@ Decisions made while building the prototype that are not in `CLAUDE.md`. One lin
 - 2026-11-01 – `GET /api/coverage` returns only parents with at least one surveyed plot.
 - 2026-11-01 – Map glyphs are self-hosted in `web/public/fonts/` (Noto Sans Regular and Medium, all 256 ranges, OFL) and the style loads `/fonts/{fontstack}/{range}.pbf`.
 - 2026-11-01 – The logo lives in `web/public/logo.svg` (favicon and header); `apple-touch-icon.png` (180 px) is rendered from it with square corners because iOS masks the icon itself.
+- 2026-11-01 – On desktop the open side panel no longer covers the map controls: zoom buttons and the OSM attribution move left by the panel width while it is open.
+- 2026-11-01 – The brief's API contract now lists `claimed_at` in `GET /api/plots/{cell}` and states that `/api/coverage` returns only parents with at least one surveyed plot.
+- 2026-11-01 – `CLAUDE.md` links `docs/PRINCIPLES.md` under a "Principles" line.

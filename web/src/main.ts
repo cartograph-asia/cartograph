@@ -219,6 +219,13 @@ map.on('click', (e) => {
   revealCell(cell);
 });
 
+// On phones the key is the status line; its legend opens on a tap.
+const keyEl = document.querySelector<HTMLElement>('.key')!;
+const keyToggle = document.getElementById('key-toggle')!;
+keyToggle.addEventListener('click', () => {
+  keyToggle.setAttribute('aria-expanded', String(keyEl.classList.toggle('open')));
+});
+
 document.getElementById('open-upload')!.addEventListener('click', () => {
   select(null);
   panel.openUpload();

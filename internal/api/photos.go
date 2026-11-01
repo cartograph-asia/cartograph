@@ -8,8 +8,10 @@ import (
 	"log/slog"
 	"mime"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -38,12 +40,33 @@ type createPhotoResponse struct {
 	URLs    photoURLs `json:"urls"`
 }
 
+// uploadForm is a parsed upload. The photo is spooled to a temporary file,
+// so that a slow upload holds disk, not memory; close removes it.
 type uploadForm struct {
-	photo    []byte
+	photo    *os.File // nil if the request had no photo
+	size     int64
 	lat, lng string
 }
 
-var errTooLarge = errors.New("too large")
+func (f *uploadForm) close() {
+	if f.photo == nil {
+		return
+	}
+	name := f.photo.Name()
+	_ = f.photo.Close()
+	if err := os.Remove(name); err != nil {
+		slog.Error("remove spooled upload", "file", name, "err", err)
+	}
+	f.photo = nil
+}
+
+// file returns a reader over the whole spooled photo.
+func (f *uploadForm) file() *io.SectionReader { return io.NewSectionReader(f.photo, 0, f.size) }
+
+var (
+	errTooLarge = errors.New("too large")
+	errSpool    = errors.New("could not store the upload")
+)
 
 // createPhoto handles POST /api/photos.
 // The Surveyor is the signed-in viewer (internal/auth's middleware); a
@@ -60,24 +83,20 @@ func (s *Server) createPhoto(w http.ResponseWriter, r *http.Request) {
 	}
 	surveyor := viewer.Name
 
-	// Each upload holds the whole file in memory and then a decoded image
-	// several times its size, so the semaphore is taken before the body is
-	// read: at most MaxConcurrentProcessing photos are in memory at once.
-	// Waiting requests have read nothing yet; a slow client is cut off by
-	// the server's ReadTimeout.
-	select {
-	case s.sem <- struct{}{}:
-	case <-r.Context().Done():
+	// One upload at a time per Surveyor (see docs/decisions.md, Security).
+	if !s.startUpload(viewer.SurveyorID) {
+		writeError(w, http.StatusTooManyRequests, "another upload of yours is still in progress; wait until it has finished")
 		return
 	}
-	held := true
-	release := func() {
-		if held {
-			held = false
-			<-s.sem
-		}
+	defer s.endUpload(viewer.SurveyorID)
+
+	// A 10-20 MB phone photo over mobile data can take longer than the
+	// server's ReadTimeout, which stays short for every other route.
+	rc := http.NewResponseController(w)
+	deadline := time.Now().Add(s.cfg.UploadTimeout) // real time, not s.now: a socket deadline
+	if err := errors.Join(rc.SetReadDeadline(deadline), rc.SetWriteDeadline(deadline.Add(time.Minute))); err != nil {
+		slog.Warn("upload deadline not extended", "err", err)
 	}
-	defer release()
 
 	maxBytes := int64(s.cfg.MaxUploadMB) << 20
 	tooLarge := fmt.Sprintf("file is larger than %d MB", s.cfg.MaxUploadMB)
@@ -85,10 +104,17 @@ func (s *Server) createPhoto(w http.ResponseWriter, r *http.Request) {
 	// Allow some slack above the file limit for the other fields and the
 	// multipart framing; the file itself is checked exactly below.
 	r.Body = http.MaxBytesReader(w, r.Body, maxBytes+1<<20)
-	form, err := readUploadForm(r, maxBytes)
+	form, err := readUploadForm(r, maxBytes, s.cfg.SpoolDir)
+	if form != nil {
+		defer form.close()
+	}
 	switch {
 	case errors.Is(err, errTooLarge):
 		writeError(w, http.StatusBadRequest, tooLarge)
+		return
+	case errors.Is(err, errSpool):
+		slog.Error("spool upload", "err", err)
+		writeError(w, http.StatusInternalServerError, "could not receive photo")
 		return
 	case err != nil:
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -100,13 +126,15 @@ func (s *Server) createPhoto(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := photos.Sniff(form.photo); err != nil {
+	head := make([]byte, 16)
+	n, _ := io.ReadFull(form.file(), head)
+	if _, err := photos.Sniff(head[:n]); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
 	// Position: EXIF GPS wins; the form fields are only a fallback.
-	meta := photos.ReadMeta(form.photo)
+	meta := photos.ReadMetaFrom(form.file())
 	lat, lng := meta.Lat, meta.Lng
 	if !meta.HasGPS {
 		var ok bool
@@ -134,9 +162,17 @@ func (s *Server) createPhoto(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	variants, err := photos.Process(form.photo)
-	form.photo = nil
-	release() // the variants are small; storing them needs no slot
+	// Decoding is what needs memory: the file plus a decoded image several
+	// times its size. At most MaxConcurrentProcessing photos are read into
+	// memory and decoded at once; the slot is taken only now that the body
+	// is on disk, and given back before the small variants are stored.
+	select {
+	case s.sem <- struct{}{}:
+	case <-r.Context().Done():
+		return
+	}
+	variants, err := s.process(form)
+	<-s.sem
 	if err != nil {
 		if errors.Is(err, photos.ErrInvalidImage) || errors.Is(err, photos.ErrUnsupported) || errors.Is(err, photos.ErrHEIC) {
 			writeError(w, http.StatusBadRequest, err.Error())
@@ -211,9 +247,37 @@ func (s *Server) createPhoto(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// readUploadForm streams the multipart body, keeping the photo in memory
-// (no temp files: the runtime image is distroless).
-func readUploadForm(r *http.Request, maxFile int64) (*uploadForm, error) {
+// process reads the spooled photo into memory and makes the variants.
+func (s *Server) process(form *uploadForm) (*photos.Variants, error) {
+	b := make([]byte, form.size)
+	if _, err := io.ReadFull(form.file(), b); err != nil {
+		return nil, fmt.Errorf("read spooled upload: %w", err)
+	}
+	return photos.Process(b)
+}
+
+// startUpload marks an upload of Surveyor id as running; false if one
+// already is.
+func (s *Server) startUpload(id string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.uploading[id] {
+		return false
+	}
+	s.uploading[id] = true
+	return true
+}
+
+func (s *Server) endUpload(id string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.uploading, id)
+}
+
+// readUploadForm streams the multipart body, spooling the photo to a
+// temporary file in dir ("" = os.TempDir). On error it removes the file
+// itself; otherwise the caller closes the form.
+func readUploadForm(r *http.Request, maxFile int64, dir string) (form *uploadForm, err error) {
 	ct, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if ct != "multipart/form-data" {
 		return nil, errors.New("request must be multipart/form-data")
@@ -223,6 +287,11 @@ func readUploadForm(r *http.Request, maxFile int64) (*uploadForm, error) {
 		return nil, errors.New("request must be multipart/form-data")
 	}
 	f := &uploadForm{}
+	defer func() {
+		if err != nil {
+			f.close()
+		}
+	}()
 	for {
 		part, err := mr.NextPart()
 		if err == io.EOF {
@@ -236,8 +305,10 @@ func readUploadForm(r *http.Request, maxFile int64) (*uploadForm, error) {
 			if f.photo != nil {
 				return nil, errors.New("only one photo per upload")
 			}
-			var buf bytes.Buffer
-			n, err := io.Copy(&buf, io.LimitReader(part, maxFile+1))
+			if f.photo, err = os.CreateTemp(dir, "upload-*"); err != nil {
+				return nil, fmt.Errorf("%w: %v", errSpool, err)
+			}
+			n, err := io.Copy(f.photo, io.LimitReader(part, maxFile+1))
 			if err != nil {
 				return nil, bodyErr(err)
 			}
@@ -247,7 +318,7 @@ func readUploadForm(r *http.Request, maxFile int64) (*uploadForm, error) {
 			if n == 0 {
 				return nil, errors.New("photo is empty")
 			}
-			f.photo = buf.Bytes()
+			f.size = n
 		case "lat", "lng":
 			b, err := io.ReadAll(io.LimitReader(part, maxFieldBytes+1))
 			if err != nil {

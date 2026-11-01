@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"runtime/debug"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -30,7 +31,16 @@ type Config struct {
 	// MaxConcurrentProcessing bounds how many uploads decode images at once;
 	// a 48 MP photo needs a few hundred MB while being resized.
 	MaxConcurrentProcessing int
+	// UploadTimeout replaces the server's read and write timeouts for
+	// POST /api/photos (default DefaultUploadTimeout).
+	UploadTimeout time.Duration
+	// SpoolDir holds uploads while they arrive ("" = os.TempDir).
+	SpoolDir string
 }
+
+// DefaultUploadTimeout is long enough for a 20 MB photo at about 300 kbit/s,
+// a slow mobile connection.
+const DefaultUploadTimeout = 10 * time.Minute
 
 // Server serves the API.
 type Server struct {
@@ -39,10 +49,16 @@ type Server struct {
 	cfg   Config
 	sem   chan struct{}
 	now   func() time.Time
+
+	mu        sync.Mutex
+	uploading map[string]bool // Surveyor ids with an upload in progress
 }
 
 // New creates a Server.
 func New(repo Repo, store storage.Store, cfg Config) *Server {
+	if cfg.UploadTimeout <= 0 {
+		cfg.UploadTimeout = DefaultUploadTimeout
+	}
 	if cfg.MaxUploadMB <= 0 {
 		cfg.MaxUploadMB = 25
 	}
@@ -55,6 +71,8 @@ func New(repo Repo, store storage.Store, cfg Config) *Server {
 		cfg:   cfg,
 		sem:   make(chan struct{}, cfg.MaxConcurrentProcessing),
 		now:   time.Now,
+
+		uploading: map[string]bool{},
 	}
 }
 

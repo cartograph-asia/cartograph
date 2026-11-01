@@ -2,6 +2,7 @@ package photos
 
 import (
 	"bytes"
+	"io"
 	"math"
 	"strings"
 	"time"
@@ -58,9 +59,13 @@ func (offsetParser) Parse(x *exif.Exif) error {
 
 // ReadMeta extracts GPS position and capture time from the EXIF block of b.
 // It is best effort: missing or malformed EXIF yields an empty Meta.
-func ReadMeta(b []byte) Meta {
+func ReadMeta(b []byte) Meta { return ReadMetaFrom(bytes.NewReader(b)) }
+
+// ReadMetaFrom is ReadMeta on a stream, such as an upload spooled to disk;
+// it reads no further than the EXIF block.
+func ReadMetaFrom(r io.Reader) Meta {
 	var m Meta
-	x, err := exif.Decode(bytes.NewReader(b))
+	x, err := exif.Decode(r)
 	if x == nil || (err != nil && exif.IsCriticalError(err)) {
 		return m
 	}

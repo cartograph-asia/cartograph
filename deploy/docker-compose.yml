@@ -28,7 +28,7 @@ x-api-env: &api-env
   SMTP_PORT: ${SMTP_PORT:-587}
   SMTP_USER: ${SMTP_USER:-}
   SMTP_PASSWORD: ${SMTP_PASSWORD:-}
-  MAIL_FROM: ${MAIL_FROM:-Cartograph.asia <hello@cartograph.asia>}
+  MAIL_FROM: ${MAIL_FROM:-cartograph.asia <hello@cartograph.asia>}
   # No default: without SMTP_HOST the api starts only with MAIL_DEV_LOG=1.
   MAIL_DEV_LOG: ${MAIL_DEV_LOG:-}
 

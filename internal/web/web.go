@@ -8,6 +8,7 @@ package web
 
 import (
 	"bytes"
+	"context"
 	"embed"
 	"errors"
 	"fmt"
@@ -15,6 +16,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -193,6 +195,26 @@ func (rd *Renderer) fill(r *http.Request, p *views.Page) {
 	if p.Now.IsZero() {
 		p.Now = rd.cfg.Now()
 	}
+	p.Type = DefaultType
+	if t, ok := r.Context().Value(typeKey{}).(string); ok && slices.Contains(Types, t) {
+		p.Type = t
+	}
+}
+
+// Types are the typographic directions the stylesheet defines (token sets
+// on html[data-type]): "a" is the system serif, "b1" and "b2" add one
+// self-hosted display face each (Fraunces, Inter Tight).
+var Types = []string{"a", "b1", "b2"}
+
+// DefaultType is the direction pages use unless a request asks for another.
+const DefaultType = "a"
+
+type typeKey struct{}
+
+// WithType returns ctx asking the renderer for typographic direction t (one
+// of Types); cmd/webpreview uses it to compare directions side by side.
+func WithType(ctx context.Context, t string) context.Context {
+	return context.WithValue(ctx, typeKey{}, t)
 }
 
 // staticPage is a page rendered from Markdown in docs/ (About, Principles, …).

@@ -28,8 +28,15 @@ The three layouts that were compared are in [variants/](variants/), named `{a,b,
 - **Quieter far out.** Below zoom 8 the outlines of blank parent cells are hidden; they used to cover the whole view, sea included.
 - **Map key.** The three greens (1, 2–3, 4 or more photos) and a blank plot, drawn as small plot shapes, plus one line on what a plot is.
 
-## Open points for Adrian
+## After the first review (Adrian, 2026-11-01)
 
-1. **Neighbouring countries** are plain land without names or roads, because the OSM extract is Thailand's. Merging the neighbours' extracts would add them at the cost of a larger archive and build.
-2. **The key on phones** takes two lines at the bottom. It could collapse to the status line alone, with the legend behind a tap; that would need a few lines of script.
-3. **Small maps** keep their own colours (surveyed plots in the middle green, the plot itself outlined in ink) instead of the three steps by photo count. The pages' small maps do not know photo counts yet.
+1. **Neighbouring countries** get OSM detail: the extracts of Myanmar, Laos, Cambodia, Vietnam and Malaysia/Singapore/Brunei are merged with Thailand's before the tile build.
+2. **The key on phones** is one line, the status and a "Key +" toggle; the legend and the line about plots open above it. From 768 px it stays open.
+3. **Small maps** colour plots in the three greens by photo count (1, 2–3, 4 or more), like `/map`; the no-JS outline does the same.
+4. **The key follows the zoom:** single plots close in; further out, where the map groups plots, it says how many plots a shape holds (49 or 343) and how it is shaded.
+5. **Groups with photos are clickable:** under the mouse such a group is outlined, and a click zooms until it fills the view. Blank groups only pan.
+
+Also fixed on the way:
+
+- The grid is redrawn while the map moves (every 150 ms, from what is already loaded), and data is fetched as soon as the movement stops, instead of 200 ms after it, so zooming no longer leaves an empty margin.
+- Plot requests ask for 800 cells, not 2000: Caddy answered the 32 KB URLs with a 431, so in large views many plots never got their colour.

@@ -8,10 +8,11 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DATA_DIR="${SCRIPT_DIR}/data"
-# Thailand, where Cartograph has plots, and its neighbours, so that the base
-# map does not end at the border. cmd/regions, cmd/places and cmd/fixture
+# Southeast and East Asia: Thailand, where Cartograph has plots so far, and
+# the countries it is meant to reach, so that the base map does not end at a
+# border. cmd/regions, cmd/places and cmd/fixture
 # still read thailand-latest.osm.pbf alone.
-EXTRACTS="${EXTRACTS:-thailand myanmar laos cambodia vietnam malaysia-singapore-brunei}"
+EXTRACTS="${EXTRACTS:-thailand myanmar laos cambodia vietnam malaysia-singapore-brunei indonesia philippines east-timor china taiwan japan south-korea north-korea mongolia}"
 if [[ $# -gt 0 ]]; then
   names=("$@")
 else

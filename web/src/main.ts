@@ -24,7 +24,8 @@ const map = new MapLibreMap({
   zoom: 6,
   minZoom: 4.5,
   maxZoom: 18,
-  maxBounds: [[88, -2], [114, 28]],
+  // Southeast and East Asia, as far as the base map reaches (map/build.sh BOUNDS).
+  maxBounds: [[88, -12], [150, 55]],
   hash: true,
   attributionControl: { compact: true },
 });

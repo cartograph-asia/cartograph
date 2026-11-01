@@ -80,6 +80,12 @@ services:
       S3_USE_SSL: ${S3_USE_SSL:-false}
       IMG_BASE_URL: ${IMG_BASE_URL:-http://localhost:8080/img}
       MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-25}
+      BASE_URL: ${BASE_URL:-http://localhost:8080}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      MAIL_FROM: ${MAIL_FROM:-Cartograph <hello@cartograph.asia>}
     healthcheck:
       # The binary probes its own /healthz; distroless has no shell or curl.
       test: ["CMD", "/usr/local/bin/api", "-healthcheck"]

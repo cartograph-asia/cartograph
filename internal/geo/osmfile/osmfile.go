@@ -89,6 +89,30 @@ func IsProvince(r *osm.Relation, country string) bool {
 		strings.HasPrefix(strings.ToUpper(t.Find("ISO3166-2")), strings.ToUpper(country)+"-")
 }
 
+// IsDistrict reports whether r is a district boundary (admin_level 6). OSM
+// districts carry no ISO code; the importer keeps those inside a province.
+func IsDistrict(r *osm.Relation) bool {
+	t := r.Tags
+	return t.Find("boundary") == "administrative" && t.Find("admin_level") == "6"
+}
+
+// DistrictName returns a district's English and Thai names without the
+// words for district ("Bang Kapi District", "เขตบางกะปิ", "อำเภอบ้านโคก"),
+// and whether it is a khet (เขต), i.e. a district of a city.
+func DistrictName(en, th string) (string, string, bool) {
+	en = strings.TrimSpace(en)
+	en = strings.TrimSpace(strings.TrimSuffix(en, " District"))
+	for _, p := range []string{"Khet ", "Amphoe "} {
+		en = strings.TrimSpace(strings.TrimPrefix(en, p))
+	}
+	th = strings.TrimSpace(th)
+	khet := strings.HasPrefix(th, "เขต")
+	for _, p := range []string{"เขต", "อำเภอ"} {
+		th = strings.TrimSpace(strings.TrimPrefix(th, p))
+	}
+	return en, th, khet
+}
+
 // ReadBoundaryData reads the relations accepted by keep together with all
 // their member ways and those ways' nodes, in three passes. The result is the
 // raw OSM data, for BuildBoundaries or for writing a fixture.

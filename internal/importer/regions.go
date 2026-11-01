@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/paulmach/orb"
+	"github.com/paulmach/orb/planar"
 	"github.com/paulmach/osm"
 
 	"github.com/cartograph-asia/cartograph/internal/db"
@@ -46,6 +47,7 @@ type RegionOptions struct {
 type RegionStats struct {
 	Regions         int
 	LandCells       int
+	Districts       int
 	PlotsNumbered   int // surveyed plots numbered after the land cells (outside them, or before the import)
 	PlotsBackfilled int
 	PlotsOutside    int
@@ -69,7 +71,9 @@ func Regions(ctx context.Context, d *db.DB, o RegionOptions) (*RegionStats, erro
 		return nil, err
 	}
 	start := time.Now()
-	raw, err := osmfile.ReadBoundaryData(pbf, func(r *osm.Relation) bool { return osmfile.IsProvince(r, country) })
+	raw, err := osmfile.ReadBoundaryData(pbf, func(r *osm.Relation) bool {
+		return osmfile.IsProvince(r, country) || osmfile.IsDistrict(r)
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -77,8 +81,9 @@ func Regions(ctx context.Context, d *db.DB, o RegionOptions) (*RegionStats, erro
 	if err != nil {
 		return nil, err
 	}
-	for _, id := range skipped {
-		slog.Warn("skipping boundary without closed rings", "relation", id)
+	if len(skipped) > 0 {
+		// Mostly districts of neighbouring countries cut by the extract.
+		slog.Warn("skipping boundaries without closed rings", "count", len(skipped), "relations", skipped)
 	}
 	slog.Info("read boundaries", "relations", len(raw.Relations), "ways", len(raw.Ways), "nodes", len(raw.Nodes), "took", time.Since(start).Round(time.Millisecond))
 	raw = nil
@@ -87,7 +92,12 @@ func Regions(ctx context.Context, d *db.DB, o RegionOptions) (*RegionStats, erro
 	var shapes []geo.RegionShape
 	all := orb.Bound{Min: orb.Point{1, 1}} // empty
 	slugs := map[string]int64{}
+	var districts []osmfile.Boundary
 	for _, b := range bs {
+		if b.Tags.Find("admin_level") == "6" {
+			districts = append(districts, b)
+			continue
+		}
 		simple := geo.Simplify(b.Geometry, tol)
 		if len(simple) == 0 {
 			slog.Warn("boundary vanished after simplification", "relation", b.OSMID)
@@ -167,6 +177,10 @@ func Regions(ctx context.Context, d *db.DB, o RegionOptions) (*RegionStats, erro
 	if err != nil {
 		return nil, err
 	}
+	drows := districtRows(districts, rows, ids, idx, clip, tol)
+	if _, err := d.UpsertRegions(ctx, drows); err != nil {
+		return nil, err
+	}
 	t = time.Now()
 	numbered := 0
 	for i, id := range ids {
@@ -185,7 +199,7 @@ func Regions(ctx context.Context, d *db.DB, o RegionOptions) (*RegionStats, erro
 	if err := d.ReloadRegions(ctx); err != nil {
 		return nil, err
 	}
-	st := &RegionStats{Regions: len(rows), LandCells: land}
+	st := &RegionStats{Regions: len(rows), Districts: len(drows), LandCells: land}
 	if st.PlotsBackfilled, st.PlotsOutside, err = d.BackfillPlots(ctx); err != nil {
 		return nil, err
 	}
@@ -195,7 +209,44 @@ func Regions(ctx context.Context, d *db.DB, o RegionOptions) (*RegionStats, erro
 	if err := d.RefreshRegionCounts(ctx); err != nil {
 		return nil, err
 	}
-	slog.Info("imported regions", "regions", st.Regions, "land_cells", st.LandCells, "plots_backfilled", st.PlotsBackfilled,
+	slog.Info("imported regions", "regions", st.Regions, "districts", st.Districts, "land_cells", st.LandCells, "plots_backfilled", st.PlotsBackfilled,
 		"plots_outside", st.PlotsOutside, "took", time.Since(start).Round(time.Millisecond))
 	return st, nil
+}
+
+// districtRows turns district boundaries into region rows below the province
+// that contains their centre (idx indexes provinces by their position in
+// provinces, whose region ids are ids). Districts outside every province
+// (neighbouring countries) or without an English name are dropped.
+func districtRows(bs []osmfile.Boundary, provinces []db.Region, ids []int, idx *geo.RegionIndex, clip orb.Bound, tol float64) []db.Region {
+	var out []db.Region
+	slugs := map[string]bool{}
+	dropped := 0
+	for _, b := range bs {
+		simple := geo.Simplify(b.Geometry, tol)
+		if len(simple) == 0 || (!geo.NoBound(clip) && !simple.Bound().Intersects(clip)) {
+			continue
+		}
+		centre, _ := planar.CentroidArea(simple)
+		if !planar.MultiPolygonContains(simple, centre) {
+			centre = simple[0][0][0]
+		}
+		pi, ok := idx.Contains(centre)
+		en, th := osmfile.Names(b.Tags)
+		en, th, khet := osmfile.DistrictName(en, th)
+		if !ok || en == "" {
+			dropped++
+			continue
+		}
+		parent := ids[pi]
+		slug := provinces[pi].Slug + "-" + osmfile.Slug(en)
+		if slugs[slug] {
+			slug = fmt.Sprintf("%s-%d", slug, b.OSMID)
+		}
+		slugs[slug] = true
+		out = append(out, db.Region{OSMID: b.OSMID, Kind: "district", AdminLevel: 6, Country: provinces[pi].Country,
+			ParentID: &parent, Urban: khet, Slug: slug, NameEn: en, NameTh: th, Boundary: simple})
+	}
+	slog.Info("read districts", "districts", len(out), "dropped", dropped)
+	return out
 }

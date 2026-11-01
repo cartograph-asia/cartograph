@@ -65,3 +65,20 @@ func TestNamesAndSlug(t *testing.T) {
 		}
 	}
 }
+
+func TestDistrictName(t *testing.T) {
+	for _, c := range []struct {
+		en, th, wantEn, wantTh string
+		khet                   bool
+	}{
+		{"Bang Kapi District", "เขตบางกะปิ", "Bang Kapi", "บางกะปิ", true},
+		{"Ban Khok District", "อำเภอบ้านโคก", "Ban Khok", "บ้านโคก", false},
+		{"Khet Watthana", "", "Watthana", "", false},
+		{"Mueang Roi Et", "อำเภอเมืองร้อยเอ็ด", "Mueang Roi Et", "เมืองร้อยเอ็ด", false},
+	} {
+		en, th, khet := DistrictName(c.en, c.th)
+		if en != c.wantEn || th != c.wantTh || khet != c.khet {
+			t.Errorf("DistrictName(%q, %q) = %q, %q, %v", c.en, c.th, en, th, khet)
+		}
+	}
+}

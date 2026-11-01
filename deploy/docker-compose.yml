@@ -94,7 +94,7 @@ services:
   # populated front page. Each step is idempotent. For all of Thailand set
   # IMPORT_PBF, IMPORT_WATER and IMPORT_BBOX as in .env.example.
   regions:
-    image: cartograph-api:local
+    image: cartograph-api:${API_TAG:-local}
     pull_policy: never
     depends_on:
       postgres:
@@ -112,7 +112,7 @@ services:
     restart: "no"
 
   places:
-    image: cartograph-api:local
+    image: cartograph-api:${API_TAG:-local}
     pull_policy: never
     depends_on:
       regions:
@@ -127,7 +127,7 @@ services:
     restart: "no"
 
   seed:
-    image: cartograph-api:local
+    image: cartograph-api:${API_TAG:-local}
     pull_policy: never
     depends_on:
       places:
@@ -140,7 +140,7 @@ services:
     restart: "no"
 
   api:
-    image: cartograph-api:local
+    image: cartograph-api:${API_TAG:-local}
     build:
       context: ..
       dockerfile: deploy/Dockerfile.api
@@ -167,6 +167,7 @@ services:
       start_period: 40s
 
   web:
+    image: cartograph-web:${WEB_TAG:-local}
     build:
       context: ../web
       dockerfile: ../deploy/Dockerfile.web

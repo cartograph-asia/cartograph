@@ -13,18 +13,6 @@ import { baseStyle } from './style';
 
 setWorkerUrl(workerUrl);
 
-// Layout variants for design review (docs/design/round-3): ?layout=a|b|c,
-// remembered for the session. a is the default until Adrian picks one.
-const LAYOUTS = ['a', 'b', 'c'];
-const asked = new URLSearchParams(location.search).get('layout');
-let layout = 'a';
-try {
-  if (asked && LAYOUTS.includes(asked)) sessionStorage.setItem('map-layout', asked);
-  layout = sessionStorage.getItem('map-layout') ?? layout;
-} catch {
-  if (asked && LAYOUTS.includes(asked)) layout = asked;
-}
-document.body.dataset.layout = layout;
 addProtocol('pmtiles', new Protocol().tile);
 
 const api = await loadApi();
@@ -129,9 +117,9 @@ const panelEl = document.getElementById('panel')!;
 
 /**
  * How much of the map the open panel covers: a width along the right edge,
- * or a height along the bottom (the sheet on phones). Nothing where the
- * panel stands beside the map (layout b). Layout positions ignore the
- * panel's slide transform, so this is right while it is still moving in.
+ * or a height along the bottom (the sheet on phones). Layout positions
+ * ignore the panel's slide transform, so this is right while it is still
+ * moving in.
  */
 function panelCover(): { x: number; y: number } {
   const m = map.getContainer().getBoundingClientRect();

@@ -1,9 +1,7 @@
 /* The /map page in the pages' look (docs/DESIGN_BRIEF.md, round 3): the
    tokens, masthead and buttons of internal/web/static/style.css, no
-   shadows, no rounded pills. Three layouts are compared on
-   body[data-layout]: a (masthead bar above the map, key in a strip below),
-   b (masthead and key in a column beside the map), c (the map full-bleed,
-   masthead and key as labels on it). */
+   shadows, no rounded pills. The map runs edge to edge; the masthead and
+   the key stand on it as paper labels (layout c of docs/design/round-3). */
 
 :root {
   /* Colour roles, as on the pages. */
@@ -37,8 +35,9 @@
 
   --tap: 44px;
   --panel-w: 26rem;
-  --side-w: 22rem;
-  --mast-h: 3.5rem;
+  --label: rgba(246, 242, 234, 0.94); /* paper, a little of the map showing through */
+  --label-h: 2.75rem; /* the action label's height; the zoom buttons sit below it */
+  --edge: var(--s-s); /* labels' distance from the window edge */
 
   color-scheme: light;
   font: var(--step-body) / 1.5 var(--font-text);
@@ -59,20 +58,9 @@ body {
   background: var(--paper);
 }
 
-/* One grid for every layout; the chrome's children take part in it. */
-body {
-  display: grid;
-  height: 100dvh;
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: auto minmax(0, 1fr) auto;
-}
-.chrome {
-  display: contents;
-}
 #map {
-  grid-row: 2;
-  grid-column: 1;
-  min-height: 0;
+  position: fixed;
+  inset: 0;
   background: #efe9dd;
 }
 
@@ -101,20 +89,27 @@ a:focus-visible {
   color: var(--ink-muted);
 }
 
-/* --- masthead: the pages' mark, claim and text actions ---------------- */
+/* --- labels: masthead and key on the map -------------------------------- */
 
+.mast,
+.key {
+  position: fixed;
+  z-index: 2;
+  background: var(--label);
+  border: 1px solid var(--ink-line);
+}
+
+/* Phones: the masthead as one label across the top. */
 .mast {
-  grid-row: 1;
-  grid-column: 1;
+  top: var(--edge);
+  left: var(--edge);
+  right: var(--edge);
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--s-m);
-  height: var(--mast-h);
-  padding: 0 var(--s-m);
-  background: var(--paper);
-  border-bottom: 1px solid var(--rule);
-  z-index: 3;
+  height: 3rem;
+  padding: 0 var(--s-m) 0 var(--s-s);
 }
 .brand {
   display: grid;
@@ -253,17 +248,15 @@ button {
 /* --- key: legend, a line about plots, the status line ------------------ */
 
 .key {
-  grid-row: 3;
-  grid-column: 1;
+  left: var(--edge);
+  right: var(--edge);
+  bottom: 2.75rem; /* clear of the attribution line */
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
   gap: var(--s-xs) var(--s-l);
   padding: var(--s-s) var(--s-m);
-  background: var(--paper);
-  border-top: 1px solid var(--rule);
   font-size: var(--step-meta);
-  z-index: 2;
 }
 .key .kicker,
 .key .about {
@@ -315,7 +308,7 @@ button {
   color: var(--ink-muted);
 }
 .map-status {
-  margin: 0 0 0 auto;
+  margin: 0;
   color: var(--ink);
   font-variant-numeric: lining-nums tabular-nums;
 }
@@ -601,14 +594,30 @@ button {
   background-color: transparent;
 }
 
-/* --- layout a: masthead bar above, key strip below ---------------------- */
+.maplibregl-ctrl-top-right {
+  top: 3rem;
+}
+
+/* --- wider screens: the mark top left, the actions top right ------------ */
 
 @media (min-width: 768px) {
   :root {
-    --mast-h: 4.5rem;
+    --edge: var(--s-l);
   }
   .mast {
-    padding: 0 var(--s-l);
+    display: contents;
+  }
+  .brand,
+  .acts {
+    position: fixed;
+    z-index: 2;
+    top: var(--edge);
+    background: var(--label);
+    border: 1px solid var(--ink-line);
+  }
+  .brand {
+    left: var(--edge);
+    padding: var(--s-s) var(--s-m) var(--s-s) var(--s-s);
   }
   .mark img {
     width: 40px;
@@ -623,191 +632,42 @@ button {
     align-self: start;
   }
   .acts {
+    right: var(--edge);
+    height: var(--label-h);
+    align-items: center;
+    padding: 0 var(--s-m);
     font-size: var(--step-body);
   }
   .key {
-    padding: var(--s-s) var(--s-l);
-  }
-  .key .about {
-    display: block;
-  }
-  body[data-layout='a'] .panel {
-    top: var(--mast-h);
-  }
-  body[data-layout='a'] .panel-head h2 {
-    margin-top: 0;
-  }
-
-  /* Keep zoom buttons and the attribution visible beside the open panel. */
-  .maplibregl-ctrl-top-right,
-  .maplibregl-ctrl-bottom-right {
-    transition: right 220ms ease;
-  }
-  body:not([data-layout='b']).panel-open .maplibregl-ctrl-top-right,
-  body:not([data-layout='b']).panel-open .maplibregl-ctrl-bottom-right {
-    right: var(--panel-w);
-  }
-}
-
-/* --- layout b: a column beside the map, like an atlas page ------------- */
-
-@media (min-width: 768px) {
-  body[data-layout='b'] {
-    grid-template-columns: var(--side-w) minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr);
-  }
-  body[data-layout='b'] .chrome {
-    grid-row: 1;
-    grid-column: 1;
-    display: flex;
-    flex-direction: column;
-    gap: var(--s-l);
-    padding: var(--s-l);
-    border-right: 1px solid var(--rule);
-    overflow-y: auto;
-  }
-  body[data-layout='b'] #map {
-    grid-row: 1;
-    grid-column: 2;
-  }
-  body[data-layout='b'] .mast {
-    flex-direction: column;
-    align-items: flex-start;
-    height: auto;
-    padding: 0 0 var(--s-l);
-    gap: var(--s-l);
-    border-bottom: 2px solid var(--rule-strong);
-  }
-  body[data-layout='b'] .brand {
-    grid-template-columns: 1fr;
-    row-gap: var(--s-s);
-  }
-  body[data-layout='b'] .mark img {
-    grid-row: auto;
-    width: 56px;
-    height: 56px;
-  }
-  body[data-layout='b'] .wordmark {
-    font-size: 2rem;
-  }
-  body[data-layout='b'] .claim {
-    margin: 0;
-    font-size: var(--step-body);
-  }
-  body[data-layout='b'] .acts {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: var(--s-s);
-  }
-  body[data-layout='b'] .key {
-    flex-direction: column;
-    align-items: stretch;
-    gap: var(--s-m);
-    padding: 0;
-    border: 0;
-    background: none;
-  }
-  body[data-layout='b'] .key .kicker {
-    display: block;
-    margin: 0;
-    padding-bottom: var(--s-xs);
-    border-bottom: 1px solid var(--rule);
-  }
-  body[data-layout='b'] .legend {
-    flex-direction: column;
-    gap: var(--s-s);
-    font-size: var(--step-body);
-    color: var(--ink);
-  }
-  body[data-layout='b'] .sw {
-    width: 1.1em;
-    height: 1.1em;
-  }
-  body[data-layout='b'] .map-status {
-    margin: 0;
-    padding-top: var(--s-s);
-    border-top: 1px solid var(--rule);
-  }
-  /* The panel takes the column's place instead of covering the map. */
-  body[data-layout='b'] .panel {
-    left: 0;
     right: auto;
-    width: var(--side-w);
-    border-left: 0;
-    border-right: 1px solid var(--rule);
-    transform: translateX(-105%);
-  }
-  body[data-layout='b'] .panel.open {
-    transform: none;
-  }
-}
-
-/* --- layout c: the map full-bleed, masthead and key as labels ----------- */
-
-body[data-layout='c'] #map {
-  grid-row: 1 / -1;
-}
-body[data-layout='c'] .mast,
-body[data-layout='c'] .key {
-  position: fixed;
-  z-index: 2;
-  background: rgba(246, 242, 234, 0.94);
-  border: 1px solid var(--ink-line);
-}
-/* Phones: one label across the top, the key across the bottom. */
-body[data-layout='c'] .mast {
-  top: var(--s-s);
-  left: var(--s-s);
-  right: var(--s-s);
-  height: 3rem;
-  padding: 0 var(--s-m) 0 var(--s-s);
-}
-body[data-layout='c'] .key {
-  left: var(--s-s);
-  right: var(--s-s);
-  bottom: var(--s-l);
-  padding: var(--s-s) var(--s-m);
-}
-body[data-layout='c'] .maplibregl-ctrl-top-right {
-  top: calc(3rem + var(--s-s));
-}
-/* Wider: the mark top left, the actions top right, the key bottom left. */
-@media (min-width: 768px) {
-  body[data-layout='c'] .mast {
-    display: contents;
-  }
-  body[data-layout='c'] .brand,
-  body[data-layout='c'] .acts {
-    position: fixed;
-    z-index: 2;
-    top: var(--s-l);
-    background: rgba(246, 242, 234, 0.94);
-    border: 1px solid var(--ink-line);
-  }
-  body[data-layout='c'] .brand {
-    left: var(--s-l);
-    padding: var(--s-s) var(--s-m) var(--s-s) var(--s-s);
-  }
-  body[data-layout='c'] .acts {
-    right: var(--s-l);
-    height: 2.75rem;
-    align-items: center;
-    padding: 0 var(--s-m);
-  }
-  body[data-layout='c'] .key {
-    left: var(--s-l);
-    right: auto;
-    bottom: var(--s-l);
+    bottom: var(--edge);
     max-width: 30rem;
     flex-direction: column;
     gap: var(--s-s);
   }
-  body[data-layout='c'] .map-status {
-    margin: 0;
+  .key .about {
+    display: block;
   }
-  body[data-layout='c'] .maplibregl-ctrl-top-right {
-    top: calc(2.75rem + var(--s-l));
-    right: calc(var(--s-l) - 10px);
+  .maplibregl-ctrl-top-right {
+    top: calc(var(--label-h) + var(--edge));
+    right: calc(var(--edge) - 10px);
+  }
+
+  /* The open panel covers the right edge: the actions, the zoom buttons
+     and the attribution move to its left. */
+  .acts,
+  .maplibregl-ctrl-top-right,
+  .maplibregl-ctrl-bottom-right {
+    transition: right 220ms ease;
+  }
+  body.panel-open .acts {
+    right: calc(var(--panel-w) + var(--edge));
+  }
+  body.panel-open .maplibregl-ctrl-top-right {
+    right: calc(var(--panel-w) + var(--edge) - 10px);
+  }
+  body.panel-open .maplibregl-ctrl-bottom-right {
+    right: var(--panel-w);
   }
 }
 
@@ -855,6 +715,7 @@ body[data-layout='c'] .maplibregl-ctrl-top-right {
 
 /* No transitions while the window is being resized (set in main.ts). */
 body.resizing .panel,
+body.resizing .acts,
 body.resizing .maplibregl-ctrl-top-right,
 body.resizing .maplibregl-ctrl-bottom-right {
   transition: none;
@@ -862,6 +723,7 @@ body.resizing .maplibregl-ctrl-bottom-right {
 
 @media (prefers-reduced-motion: reduce) {
   .panel,
+  .acts,
   .maplibregl-ctrl-top-right,
   .maplibregl-ctrl-bottom-right {
     transition: none;

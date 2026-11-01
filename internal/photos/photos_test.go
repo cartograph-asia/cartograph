@@ -2,13 +2,16 @@ package photos
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
+	"hash/crc32"
 	"image"
 	"image/color"
 	"image/jpeg"
 	"image/png"
 	"math"
 	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -158,5 +161,87 @@ func TestProcessRejects(t *testing.T) {
 	b := readFixture(t, "gps.jpg")[:200]
 	if _, err := Process(b); !errors.Is(err, ErrInvalidImage) {
 		t.Errorf("truncated jpeg: %v", err)
+	}
+}
+
+// withSize returns a copy of a small encoded JPEG or PNG whose header claims
+// w×h pixels: a decompression bomb in a few hundred bytes. The pixel data
+// stays that of the small image.
+func withSize(t *testing.T, b []byte, w, h int) []byte {
+	t.Helper()
+	b = bytes.Clone(b)
+	if i := bytes.Index(b, []byte{0xFF, 0xC0}); b[0] == 0xFF && i > 0 { // JPEG SOF0
+		binary.BigEndian.PutUint16(b[i+5:], uint16(h))
+		binary.BigEndian.PutUint16(b[i+7:], uint16(w))
+		return b
+	}
+	ihdr := b[8+4 : 8+4+4+13] // "IHDR" and its data, after the length
+	if string(ihdr[:4]) != "IHDR" {
+		t.Fatal("no IHDR")
+	}
+	binary.BigEndian.PutUint32(ihdr[4:], uint32(w))
+	binary.BigEndian.PutUint32(ihdr[8:], uint32(h))
+	binary.BigEndian.PutUint32(b[8+4+4+13:], crc32.ChecksumIEEE(ihdr))
+	return b
+}
+
+func encodePNG(t *testing.T, img image.Image) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+func TestProcessRejectsBombs(t *testing.T) {
+	jpg := readFixture(t, "nogps.jpg")
+	png8 := encodePNG(t, image.NewNRGBA(image.Rect(0, 0, 4, 4)))
+	png16 := encodePNG(t, image.NewNRGBA64(image.Rect(0, 0, 4, 4)))
+	gray16 := encodePNG(t, image.NewGray16(image.Rect(0, 0, 4, 4)))
+	for _, c := range []struct {
+		name string
+		b    []byte
+	}{
+		{"jpeg 65535x1000", withSize(t, jpg, 65535, 1000)},
+		{"png 8-bit 6000x5001", withSize(t, png8, 6000, 5001)},
+		{"png 16-bit 10000x9999", withSize(t, png16, 10000, 9999)}, // 757 KB of these decode to 908 MB
+		{"png 16-bit 4000x3751", withSize(t, png16, 4000, 3751)},
+		{"png gray 16-bit 4000x3751", withSize(t, gray16, 4000, 3751)},
+		{"png 8-bit 1<<31 wide", withSize(t, png8, 1<<31-1, 1)},
+	} {
+		_, err := Process(c.b)
+		if !errors.Is(err, ErrInvalidImage) || !strings.Contains(err.Error(), "megapixels") {
+			t.Errorf("%s: %v", c.name, err)
+		}
+	}
+}
+
+func TestMaxPixels(t *testing.T) {
+	for _, c := range []struct {
+		f    Format
+		m    color.Model
+		want int64
+	}{
+		{JPEG, color.YCbCrModel, 60_000_000},
+		{JPEG, color.CMYKModel, 60_000_000},
+		{PNG, color.NRGBAModel, 30_000_000},
+		{PNG, color.RGBAModel, 30_000_000},
+		{PNG, color.GrayModel, 30_000_000},
+		{PNG, color.NRGBA64Model, 15_000_000},
+		{PNG, color.RGBA64Model, 15_000_000},
+		{PNG, color.Gray16Model, 15_000_000},
+	} {
+		if got := maxPixels(c.f, c.m); got != c.want {
+			t.Errorf("%s %T: %d, want %d", c.f, c.m, got, c.want)
+		}
+	}
+	// A 16-bit PNG within its limit is processed as usual.
+	img := image.NewNRGBA64(image.Rect(0, 0, 300, 200))
+	for i := range img.Pix {
+		img.Pix[i] = 0xFF
+	}
+	if v, err := Process(encodePNG(t, img)); err != nil || v.LargeWidth != 300 {
+		t.Fatalf("16-bit png: %+v %v", v, err)
 	}
 }

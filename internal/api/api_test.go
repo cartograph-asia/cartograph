@@ -381,6 +381,26 @@ func TestReadEndpointsValidate(t *testing.T) {
 	}
 }
 
+func TestClientConfig(t *testing.T) {
+	e := newEnv(t, 25)
+	status, body := e.get("/api/config")
+	if status != 200 || body["tiles_url"] != DefaultTilesURL {
+		t.Errorf("GET /api/config: %d %v", status, body)
+	}
+
+	s := New(newFakeRepo(), storage.NewMemory("http://img.test/img"), Config{TilesURL: "https://tiles.example/asia-20261101.pmtiles"})
+	srv := httptest.NewServer(s.Handler())
+	defer srv.Close()
+	resp, err := http.Get(srv.URL + "/api/config")
+	if err != nil {
+		t.Fatal(err)
+	}
+	status, body = decode(t, resp)
+	if status != 200 || body["tiles_url"] != "https://tiles.example/asia-20261101.pmtiles" || resp.Header.Get("Cache-Control") == "" {
+		t.Errorf("GET /api/config with TILES_URL: %d %v", status, body)
+	}
+}
+
 func TestHealthzAndCORS(t *testing.T) {
 	e := newEnv(t, 25)
 	resp, err := http.Get(e.srv.URL + "/healthz")

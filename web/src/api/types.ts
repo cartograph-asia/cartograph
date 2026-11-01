@@ -67,7 +67,14 @@ export interface UploadInput {
   lng?: number;
 }
 
+/** 200 of GET /api/config: what the map needs from the server's environment. */
+export interface ClientConfig {
+  /** The base map's PMTiles archive (TILES_URL): a path on this site or a full URL. */
+  tiles_url: string;
+}
+
 export interface Api {
+  getConfig(): Promise<ClientConfig>;
   /** At most PLOTS_BATCH cells per call; returns surveyed plots only. */
   getPlots(cells: string[]): Promise<PlotSummary[]>;
   /** null for a blank plot (404). */

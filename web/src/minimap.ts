@@ -39,6 +39,12 @@ const OVERRIDES = `
 .maplibregl-ctrl-attrib-button{border-radius:0;background-color:transparent}
 .minimap-canvas.maplibregl-map{position:absolute;inset:0}`;
 
+// Where the base map lives (TILES_URL); without an answer, style.json's default.
+const config = await httpApi.getConfig().catch((err: unknown) => {
+  console.warn('minimap config:', err);
+  return null;
+});
+
 const css = document.createElement('style');
 css.textContent = maplibreCss + OVERRIDES;
 document.head.append(css);
@@ -72,7 +78,7 @@ function createMap(el: HTMLElement, bounds: LngLatBoundsLike, maxZoom: number): 
   el.append(box);
   const map = new MapLibreMap({
     container: box,
-    style: baseStyle(),
+    style: baseStyle(config?.tiles_url),
     bounds,
     fitBoundsOptions: { padding: 24, maxZoom },
     minZoom: 4.5,

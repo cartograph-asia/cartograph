@@ -14,12 +14,17 @@ setWorkerUrl(workerUrl);
 addProtocol('pmtiles', new Protocol().tile);
 
 const api = await loadApi();
+// Where the base map lives (TILES_URL); without an answer, style.json's default.
+const config = await api.getConfig().catch((err: unknown) => {
+  console.warn('config:', err);
+  return null;
+});
 const data = new DataStore(api);
 const statusEl = document.getElementById('map-status')!;
 
 const map = new MapLibreMap({
   container: 'map',
-  style: baseStyle(),
+  style: baseStyle(config?.tiles_url),
   center: [100.9, 13.2],
   zoom: 6,
   minZoom: 4.5,

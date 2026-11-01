@@ -157,6 +157,9 @@ function parseTiffGps(v: DataView, tiff: number): { lat: number; lng: number } |
 // --- endpoints ---------------------------------------------------------------------
 
 export const mockApi: Api = {
+  async getConfig() {
+    return { tiles_url: '/tiles/asia.pmtiles' };
+  },
   getPlots(cells: string[]): Promise<PlotSummary[]> {
     if (cells.length > 2000) return Promise.reject(new ApiError(400, 'too many cells (max 2000)'));
     const out: PlotSummary[] = [];

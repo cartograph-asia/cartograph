@@ -5,7 +5,8 @@
 //
 // Takes every page of a set in tools/screenshots/pages.json at 400 px and
 // 1400 px wide, once per typographic direction (?type=, see web.Types), as
-// full-page JPEGs of at most 300 KB into docs/design/<out>/ with the names
+// full-page JPEGs of at most 300 KB (tall pages at a reduced device scale)
+// into docs/design/<out>/ with the names
 // <page>-<type>-<width>.jpg. It runs against cmd/webpreview on
 // 127.0.0.1:8093 and starts it (go run ./cmd/webpreview) when nothing
 // answers there. It drives the installed Google Chrome through
@@ -80,15 +81,32 @@ async function loadEverything(page) {
   await page.waitForLoadState('networkidle');
 }
 
-// shoot saves a full-page JPEG, lowering the quality until it fits MAX_BYTES.
-async function shoot(page, file) {
-  for (let q = 82; q >= 30; q -= 8) {
-    const buf = await page.screenshot({ fullPage: true, type: 'jpeg', quality: q });
-    if (buf.length <= MAX_BYTES || q - 8 < 30) {
-      writeFileSync(file, buf);
-      return { q, kb: Math.round(buf.length / 1024) };
+// Each shot is tried at full scale first; a tall page that does not fit
+// MAX_BYTES at a decent quality is rendered at a smaller device scale (the
+// layout stays at the viewport's CSS width, the image gets fewer pixels).
+const SCALES = [1, 0.8, 0.65, 0.5];
+const QUALITIES = [82, 74, 66, 58, 50];
+
+// shoot loads url at width and saves a full-page JPEG of at most MAX_BYTES.
+async function shoot(browser, url, width, file) {
+  for (const scale of SCALES) {
+    const context = await browser.newContext({ viewport: { width, height: 900 }, deviceScaleFactor: scale });
+    const page = await context.newPage();
+    try {
+      await page.goto(url, { waitUntil: 'load' });
+      await loadEverything(page);
+      for (const q of QUALITIES) {
+        const buf = await page.screenshot({ fullPage: true, type: 'jpeg', quality: q });
+        if (buf.length <= MAX_BYTES) {
+          writeFileSync(file, buf);
+          return { scale, q, kb: Math.round(buf.length / 1024) };
+        }
+      }
+    } finally {
+      await context.close();
     }
   }
+  throw new Error(`${url} at ${width}px does not fit ${MAX_BYTES} bytes`);
 }
 
 const opt = args();
@@ -104,19 +122,14 @@ const browser = await chromium.launch(
 );
 try {
   for (const width of WIDTHS) {
-    const context = await browser.newContext({ viewport: { width, height: 900 }, deviceScaleFactor: 1 });
-    const page = await context.newPage();
     for (const n of names) {
       for (const t of opt.types) {
         const url = BASE + pages[n] + (pages[n].includes('?') ? '&' : '?') + 'type=' + t;
-        await page.goto(url, { waitUntil: 'load' });
-        await loadEverything(page);
         const file = join(outDir, `${n}-${t}-${width}.jpg`);
-        const { q, kb } = await shoot(page, file);
-        console.log(`${file.slice(root.length + 1)}  q${q}  ${kb} KB`);
+        const { scale, q, kb } = await shoot(browser, url, width, file);
+        console.log(`${file.slice(root.length + 1)}  scale ${scale}  q${q}  ${kb} KB`);
       }
     }
-    await context.close();
   }
 } finally {
   await browser.close();

@@ -240,11 +240,15 @@ map.on('load', () => {
 map.on('move', onMove);
 map.on('moveend', onMoveEnd);
 
-/** The group of plots (coverage cell) under a point, if the view shows groups and it is one of them. */
+/**
+ * The group of plots (coverage cell) under a point, if the view shows groups
+ * and that group has photos. Blank groups are not clickable: zooming into
+ * them shows nothing new (Adrian).
+ */
 function groupAt(lat: number, lng: number): string | null {
   if (plan.mode !== 'coverage') return null;
   const cell = latLngToCell(lat, lng, plan.res);
-  return plan.cells.includes(cell) ? cell : null;
+  return (data.coverageOf(plan.res, cell)?.surveyed ?? 0) > 0 ? cell : null;
 }
 
 let hoveredGroup: string | null = null;

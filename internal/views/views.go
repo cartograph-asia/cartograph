@@ -155,6 +155,46 @@ func (p PlotRef) Name() string {
 	return local + " · " + province
 }
 
+// ShortName is the plot's name for grids and captions, without the
+// district: "{place} · {province} {number}", e.g. "Pattaya · Chon Buri 2412".
+// Without a nearby place the district stands in for it ("Bang Kapi ·
+// Bangkok 1000"). The full Name stays on plot and photo pages.
+func (p PlotRef) ShortName() string {
+	n := p.ShortParts()
+	switch {
+	case n.Place == "" && n.Province == "":
+		return "A plot"
+	case n.Place == "":
+		return n.Province
+	case n.Province == "":
+		return n.Place
+	}
+	return n.Place + " · " + n.Province
+}
+
+// ShortParts is ShortName in its two parts, so a caption can cut a long
+// place and still show the province and number: {"Pattaya", "Chon Buri 2412"}.
+func (p PlotRef) ShortParts() NameParts {
+	province := p.Region.NameEn
+	if p.Number > 0 && province != "" {
+		province += " " + strconv.Itoa(p.Number)
+	}
+	place := p.Place
+	if place == p.Region.NameEn {
+		place = ""
+	}
+	if place == "" {
+		place = p.District
+	}
+	return NameParts{Place: place, Province: province}
+}
+
+// NameParts is a plot name in two parts; see PlotRef.ShortParts.
+type NameParts struct {
+	Place    string // place, else district; may be empty
+	Province string // province and number, e.g. "Chon Buri 2412"; may be empty
+}
+
 // Path is the plot's friendly path, /plot/{region-slug}/{number}, or the
 // canonical /plot/{cell} when it has no number yet.
 func (p PlotRef) Path() string {

@@ -170,15 +170,15 @@ func TestEveryPageRenders(t *testing.T) {
 		}},
 		{"placeholder", views.PageSurveyor, viewstest.PlaceholderSurveyor(), []string{"<h1>beach-walker</h1>"}},
 		{"plot", views.PagePlot, viewstest.Plot(), []string{
-			"<h1>Pattaya, Bang Lamung · Chon Buri 2417", "first surveyed by", "H3 index <code>88658bd11dfffff</code>", `href="/about/plots">What is a plot?`, `data-paths="/plot/chon-buri/2417,/plot/chon-buri/2418,`, "beach-walker", `href="/map?cell=88658bd11dfffff"`,
+			"<h1 class=\"name\">Pattaya, Bang <span class=\"nb\">Lamung ·</span> <span class=\"pv\">Chon Buri 2417</span>", "first surveyed by", "H3 index <code>88658bd11dfffff</code>", `href="/about/plots">What is a plot?`, `data-paths="/plot/chon-buri/2417,/plot/chon-buri/2418,`, "beach-walker", `href="/map?cell=88658bd11dfffff"`,
 			"Survey this plot", `data-focus="88658bd11dfffff"`, `data-surveyed="1,`, `class="s f"`,
 		}},
 		{"blank plot", views.PagePlot, viewstest.BlankPlot(), []string{"Nobody has surveyed this plot yet", `name="robots" content="noindex"`, "Survey this plot"}},
-		{"photo", views.PagePhoto, viewstest.Photo(), []string{`<h1><a href="/plot/chon-buri/2417">Pattaya, Bang Lamung · Chon Buri 2417</a></h1>`, "CC BY-SA 4.0", `rel="prev"`, `rel="next"`, "Photo 3 of", "Full size"}},
+		{"photo", views.PagePhoto, viewstest.Photo(), []string{`<h1><a href="/plot/chon-buri/2417">Pattaya, Bang <span class="nb">Lamung ·</span> <span class="pv">Chon Buri 2417</span></a></h1>`, "CC BY-SA 4.0", `rel="prev"`, `rel="next"`, "Photo 3 of", "Full size"}},
 		{"prototype photo", views.PagePhoto, viewstest.PrototypePhoto(), []string{"first survey of this plot", `width="2000" height="1500"`}},
 		{"region", views.PageRegion, viewstest.Region(), []string{
 			"<h1>Chon Buri", "0.20%", "5,921 plots", `data-minimap="coverage"`, `data-bounds="100.68000,12.50000,101.73000,13.59000"`,
-			"Most active, last 30 days", "Most active, all time", `href="/region/chon-buri.rss"`, "Open Chon Buri on the map",
+			"Most active Surveyors", "Last 30 days", "All time", "coverage, 12 of 5,921 plots", `href="/region/chon-buri.rss"`, "Open Chon Buri on the map",
 		}},
 		{"signin", views.PageSignIn, viewstest.SignIn(), []string{`action="/signin"`, `name="csrf" value="tok-123"`, `name="next" value="/map"`, `type="email"`, `value="adrian@example"`, "That does not look"}},
 		{"check-email", views.PageCheckEmail, viewstest.CheckEmail(), []string{"adrian@example.org"}},
@@ -662,7 +662,7 @@ func TestPlotByNumber(t *testing.T) {
 		t.Fatalf("status %d", r.status)
 	}
 	// Same page as /plot/{cell}, which stays the canonical link.
-	must(t, r.body, "<h1>Pattaya, Bang Lamung · Chon Buri 2417", `<link rel="canonical" href="https://cartograph.asia/plot/88658bd11dfffff">`)
+	must(t, r.body, "<h1 class=\"name\">Pattaya, Bang <span class=\"nb\">Lamung ·</span> <span class=\"pv\">Chon Buri 2417</span>", `<link rel="canonical" href="https://cartograph.asia/plot/88658bd11dfffff">`)
 	if r := get(t, h, "/plot/CHON-BURI/2417"); r.status != http.StatusOK {
 		t.Errorf("slug case: status %d", r.status)
 	}
@@ -670,5 +670,28 @@ func TestPlotByNumber(t *testing.T) {
 		if r := get(t, h, path); r.status != http.StatusNotFound {
 			t.Errorf("%s: status %d, want 404", path, r.status)
 		}
+	}
+}
+
+// TestCaptionsLeaveOutWhatIsShared checks that a plot page's grid names the
+// Surveyor instead of the plot, and a Surveyor's page leaves out the name.
+func TestCaptionsLeaveOutWhatIsShared(t *testing.T) {
+	body := render(t, views.PagePlot, viewstest.Plot())
+	must(t, body, `<p class="cap"><a class="who" href="/surveyor/beach-walker">beach-walker</a>`)
+	mustNot(t, body, `<p class="cap"><a class="plot"`)
+	body = render(t, views.PageSurveyor, viewstest.Surveyor())
+	must(t, body, `<p class="cap"><a class="plot"`)
+	mustNot(t, body, `<span class="line"><a href="/surveyor/adrian">`)
+	body = render(t, views.PageLatest, viewstest.Latest(10))
+	must(t, body, `<span class="line"><a href="/surveyor/`)
+}
+
+func TestHeading(t *testing.T) {
+	p := views.PlotRef{Place: "A & B", District: "C", Region: views.RegionRef{NameEn: "D", Slug: "d"}, Number: 7}
+	if got, want := string(heading(p)), `A &amp; B, <span class="nb">C ·</span> <span class="pv">D 7</span>`; got != want {
+		t.Errorf("heading = %q, want %q", got, want)
+	}
+	if got := string(heading(views.PlotRef{Region: views.RegionRef{NameEn: "D"}, Number: 7})); got != "D 7" {
+		t.Errorf("heading without a place = %q", got)
 	}
 }

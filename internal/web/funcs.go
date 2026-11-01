@@ -134,16 +134,24 @@ func grid(now time.Time, photos []views.PhotoItem, eager bool, of ...string) gri
 	return g
 }
 
-// heading sets a plot name as a page heading: the space before the dot is
-// kept with the place, so a long name breaks after the dot and the province
-// and number start the next line together ("Pattaya, Bang Lamung ·" /
-// "Chon Buri 2417"). The name itself comes from PlotRef.Name.
+// heading sets a plot name as a page heading: the dot stays with the last
+// word before it, so a long name breaks after the dot (Chrome still breaks
+// before a no-wrap span that starts with the space, so the span holds the
+// word as well), and the province and number are one inline block that
+// moves to the next line whole unless it is wider than the line itself
+// ("Pattaya, Bang Lamung ·" / "Chon Buri 2417"). The name itself comes from
+// PlotRef.Name.
 func heading(p views.PlotRef) template.HTML {
 	local, province, ok := strings.Cut(p.Name(), " · ")
 	if !ok {
 		return template.HTML(template.HTMLEscapeString(local))
 	}
-	return template.HTML(template.HTMLEscapeString(local) + `<span class="nb"> ·</span> ` + template.HTMLEscapeString(province))
+	head, last := "", local
+	if i := strings.LastIndexByte(local, ' '); i >= 0 {
+		head, last = local[:i+1], local[i+1:]
+	}
+	esc := template.HTMLEscapeString
+	return template.HTML(esc(head) + `<span class="nb">` + esc(last) + ` ·</span> <span class="pv">` + esc(province) + `</span>`)
 }
 
 func toTime(v any) (time.Time, bool) {

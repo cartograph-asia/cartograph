@@ -5,7 +5,7 @@
 {{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
 <form method="post" action="/settings">
 {{template "csrf" .}}
-<p><span class="label">Surveyor name</span><a href="/surveyor/{{.Name}}">{{.Name}}</a></p>
+<p class="field"><span class="label">Surveyor name</span><a href="/surveyor/{{.Name}}">{{.Name}}</a></p>
 <label for="bio">About you</label>
 <textarea id="bio" name="bio" rows="5" maxlength="{{bioMax}}" aria-describedby="bio-hint">{{.Bio}}</textarea>
 <p id="bio-hint" class="hint">Plain text, up to {{bioMax}} characters. Shown on your profile.</p>

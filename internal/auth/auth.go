@@ -95,6 +95,12 @@ func ConfigFromEnv(getenv func(string) string) (Config, error) {
 		}
 		cfg.SMTP.Port = n
 	}
+	// Without SMTP_HOST the dev mailer writes every sign-in link to the log,
+	// where anyone who reads the log can use it. That is fine on a laptop,
+	// never on a public https origin.
+	if cfg.SMTP.Host == "" && u.Scheme == "https" {
+		return Config{}, fmt.Errorf("auth: SMTP_HOST is required when BASE_URL is https (%s); without it sign-in links would be written to the log instead of sent", cfg.BaseURL)
+	}
 	if cfg.SMTP.Host != "" {
 		if cfg.SMTP.From == "" {
 			return Config{}, errors.New("auth: MAIL_FROM is required when SMTP_HOST is set")

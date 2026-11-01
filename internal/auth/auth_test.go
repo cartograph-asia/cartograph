@@ -533,6 +533,16 @@ func TestConfigFromEnv(t *testing.T) {
 			t.Errorf("%v: no error", bad)
 		}
 	}
+	// A public https site never falls back to logging sign-in links.
+	for _, host := range []string{"", "  "} {
+		_, err := ConfigFromEnv(env(map[string]string{"BASE_URL": "https://cartograph.asia", "SMTP_HOST": host}))
+		if err == nil || !strings.Contains(err.Error(), "SMTP_HOST is required when BASE_URL is https") {
+			t.Errorf("https without SMTP_HOST %q: %v", host, err)
+		}
+	}
+	if _, err := ConfigFromEnv(env(map[string]string{"BASE_URL": "http://localhost:8080"})); err != nil {
+		t.Errorf("http without SMTP_HOST (dev mode): %v", err)
+	}
 }
 
 func TestBuildMessage(t *testing.T) {

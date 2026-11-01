@@ -128,7 +128,7 @@ func routes(cfg config, database *db.DB, store storage.Store) (http.Handler, err
 	}
 	a := auth.New(acfg, auth.NewPGStore(database.Pool), auth.NewMailer(acfg.SMTP), rd.RenderFunc(), database.Views())
 	pages := web.NewHandlers(database.Views(), rd)
-	adminH := admin.New(database.Admin(), a, rd.RenderFunc())
+	adminH := admin.New(database.Admin(), a, store, rd.RenderFunc())
 	slog.Info("accounts", "admins", len(acfg.Admins), "signup", acfg.Signup)
 	slog.Info("crawlers", "policy", cfg.crawlers)
 	apiH := api.New(database, store, api.Config{MaxUploadMB: cfg.maxUploadMB, TilesURL: cfg.tilesURL}).Handler()

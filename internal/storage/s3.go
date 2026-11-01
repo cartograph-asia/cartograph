@@ -69,6 +69,15 @@ func (s *S3) Put(ctx context.Context, key, contentType string, r io.Reader) erro
 	return nil
 }
 
+// Delete removes key. S3 answers a missing key with success, so deleting
+// twice is fine.
+func (s *S3) Delete(ctx context.Context, key string) error {
+	if err := s.client.RemoveObject(ctx, s.bucket, key, minio.RemoveObjectOptions{}); err != nil {
+		return fmt.Errorf("storage: delete %s: %w", key, err)
+	}
+	return nil
+}
+
 // URL returns the public URL of key.
 func (s *S3) URL(key string) string {
 	return PublicURL(s.baseURL, key)

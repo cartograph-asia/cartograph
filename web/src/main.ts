@@ -1,5 +1,3 @@
-import 'maplibre-gl/dist/maplibre-gl.css';
-import './styles.css';
 import { addProtocol, Map as MapLibreMap, NavigationControl, setWorkerUrl } from 'maplibre-gl';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 import { Protocol } from 'pmtiles';
@@ -237,6 +235,9 @@ map.on('load', () => {
   }
   void refresh();
 });
+// The key matches the starting zoom before the first tiles are drawn.
+setKey(planView(viewBBox(), map.getZoom()));
+
 map.on('move', onMove);
 map.on('moveend', onMoveEnd);
 

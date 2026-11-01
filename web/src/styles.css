@@ -1,3 +1,5 @@
+@import 'maplibre-gl/dist/maplibre-gl.css';
+
 /* The /map page in the pages' look (docs/DESIGN_BRIEF.md, round 3): the
    tokens, masthead and buttons of internal/web/static/style.css, no
    shadows, no rounded pills. The map runs edge to edge; the masthead and

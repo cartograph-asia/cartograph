@@ -8,6 +8,10 @@
     <title>Map · Cartograph.asia</title>
     <link rel="icon" type="image/svg+xml" href="/logo.svg" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <!-- Linked here, not imported from main.ts: the dev server would add an
+         imported stylesheet only after the page had been drawn without it,
+         and the labels and the panel jumped into place. -->
+    <link rel="stylesheet" href="/src/styles.css" />
   </head>
   <body>
     <!-- The page masthead (internal/web/templates/layout.html) and the map's

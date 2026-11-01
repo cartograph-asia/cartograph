@@ -207,6 +207,20 @@ body.panel-open .fab {
   transform: none;
 }
 
+/* Keep zoom buttons and the map attribution visible beside the open panel
+   (desktop only; on mobile the panel is a bottom sheet). */
+@media (min-width: 768px) {
+  .maplibregl-ctrl-top-right,
+  .maplibregl-ctrl-bottom-right {
+    transition: right 220ms ease;
+  }
+
+  body.panel-open .maplibregl-ctrl-top-right,
+  body.panel-open .maplibregl-ctrl-bottom-right {
+    right: var(--panel-w);
+  }
+}
+
 .panel-head {
   display: flex;
   align-items: center;
@@ -500,7 +514,9 @@ body.panel-open .fab {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .panel {
+  .panel,
+  .maplibregl-ctrl-top-right,
+  .maplibregl-ctrl-bottom-right {
     transition: none;
   }
 }

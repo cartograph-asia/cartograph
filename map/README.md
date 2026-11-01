@@ -1,6 +1,6 @@
 # Base map
 
-Builds `map/thailand.pmtiles`, an OpenMapTiles-schema vector tile archive
+Builds `map/asia.pmtiles`, an OpenMapTiles-schema vector tile archive
 (zoom 0–14) from OpenStreetMap, for the base style in `web/style.json`.
 Caddy serves this directory at `/tiles/` with range requests.
 
@@ -9,8 +9,7 @@ The archive covers the map's whole area (88,-2 – 114,28, the `maxBounds` in
 Myanmar, Laos, Cambodia, Vietnam and Malaysia/Singapore/Brunei, merged into
 one file with osmium. Cartograph's plots, regions and places are still
 Thailand's only; `cmd/regions`, `cmd/places` and `cmd/fixture` read
-`thailand-latest.osm.pbf` alone. The archive keeps its old name because the
-style, Caddy and `cmd/webpreview` point at it.
+`thailand-latest.osm.pbf` alone.
 
 ## Build
 
@@ -18,7 +17,7 @@ Requires Docker and `curl`. No local Java needed.
 
 ```sh
 map/download.sh   # Geofabrik extracts -> map/data/<name>-latest.osm.pbf (each skipped if present)
-map/build.sh      # osmium merge + Planetiler -> map/thailand.pmtiles (runs download.sh first)
+map/build.sh      # osmium merge + Planetiler -> map/asia.pmtiles (runs download.sh first)
 ```
 
 Both scripts work from any directory. `EXTRACTS` (space-separated Geofabrik
@@ -44,7 +43,7 @@ Everything under `map/data/` and the `.pmtiles` output is git-ignored.
 | Build time | ~95 s | ~7 min (sources already downloaded) |
 | JVM heap peak | ~2.1 GB | ~3.8 GB of 5 GB (`-Xmx5g`, the default) |
 | Disk | ~1.7 GB in `map/data/` | ~3.8 GB in `map/data/` |
-| Output | ~400 MB | `thailand.pmtiles`, ~1.4 GB |
+| Output | ~400 MB | `asia.pmtiles`, ~1.4 GB |
 
 Docker Desktop needs at least ~6 GB memory assigned for the default set.
 Override the heap with `JAVA_XMX=4g map/build.sh`, the set with
@@ -58,7 +57,7 @@ merges and names the files to delete and fetch again.
 ## Check the output
 
 ```sh
-docker run --rm -v "$PWD/map:/map:ro" protomaps/go-pmtiles:v1.31.2 show /map/thailand.pmtiles
+docker run --rm -v "$PWD/map:/map:ro" protomaps/go-pmtiles:v1.31.2 show /map/asia.pmtiles
 ```
 
 Expect bounds 88,-2 – 114,28 and zoom 0–14.

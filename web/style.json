@@ -2,7 +2,7 @@
   "version": 8,
   "name": "Cartograph paper",
   "metadata": {
-    "cartograph:note": "OpenMapTiles-schema style in the page palette (docs/DESIGN_BRIEF.md): land in the paper family, water a pale grey-blue, roads and labels in light slate. The plot layer is drawn on top, so nothing here may be saturated. The source URL is rewritten to an absolute pmtiles://<origin>/tiles/thailand.pmtiles by the frontend."
+    "cartograph:note": "OpenMapTiles-schema style in the page palette (docs/DESIGN_BRIEF.md): land in the paper family, water a pale grey-blue, roads and labels in light slate. The plot layer is drawn on top, so nothing here may be saturated. The source URL is rewritten to an absolute pmtiles://<origin>/tiles/asia.pmtiles by the frontend."
   },
   "center": [100.5, 13.75],
   "zoom": 6,
@@ -10,7 +10,7 @@
   "sources": {
     "openmaptiles": {
       "type": "vector",
-      "url": "pmtiles:///tiles/thailand.pmtiles",
+      "url": "pmtiles:///tiles/asia.pmtiles",
       "attribution": "<a href=\"https://www.openstreetmap.org/copyright\" target=\"_blank\">&copy; OpenStreetMap contributors</a> <a href=\"https://www.openmaptiles.org/\" target=\"_blank\">&copy; OpenMapTiles</a>"
     }
   },

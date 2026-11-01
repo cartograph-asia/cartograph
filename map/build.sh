@@ -1,13 +1,11 @@
 #!/usr/bin/env bash
-# Build map/thailand.pmtiles from Geofabrik extracts with Planetiler
+# Build map/asia.pmtiles from Geofabrik extracts with Planetiler
 # (OpenMapTiles-compatible default profile, zoom 0-14), via Docker.
 #
 # The extracts (EXTRACTS: Thailand and its neighbours, see download.sh) are
 # merged into one file with osmium, run from Debian's package in a
 # throwaway debian container, so nothing is installed on the host. The
-# merge is redone only when an extract is newer than the merged file. The
-# archive keeps its name, thailand.pmtiles, although it now covers the
-# neighbours too: the style, Caddy and cmd/webpreview point at it.
+# merge is redone only when an extract is newer than the merged file.
 #
 # Auxiliary sources (water polygons, Natural Earth, lake centerlines) are
 # downloaded by Planetiler on first run into map/data/sources/ and reused
@@ -36,7 +34,7 @@ BOUNDS="${BOUNDS:-88,-2,114,28}"
 DEBIAN_IMAGE="${DEBIAN_IMAGE:-debian:bookworm-slim}"
 EXTRACTS="${EXTRACTS:-thailand myanmar laos cambodia vietnam malaysia-singapore-brunei}"
 PBF_NAME="region-latest.osm.pbf"
-OUTPUT_NAME="thailand.pmtiles"
+OUTPUT_NAME="asia.pmtiles"
 export EXTRACTS
 
 "${SCRIPT_DIR}/download.sh"

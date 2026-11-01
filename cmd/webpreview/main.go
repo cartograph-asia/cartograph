@@ -45,7 +45,7 @@ import (
 func main() {
 	addr := flag.String("addr", "127.0.0.1:8093", "listen address")
 	dist := flag.String("dist", "web/dist", "web build (vite build --base /map/) for the small maps; skipped if missing")
-	tiles := flag.String("tiles", "map/thailand.pmtiles", "PMTiles archive for the small maps; skipped if missing")
+	tiles := flag.String("tiles", "map/asia.pmtiles", "PMTiles archive for the small maps; skipped if missing")
 	perPage := flag.Int("per-page", 10, "photos per page, low to show pagination with 30 fixture photos")
 	photoDir := flag.String("photos", "testdata", "directory of JPEGs cropped into the fixture photos; generated images if empty")
 	flag.Parse()
@@ -88,7 +88,7 @@ func main() {
 		slog.Warn("no web build; small maps keep their fallback", "dist", *dist)
 	}
 	if _, err := os.Stat(*tiles); err == nil {
-		r.Get("/tiles/thailand.pmtiles", func(w http.ResponseWriter, r *http.Request) { http.ServeFile(w, r, *tiles) })
+		r.Get("/tiles/asia.pmtiles", func(w http.ResponseWriter, r *http.Request) { http.ServeFile(w, r, *tiles) })
 	} else {
 		slog.Warn("no PMTiles archive; small maps have no base map", "tiles", *tiles)
 	}

@@ -36,7 +36,7 @@ and run `docker compose up regions places` (77 provinces and about 18,000 places
 
 ## Build the map
 
-`map/build.sh` downloads the Geofabrik extract for Thailand and runs Planetiler in Docker to produce `map/thailand.pmtiles` (zoom 0–14, about 400 MB). Caddy serves it at `/tiles/thailand.pmtiles`, and the muted base style is `web/style.json`. Build times, memory needs and how to refresh the data are in [map/README.md](map/README.md).
+`map/build.sh` downloads the Geofabrik extracts for Thailand and its neighbours, merges them and runs Planetiler in Docker to produce `map/asia.pmtiles` (zoom 0–14, about 1.4 GB). Caddy serves it at `/tiles/asia.pmtiles`, and the base style is `web/style.json`. Build times, memory needs and how to refresh the data are in [map/README.md](map/README.md).
 
 ## Configuration
 

@@ -1,4 +1,5 @@
-import { addProtocol, Map as MapLibreMap, NavigationControl, setWorkerUrl } from 'maplibre-gl';
+import { addProtocol, Map as MapLibreMap, MercatorCoordinate, NavigationControl, setWorkerUrl } from 'maplibre-gl';
+import type { CameraOptions, LngLatBoundsLike } from 'maplibre-gl';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 import { Protocol } from 'pmtiles';
 import { cellToBoundary, cellToLatLng, getHexagonAreaAvg, getResolution, isValidCell, latLngToCell, UNITS } from 'h3-js';
@@ -7,11 +8,12 @@ import { DataStore } from './data';
 import { PLOT_MIN_ZOOM, PLOT_RES, planView, type ViewPlan } from './grid';
 import { addLayers, pulse, renderCoverage, renderPlots, setGroupState, setPlotState, showMode } from './layers';
 import { Panel } from './panel';
-import { baseStyle } from './style';
+import { loadBaseStyle } from './style';
 
 setWorkerUrl(workerUrl);
 
-addProtocol('pmtiles', new Protocol().tile);
+const protocol = new Protocol();
+addProtocol('pmtiles', protocol.tile);
 
 const api = await loadApi();
 // Where the base map lives (TILES_URL); without an answer, style.json's default.
@@ -19,21 +21,39 @@ const config = await api.getConfig().catch((err: unknown) => {
   console.warn('config:', err);
   return null;
 });
+const { style } = await loadBaseStyle(config?.tiles_url, protocol);
 const data = new DataStore(api);
 const statusEl = document.getElementById('map-status')!;
 
+/**
+ * The countries the map is about, Southeast and East Asia as the base map
+ * was built: the view a visit without a position in the URL opens on. It is
+ * fixed here rather than taken from the archive, so that a larger archive
+ * does not move it.
+ */
+const HOME: LngLatBoundsLike = [[88, -12], [150, 55]];
+
+// A visit with a position in the URL (#zoom/lat/lng, written by the map)
+// keeps it; so does the cell from ?cell=, which load() flies to.
+const linked = /^#\d/.test(location.hash) || new URLSearchParams(location.search).has('cell');
+
 const map = new MapLibreMap({
   container: 'map',
-  style: baseStyle(config?.tiles_url),
-  center: [100.9, 13.2],
-  zoom: 6,
-  minZoom: 4.5,
+  style,
+  center: [119, 21.5],
+  zoom: 2.5,
   maxZoom: 18,
-  // Southeast and East Asia, as far as the base map reaches (map/build.sh BOUNDS).
-  maxBounds: [[88, -12], [150, 55]],
   hash: true,
+  // A flat map: plots are drawn north up, and a turned or tilted view only
+  // showed the base map's edges (Adrian). No rotation, no pitch, no compass.
+  dragRotate: false,
+  pitchWithRotate: false,
+  touchPitch: false,
+  maxPitch: 0,
   attributionControl: { compact: true },
 });
+map.touchZoomRotate.disableRotation();
+map.keyboard.disableRotation();
 map.addControl(new NavigationControl({ showCompass: false }), 'top-right');
 map.on('error', (e) => console.warn('map error:', e.error?.message ?? e));
 
@@ -243,6 +263,54 @@ map.on('load', () => {
 });
 // The key matches the starting zoom before the first tiles are drawn.
 setKey(planView(viewBBox(), map.getZoom()));
+
+/**
+ * The view that shows HOME whole and centred in the part of the map the
+ * labels leave free: below the masthead and above the key. On a low window
+ * (a phone turned sideways) that band would be a sliver, so there the
+ * countries may run under the key.
+ */
+function homeCamera(): CameraOptions | undefined {
+  const box = map.getContainer().getBoundingClientRect();
+  const key = keyEl.getBoundingClientRect();
+  const mast = document.querySelector('.mast')!.getBoundingClientRect();
+  const gap = box.width < 768 ? 12 : 24;
+  const attribution = 28;
+  const top = mast.bottom - box.top + gap;
+  let bottom = box.bottom - key.top + gap;
+  if (box.height - top - bottom < box.height / 2) bottom = attribution + gap;
+  if (box.height - top - bottom < box.height / 3 || box.width <= 2 * gap) return undefined;
+  return map.cameraForBounds(HOME, { padding: { top, bottom, left: gap, right: gap } });
+}
+
+/**
+ * Air around the countries: the map zooms out half a step beyond the home
+ * view and no further, and pans only as far as that view reaches. Beyond the
+ * archive it shows the paper margin (style.ts), so no edge of the base map
+ * is ever in sight. Recomputed when the window changes size or turns.
+ */
+function frame(): CameraOptions | undefined {
+  const cam = homeCamera();
+  if (!cam?.center || cam.zoom === undefined) return undefined;
+  const minZoom = Math.max(0, cam.zoom - 0.5);
+  const c = MercatorCoordinate.fromLngLat(cam.center);
+  const world = 512 * 2 ** minZoom;
+  const dx = map.getContainer().clientWidth / 2 / world;
+  const dy = map.getContainer().clientHeight / 2 / world;
+  const sw = new MercatorCoordinate(c.x - dx, Math.min(1, c.y + dy)).toLngLat();
+  const ne = new MercatorCoordinate(c.x + dx, Math.max(0, c.y - dy)).toLngLat();
+  map.setMinZoom(minZoom);
+  map.setMaxBounds([sw, ne]);
+  return cam;
+}
+
+const home = frame();
+if (home && !linked) map.jumpTo(home);
+let frameTimer: number | undefined;
+window.addEventListener('resize', () => {
+  clearTimeout(frameTimer);
+  frameTimer = window.setTimeout(frame, 200);
+});
 
 map.on('move', onMove);
 map.on('moveend', onMoveEnd);

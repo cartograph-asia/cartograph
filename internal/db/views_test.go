@@ -433,3 +433,51 @@ func abs(v int) int {
 	}
 	return v
 }
+
+func TestPlaceTiers(t *testing.T) {
+	d := db.NewTestDB(t)
+	ctx := context.Background()
+	osmPath, waterPath := importer.Fixture()
+	if _, err := importer.Regions(ctx, d, importer.RegionOptions{PBF: osmPath, Water: waterPath, BBox: importer.FixtureBBox}); err != nil {
+		t.Fatal(err)
+	}
+	cell, _ := h3.CellFromLatLng(beach[0], beach[1], h3.PlotRes)
+	lat, lng, _ := h3.Centre(cell)
+	// Offsets north of the plot centre in km.
+	at := func(km float64) (float64, float64) { return lat + km/111.195, lng }
+	place := func(id int64, kind, name string, km float64) {
+		la, ln := at(km)
+		if _, err := d.Pool.Exec(ctx, `insert into places (osm_type, osm_id, kind, name_en, lat, lng) values ('n', $1, $2, $3, $4, $5)`,
+			id, kind, name, la, ln); err != nil {
+			t.Fatal(err)
+		}
+	}
+	name := func() string {
+		loc, err := d.LocatePlot(ctx, cell)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return loc.PlaceEn
+	}
+	steps := []struct {
+		id         int64
+		kind, name string
+		km         float64
+		want       string
+	}{
+		{1, "city", "Far City", 4.5, "Far City"},           // only a city within 5 km
+		{2, "city", "Too Far", 0.1, "Too Far"},             // nearer city wins among cities
+		{3, "town", "Some Town", 4.8, "Some Town"},         // village/town beat any city
+		{4, "village", "Ban Near", 3, "Ban Near"},          // nearest of village/town
+		{5, "suburb", "Outer Suburb", 2.5, "Ban Near"},     // suburbs count within 2 km only
+		{6, "suburb", "Inner Suburb", 1.9, "Inner Suburb"}, // a suburb within 2 km beats villages
+		{7, "quarter", "The Quarter", 1.95, "The Quarter"}, // a quarter beats a nearer suburb
+		{8, "neighbourhood", "Soi 7", 1.99, "Soi 7"},       // the finest type wins
+	}
+	for _, s := range steps {
+		place(s.id, s.kind, s.name, s.km)
+		if got := name(); got != s.want {
+			t.Fatalf("after adding %s %q at %.2f km: name %q, want %q", s.kind, s.name, s.km, got, s.want)
+		}
+	}
+}

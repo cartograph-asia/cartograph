@@ -345,22 +345,37 @@ func (d *DB) BackfillPlots(ctx context.Context) (updated, outside int, err error
 	return updated, outside, nil
 }
 
-// PlaceRadiusKm is the distance within which the nearest OSM place names a plot.
-const PlaceRadiusKm = 5.0
+// PlaceRadiusKm is the distance within which a village, town or city names
+// a plot; FinePlaceRadiusKm the one for neighbourhoods, quarters and suburbs.
+const (
+	PlaceRadiusKm     = 5.0
+	FinePlaceRadiusKm = 2.0
+)
 
-// nearestPlaceSQL returns a subquery selecting name_en, name_th of the
-// nearest place within PlaceRadiusKm of (lat, lng), using the (lat, lng)
-// index for a box prefilter and an equirectangular distance.
+// nearestPlaceSQL returns a subquery selecting name_en, name_th of the place
+// that names a plot at (lat, lng): the nearest neighbourhood within
+// FinePlaceRadiusKm, else the nearest quarter, else suburb (finest first);
+// else the nearest village or town within PlaceRadiusKm; else the nearest
+// city within PlaceRadiusKm. It uses the (lat, lng) index for a box
+// prefilter and an equirectangular distance.
 func nearestPlaceSQL(lat, lng string) string {
 	const kmPerDeg = 111.195
-	dLat := PlaceRadiusKm / kmPerDeg
+	r := PlaceRadiusKm / kmPerDeg
+	fine := FinePlaceRadiusKm / kmPerDeg
 	return fmt.Sprintf(`
-		select name_en, name_th from places
-		where lat between %[1]s - %[3]g and %[1]s + %[3]g
-		  and lng between %[2]s - %[3]g / cos(radians(%[1]s)) and %[2]s + %[3]g / cos(radians(%[1]s))
-		  and (lat - %[1]s)^2 + ((lng - %[2]s) * cos(radians(%[1]s)))^2 <= %[4]g
-		order by (lat - %[1]s)^2 + ((lng - %[2]s) * cos(radians(%[1]s)))^2, id
-		limit 1`, lat, lng, dLat, dLat*dLat)
+		select name_en, name_th from (
+			select name_en, name_th, id, kind,
+			       (lat - %[1]s)^2 + ((lng - %[2]s) * cos(radians(%[1]s)))^2 as d2
+			from places
+			where lat between %[1]s - %[3]g and %[1]s + %[3]g
+			  and lng between %[2]s - %[3]g / cos(radians(%[1]s)) and %[2]s + %[3]g / cos(radians(%[1]s))
+		) p
+		where (kind in ('neighbourhood', 'quarter', 'suburb') and d2 <= %[5]g)
+		   or (kind in ('village', 'town', 'city') and d2 <= %[4]g)
+		order by case kind when 'neighbourhood' then 1 when 'quarter' then 2 when 'suburb' then 3
+		                   when 'village' then 4 when 'town' then 4 else 5 end,
+		         d2, id
+		limit 1`, lat, lng, r, r*r, fine*fine)
 }
 
 // Place is one row for ReplacePlaces.

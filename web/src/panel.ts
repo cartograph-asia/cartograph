@@ -2,7 +2,6 @@
 import { ApiError, type Api, type PlotDetail, type UploadResult } from './api';
 
 const MAX_BYTES = 25 * 1024 * 1024;
-const NAME_KEY = 'cartograph.surveyor';
 
 function $<T extends HTMLElement>(id: string): T {
   const el = document.getElementById(id);
@@ -14,22 +13,6 @@ function fmtDate(iso: string | null | undefined): string {
   if (!iso) return '';
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString(undefined, { dateStyle: 'medium' });
-}
-
-function storageGet(key: string): string {
-  try {
-    return localStorage.getItem(key) ?? '';
-  } catch {
-    return '';
-  }
-}
-
-function storageSet(key: string, value: string): void {
-  try {
-    localStorage.setItem(key, value);
-  } catch {
-    // private mode etc.; the name just is not remembered
-  }
 }
 
 export function isHeic(file: File): boolean {
@@ -48,7 +31,8 @@ export class Panel {
   private form = $<HTMLFormElement>('upload-form');
   private formTitle = $<HTMLHeadingElement>('upload-title');
   private file = $<HTMLInputElement>('photo-input');
-  private name = $<HTMLInputElement>('surveyor-input');
+  private surveyingAs = $<HTMLElement>('surveying-as');
+  private signinPrompt = $<HTMLElement>('signin-prompt');
   private locBtn = $<HTMLButtonElement>('use-location');
   private locClear = $<HTMLButtonElement>('clear-location');
   private locText = $<HTMLElement>('location-text');
@@ -64,7 +48,7 @@ export class Panel {
   private busy = false;
 
   constructor(private api: Api, private events: PanelEvents) {
-    this.name.value = storageGet(NAME_KEY);
+    void this.loadMe();
     $<HTMLButtonElement>('panel-close').addEventListener('click', () => this.close());
     this.file.addEventListener('change', () => this.checkFile());
     this.locBtn.addEventListener('click', () => this.useLocation());
@@ -81,6 +65,23 @@ export class Panel {
       this.lightboxImg.removeAttribute('src');
     });
     if (!('geolocation' in navigator)) this.locBtn.hidden = true;
+  }
+
+  /** Uploads need a signed-in Surveyor: show the form, or the sign-in link. */
+  private async loadMe(): Promise<void> {
+    let name: string | null = null;
+    try {
+      name = (await this.api.getMe())?.name ?? null;
+    } catch {
+      // treat as signed out; the upload would be refused anyway
+    }
+    this.setSurveyor(name);
+  }
+
+  private setSurveyor(name: string | null): void {
+    this.form.hidden = name === null;
+    this.signinPrompt.hidden = name !== null;
+    this.surveyingAs.textContent = name ? `Surveying as ${name}` : '';
   }
 
   get isOpen(): boolean {
@@ -131,7 +132,7 @@ export class Panel {
     this.info.hidden = true;
     this.formTitle.textContent = 'Survey a plot';
     this.show();
-    this.file.focus();
+    (this.form.hidden ? this.signinPrompt.querySelector('a') : this.file)?.focus();
   }
 
   async openPlot(cell: string, focus = true): Promise<void> {
@@ -256,18 +257,11 @@ export class Panel {
   private async upload(): Promise<void> {
     if (this.busy) return;
     const file = this.checkFile();
-    const surveyor = this.name.value.trim();
     if (!file) {
       if (!this.file.files?.length) this.setStatus('Choose a photo first.', 'error');
       this.file.focus();
       return;
     }
-    if (!surveyor) {
-      this.setStatus('Please enter your name.', 'error');
-      this.name.focus();
-      return;
-    }
-    storageSet(NAME_KEY, surveyor);
     this.busy = true;
     this.submit.disabled = true;
     this.submit.textContent = 'Uploading…';
@@ -275,12 +269,10 @@ export class Panel {
     try {
       const result = await this.api.uploadPhoto({
         photo: file,
-        surveyor,
         lat: this.loc?.lat,
         lng: this.loc?.lng,
       });
       this.form.reset();
-      this.name.value = surveyor;
       this.setLocation(null);
       this.setStatus(
         result.claimed ? 'Photo added. You are the first surveyor of this plot!' : 'Photo added to this plot.',
@@ -289,6 +281,7 @@ export class Panel {
       this.events.onUploaded(result);
     } catch (err) {
       this.setStatus(message(err), 'error');
+      if (err instanceof ApiError && err.status === 401) this.setSurveyor(null); // session ended
     } finally {
       this.busy = false;
       this.submit.disabled = false;

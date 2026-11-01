@@ -71,8 +71,9 @@ const (
 
 // RenderFunc writes page (one of the Page* names) with data and status. data
 // is the matching page struct; when it implements Based, the renderer sets
-// Viewer from the request context. internal/web provides the implementation,
-// so handlers in other packages render without importing it.
+// Viewer and CSRF from the request context (ViewerFrom, CSRFFrom).
+// internal/web provides the implementation, so handlers in other packages
+// render without importing it.
 type RenderFunc func(w http.ResponseWriter, r *http.Request, status int, page string, data any)
 
 type viewerKey struct{}
@@ -86,4 +87,27 @@ func WithViewer(ctx context.Context, v *Viewer) context.Context {
 func ViewerFrom(ctx context.Context) *Viewer {
 	v, _ := ctx.Value(viewerKey{}).(*Viewer)
 	return v
+}
+
+// PageConfirmSignIn is the magic-link confirmation page (*ConfirmSignIn);
+// task 2 addition.
+const PageConfirmSignIn = "confirm-signin"
+
+type csrfKey struct{}
+
+// CSRFField is the name of the hidden form field that carries Page.CSRF in
+// every POST form (task 2 addition).
+const CSRFField = "csrf"
+
+// WithCSRF returns ctx carrying the CSRF token for the visitor's forms; set
+// by internal/auth's middleware (task 2 addition).
+func WithCSRF(ctx context.Context, token string) context.Context {
+	return context.WithValue(ctx, csrfKey{}, token)
+}
+
+// CSRFFrom returns the token stored by WithCSRF, or "" when the visitor has
+// neither a session nor a sign-in form open (no POST form needs one then).
+func CSRFFrom(ctx context.Context) string {
+	t, _ := ctx.Value(csrfKey{}).(string)
+	return t
 }

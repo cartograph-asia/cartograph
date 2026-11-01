@@ -34,16 +34,17 @@
       <div class="panel-body">
         <section id="plot-info" class="plot-info" aria-live="polite"></section>
 
-        <form id="upload-form" class="upload" novalidate>
+        <p id="signin-prompt" class="signin-prompt" hidden>
+          <a class="primary" href="/signin?next=/map">Sign in to survey</a>
+        </p>
+
+        <form id="upload-form" class="upload" novalidate hidden>
           <h3 id="upload-title">Add a photo</h3>
+          <p id="surveying-as" class="hint"></p>
           <div class="field">
             <label for="photo-input">Photo</label>
             <input id="photo-input" name="photo" type="file" accept="image/jpeg,image/png" required />
             <p class="hint">JPEG or PNG, up to 25 MB. The plot is taken from the photo's location.</p>
-          </div>
-          <div class="field">
-            <label for="surveyor-input">Your name</label>
-            <input id="surveyor-input" name="surveyor" type="text" maxlength="80" autocomplete="nickname" required />
           </div>
           <div class="field location">
             <div class="location-row">

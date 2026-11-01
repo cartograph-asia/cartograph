@@ -10,19 +10,21 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/google/uuid"
 
 	"github.com/cartograph-asia/cartograph/internal/db"
 	"github.com/cartograph-asia/cartograph/internal/h3"
 	"github.com/cartograph-asia/cartograph/internal/photos"
+	"github.com/cartograph-asia/cartograph/internal/views"
 )
 
-const (
-	maxSurveyorLen = 100 // characters
-	maxFieldBytes  = 1 << 10
-)
+const maxFieldBytes = 1 << 10
+
+// crossOrigin refuses uploads that a browser sends from another origin
+// (Sec-Fetch-Site / Origin). With the session cookie this is the endpoint's
+// CSRF protection: the map page posts multipart from the same origin.
+var crossOrigin = http.NewCrossOriginProtection()
 
 type photoURLs struct {
 	Large string `json:"large"`
@@ -38,14 +40,26 @@ type createPhotoResponse struct {
 
 type uploadForm struct {
 	photo    []byte
-	surveyor string
 	lat, lng string
 }
 
 var errTooLarge = errors.New("too large")
 
 // createPhoto handles POST /api/photos.
+// The Surveyor is the signed-in viewer (internal/auth's middleware); a
+// "surveyor" form field is ignored.
 func (s *Server) createPhoto(w http.ResponseWriter, r *http.Request) {
+	if err := crossOrigin.Check(r); err != nil {
+		writeError(w, http.StatusForbidden, "cross-origin uploads are not allowed")
+		return
+	}
+	viewer := views.ViewerFrom(r.Context())
+	if !viewer.HasName() {
+		writeError(w, http.StatusUnauthorized, "sign in to survey")
+		return
+	}
+	surveyor := viewer.Name
+
 	maxBytes := int64(s.cfg.MaxUploadMB) << 20
 	tooLarge := fmt.Sprintf("file is larger than %d MB", s.cfg.MaxUploadMB)
 
@@ -64,15 +78,6 @@ func (s *Server) createPhoto(w http.ResponseWriter, r *http.Request) {
 
 	if form.photo == nil {
 		writeError(w, http.StatusBadRequest, "photo is required")
-		return
-	}
-	surveyor := strings.TrimSpace(form.surveyor)
-	if surveyor == "" {
-		writeError(w, http.StatusBadRequest, "surveyor is required")
-		return
-	}
-	if !utf8.ValidString(surveyor) || utf8.RuneCountInString(surveyor) > maxSurveyorLen {
-		writeError(w, http.StatusBadRequest, fmt.Sprintf("surveyor must be valid text of at most %d characters", maxSurveyorLen))
 		return
 	}
 
@@ -146,6 +151,8 @@ func (s *Server) createPhoto(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// photos.surveyor_id and plots.first_surveyor_id are filled from the
+	// name by the triggers of migration 0051.
 	claimed, err := s.repo.ClaimPhoto(ctx, db.NewPhoto{
 		ID:         id,
 		Cell:       cell,
@@ -211,7 +218,7 @@ func readUploadForm(r *http.Request, maxFile int64) (*uploadForm, error) {
 				return nil, errors.New("photo is empty")
 			}
 			f.photo = buf.Bytes()
-		case "surveyor", "lat", "lng":
+		case "lat", "lng":
 			b, err := io.ReadAll(io.LimitReader(part, maxFieldBytes+1))
 			if err != nil {
 				return nil, bodyErr(err)
@@ -220,8 +227,6 @@ func readUploadForm(r *http.Request, maxFile int64) (*uploadForm, error) {
 				return nil, fmt.Errorf("field %s is too long", part.FormName())
 			}
 			switch part.FormName() {
-			case "surveyor":
-				f.surveyor = string(b)
 			case "lat":
 				f.lat = string(b)
 			case "lng":

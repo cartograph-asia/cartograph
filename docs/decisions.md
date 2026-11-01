@@ -82,3 +82,4 @@ Decisions made while building the prototype that are not in `CLAUDE.md`. One lin
 - 2026-11-01 – On desktop the open side panel no longer covers the map controls: zoom buttons and the OSM attribution move left by the panel width while it is open.
 - 2026-11-01 – The brief's API contract now lists `claimed_at` in `GET /api/plots/{cell}` and states that `/api/coverage` returns only parents with at least one surveyed plot.
 - 2026-11-01 – `CLAUDE.md` links `docs/PRINCIPLES.md` under a "Principles" line.
+- 2026-11-01 – While the window is being resized, the panel and map controls have no transitions (body class `resizing`, cleared 150 ms after the last resize event), so the closed panel does not fly across the map when the layout crosses the 768 px breakpoint.

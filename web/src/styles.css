@@ -513,6 +513,13 @@ body.panel-open .fab {
   }
 }
 
+/* No transitions while the window is being resized (set in main.ts). */
+body.resizing .panel,
+body.resizing .maplibregl-ctrl-top-right,
+body.resizing .maplibregl-ctrl-bottom-right {
+  transition: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .panel,
   .maplibregl-ctrl-top-right,

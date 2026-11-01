@@ -191,4 +191,13 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && panel.escape()) e.preventDefault();
 });
 
+// The closed panel parks off-screen to the right on desktop and below on
+// mobile; without this, crossing the breakpoint animates it across the map.
+let resizeTimer: number | undefined;
+window.addEventListener('resize', () => {
+  document.body.classList.add('resizing');
+  clearTimeout(resizeTimer);
+  resizeTimer = window.setTimeout(() => document.body.classList.remove('resizing'), 150);
+});
+
 if (MOCK) document.body.classList.add('mock');

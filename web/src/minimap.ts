@@ -23,8 +23,22 @@ const SLATE = '#2F3A3F';
 setWorkerUrl(workerUrl);
 addProtocol('pmtiles', new Protocol().tile);
 
+// MapLibre's controls in the pages' look, as on /map (src/styles.css): square,
+// no shadow, the paper colour and the page's serif for the attribution. The
+// last rule keeps the map filling its box whichever of MapLibre's
+// .maplibregl-map {position: relative} and the pages' .minimap-canvas loads last.
+const OVERRIDES = `
+.maplibregl-ctrl-group,.maplibregl-ctrl-group:not(:empty){border-radius:0;box-shadow:none;border:1px solid rgba(47,58,63,.32);background:#f6f2ea}
+.maplibregl-ctrl-group button+button{border-top:1px solid rgba(47,58,63,.16)}
+.maplibregl-ctrl-group button:focus:first-child,.maplibregl-ctrl-group button:focus:last-child{border-radius:0}
+.maplibregl-ctrl.maplibregl-ctrl-attrib{font:.8125rem/1.4 Charter,'Bitstream Charter','Sitka Text',Cambria,'Noto Serif',Georgia,serif;color:#5d676b;background:rgba(246,242,234,.88)}
+.maplibregl-ctrl-attrib a{color:#5d676b}
+.maplibregl-ctrl-attrib.maplibregl-compact{border-radius:0}
+.maplibregl-ctrl-attrib-button{border-radius:0;background-color:transparent}
+.minimap-canvas.maplibregl-map{position:absolute;inset:0}`;
+
 const css = document.createElement('style');
-css.textContent = maplibreCss;
+css.textContent = maplibreCss + OVERRIDES;
 document.head.append(css);
 
 type Props = { cell: string; surveyed: number; focus: number; ratio: number; path?: string };

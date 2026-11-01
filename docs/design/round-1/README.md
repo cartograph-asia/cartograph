@@ -1,10 +1,12 @@
 # Design round 1 – the front page
 
+**Decision (Adrian, 2026-11-01): direction a, the system serif.** The b1 and b2 token sets, their two font files and the switch were removed afterwards; their screenshots stay below for the record. Open points 2 and 3 stay as built until Adrian says otherwise.
+
 Brief: [docs/DESIGN_BRIEF.md](../../DESIGN_BRIEF.md). This round changes the stylesheet and the front page's markup; the other pages pick up the new tokens but are not designed yet (round 2).
 
 ## Screenshots
 
-Regenerate with `cd web && npm run screenshots -- round-1` (runs `cmd/webpreview`, which crops the photos in `testdata/` into the fixture photos).
+These were taken with the comparison switch that has since been removed. To take the front page again, run `cd web && npm run screenshots -- home --out scratch` (it starts `cmd/webpreview`, which crops the photos in `testdata/` into the fixture photos).
 
 | Direction | 400 px | 1400 px |
 |---|---|---|
@@ -13,7 +15,7 @@ Regenerate with `cd web && npm run screenshots -- round-1` (runs `cmd/webpreview
 | b2 – Inter Tight for display | [home-b2-400.jpg](home-b2-400.jpg) | [home-b2-1400.jpg](home-b2-1400.jpg) |
 | before this round | [before/home-a-400.jpg](before/home-a-400.jpg) | [before/home-a-1400.jpg](before/home-a-1400.jpg) |
 
-The 1400 px shots are rendered at a device scale of 0.8 (1120 px wide images) so that a full page fits the 300 KB limit; the layout is the 1400 px layout. In the preview, add `?type=a|b1|b2` to any page to switch.
+The 1400 px shots are rendered at a device scale of 0.8 (1120 px wide images) so that a full page fits the 300 KB limit; the layout is the 1400 px layout.
 
 ## What was decided, and why
 

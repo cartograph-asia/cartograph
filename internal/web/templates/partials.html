@@ -6,10 +6,18 @@
 <ul class="grid">
 {{- range $i, $p := .Photos}}
 <li><a class="ph" href="/photo/{{$p.ID}}"><img src="{{img $p.Keys.Thumb}}" width="480" height="360" alt="Photo at {{$p.Plot.Name}} by {{$p.Surveyor.Name}}" {{if and $.Eager (eq $i 0)}}fetchpriority="high"{{else}}loading="lazy"{{end}} decoding="async"></a>
-<p class="cap"><a class="plot" href="{{$p.Plot.Path}}">{{$p.Plot.Name}}</a>
+<p class="cap"><a class="plot" href="{{$p.Plot.Path}}" title="{{$p.Plot.Name}}">{{template "short-name" $p.Plot}}</a>
 <span class="line"><a href="/surveyor/{{$p.Surveyor.Name}}">{{$p.Surveyor.Name}}</a> · {{when $.Now $p.UploadedAt}}{{if $p.FirstSurvey}} <abbr class="first" title="First survey of this plot">first</abbr>{{end}}</span></p></li>
 {{- end}}
 </ul>
+{{- end}}
+
+{{/* A plot's short name in two parts: only the place is cut when the
+   line is too narrow, so the province and number always show. The word
+   joiner (&#8288;) keeps the space before the dot, which a flex item would
+   drop; a no-break space is twice as wide in Charter. */}}
+{{define "short-name" -}}
+{{$n := .ShortParts}}{{with $n.Place}}<span class="pl">{{.}}</span>{{end}}{{with $n.Province}}<span class="pn">{{if $n.Place}}&#8288; · {{end}}{{.}}</span>{{end}}
 {{- end}}
 
 {{define "pagination" -}}

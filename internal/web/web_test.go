@@ -154,6 +154,7 @@ func TestEveryPageRenders(t *testing.T) {
 		{"home", views.PageHome, viewstest.Home(), []string{
 			"Latest surveys", "Plot of the week", viewstest.FeaturedText, "New Surveyors", "Regions",
 			`<b>13</b> plots surveyed`, `href="/surveyors"`, `href="/regions"`, `<abbr class="first" title="First survey of this plot">first</abbr>`, "Chon Buri", `class="lede"`, `<svg class="bar"`,
+			`title="Pattaya, Bang Lamung · Chon Buri 2417"><span class="pl">Pattaya</span><span class="pn">&#8288; · Chon Buri 2417</span></a>`,
 			`<span lang="th" class="th">ชลบุรี</span>`, `href="/latest">More surveys`, "Welcome",
 		}},
 		{"latest", views.PageLatest, viewstest.Latest(10), []string{"Latest surveys", `rel="next" href="/latest?page=2"`, "Page 1 of 3"}},

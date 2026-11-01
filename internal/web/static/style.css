@@ -148,7 +148,9 @@ button.link:hover, button.link:focus-visible { text-decoration: underline; }
 .cap { margin: var(--s-s) 0 0; font-size: var(--step-meta); line-height: 1.4; }
 .cap a { text-decoration: none; }
 .cap a:hover, .cap a:focus-visible { text-decoration: underline; }
-.cap .plot { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--ink); }
+.cap .plot { display: flex; white-space: nowrap; color: var(--ink); }
+.cap .plot .pl { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.cap .plot .pn { flex: none; }
 .cap .line, .cap .when { display: block; color: var(--ink-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cap .line a { color: var(--ink-muted); }
 /* The first-survey mark: data, so green; a short tag on the second line. */

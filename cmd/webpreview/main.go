@@ -6,7 +6,10 @@
 //	go run ./cmd/webpreview            # http://127.0.0.1:8093
 //	(cd web && npx vite build --base /map/)   # optional: small maps
 //
-// /preview/as?viewer=adrian|new|none switches the signed-in viewer (cookie).
+// /preview/as?viewer=adrian|new|none switches the signed-in viewer (cookie);
+// ?type=a|b1|b2 on any page picks a typographic direction (web.Types).
+// Photos are crops of the JPEGs in -photos (testdata/ by default), so the
+// pages look like pages with photos; without them, calm generated images.
 // The account pages (/signin, /check-email, /signin/link, /signin/name,
 // /settings) show their
 // fixtures; their forms post to stubs. It never binds :8080.
@@ -31,6 +34,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/disintegration/imaging"
 	"github.com/go-chi/chi/v5"
 
 	"github.com/cartograph-asia/cartograph/internal/h3"
@@ -44,6 +48,7 @@ func main() {
 	dist := flag.String("dist", "web/dist", "web build (vite build --base /map/) for the small maps; skipped if missing")
 	tiles := flag.String("tiles", "map/thailand.pmtiles", "PMTiles archive for the small maps; skipped if missing")
 	perPage := flag.Int("per-page", 10, "photos per page, low to show pagination with 30 fixture photos")
+	photoDir := flag.String("photos", "testdata", "directory of JPEGs cropped into the fixture photos; generated images if empty")
 	flag.Parse()
 	if strings.HasSuffix(*addr, ":8080") {
 		fmt.Fprintln(os.Stderr, "webpreview: :8080 belongs to the compose stack")
@@ -66,14 +71,18 @@ func main() {
 	r := chi.NewRouter()
 	r.Use(viewerFromCookie, func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			next.ServeHTTP(w, r.WithContext(views.WithCSRF(r.Context(), "preview-csrf")))
+			ctx := views.WithCSRF(r.Context(), "preview-csrf")
+			if t := r.URL.Query().Get("type"); t != "" {
+				ctx = web.WithType(ctx, t)
+			}
+			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	})
 	pages.Routes(r)
 	r.NotFound(pages.NotFound)
 	accountPages(r, rd.RenderFunc())
 
-	ph := newPlaceholders(src)
+	ph := newPlaceholders(src, *photoDir)
 	r.Get("/img/*", ph.ServeHTTP)
 	r.Get("/api/coverage", coverage(src))
 	if fi, err := os.Stat(*dist); err == nil && fi.IsDir() {
@@ -179,13 +188,26 @@ type placeholders struct {
 	mu     sync.Mutex
 	cache  map[string][]byte
 	shapes map[string][2]int // photo id -> width, height of the large variant
+	photos []image.Image     // real photos to crop from; generated images if none
 }
 
-func newPlaceholders(src *viewstest.Fake) *placeholders {
+func newPlaceholders(src *viewstest.Fake, dir string) *placeholders {
 	p := &placeholders{cache: map[string][]byte{}, shapes: map[string][2]int{}}
 	feed, _ := src.LatestFeed(context.Background())
 	for _, it := range feed.Items {
 		p.shapes[it.ID] = [2]int{it.Width, it.Height}
+	}
+	if dir != "" {
+		files, _ := filepath.Glob(filepath.Join(dir, "*.jp*g"))
+		for _, f := range files {
+			img, err := imaging.Open(f, imaging.AutoOrientation(true))
+			if err != nil {
+				slog.Warn("preview photo", "file", f, "err", err)
+				continue
+			}
+			p.photos = append(p.photos, imaging.Fit(img, 2000, 2000, imaging.Lanczos))
+		}
+		slog.Info("preview photos", "dir", dir, "photos", len(p.photos))
 	}
 	return p
 }
@@ -221,6 +243,22 @@ func (p *placeholders) draw(id, variant string) []byte {
 	f := fnv.New32a()
 	f.Write([]byte(id))
 	s := f.Sum32()
+	if len(p.photos) > 0 {
+		// A different crop of one of the photos per id, mirrored for half of
+		// them, so a grid of 30 does not look like three photos repeated.
+		src := p.photos[s%uint32(len(p.photos))]
+		anchors := []imaging.Anchor{imaging.Center, imaging.Left, imaging.Right, imaging.Top, imaging.Bottom, imaging.TopLeft, imaging.BottomRight}
+		zoom := 1 + float64(s>>8%40)/100 // crop 60-100 % of the photo
+		b := src.Bounds()
+		cw, ch := int(float64(b.Dx())/zoom), int(float64(b.Dy())/zoom)
+		img := imaging.Fill(imaging.CropAnchor(src, cw, ch, anchors[s>>4%uint32(len(anchors))]), w, h, imaging.Center, imaging.Lanczos)
+		if s>>12%2 == 1 {
+			img = imaging.FlipH(img)
+		}
+		var buf bytes.Buffer
+		_ = jpeg.Encode(&buf, img, &jpeg.Options{Quality: 82})
+		return buf.Bytes()
+	}
 	sky := color.RGBA{uint8(150 + s%60), uint8(180 + s>>8%50), uint8(200 + s>>16%50), 255}
 	ground := color.RGBA{uint8(60 + s>>4%80), uint8(100 + s>>12%70), uint8(60 + s>>20%50), 255}
 	horizon := 0.45 + float64(s%20)/100

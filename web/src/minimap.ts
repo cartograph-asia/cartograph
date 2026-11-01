@@ -4,7 +4,7 @@
 // [data-minimap] element scrolls into view. Each element already holds a
 // complete no-JS fallback (an SVG of the plots or a link); the map replaces it.
 //
-//   data-minimap="plots"     data-cells="c1,c2,…" [data-surveyed="1,0,…"] [data-focus="c1"]
+//   data-minimap="plots"     data-cells="c1,c2,…" [data-photos="6,0,…"] [data-focus="c1"]
 //   data-minimap="coverage"  data-bounds="minLng,minLat,maxLng,maxLat"  (fetches /api/coverage)
 import maplibreCss from 'maplibre-gl/dist/maplibre-gl.css?inline';
 import { addProtocol, Map as MapLibreMap, NavigationControl, setWorkerUrl } from 'maplibre-gl';
@@ -16,6 +16,8 @@ import { httpApi } from './api/http';
 import { type BBox, cellRing, cellsForBBox, chunk, COVERAGE_BATCH, estimateCellCount, MAX_VIEW_CELLS } from './grid';
 import { baseStyle } from './style';
 
+// The three greens of /map (src/layers.ts): 1 photo, 2–3, 4 or more.
+const GREEN_LIGHT = '#A8CDB3';
 const GREEN = '#2E7D4F';
 const GREEN_MID = '#5FA57A';
 const SLATE = '#2F3A3F';
@@ -41,7 +43,7 @@ const css = document.createElement('style');
 css.textContent = maplibreCss + OVERRIDES;
 document.head.append(css);
 
-type Props = { cell: string; surveyed: number; focus: number; ratio: number; path?: string };
+type Props = { cell: string; surveyed: number; photos: number; focus: number; ratio: number; path?: string };
 
 function feature(cell: string, props: Omit<Props, 'cell'>): Feature<Polygon, Props> {
   return { type: 'Feature', properties: { cell, ...props }, geometry: { type: 'Polygon', coordinates: [cellRing(cell)] } };
@@ -106,11 +108,18 @@ function linkPlots(map: MapLibreMap, layer: string): void {
 function plotsMap(el: HTMLElement): void {
   const cells = (el.dataset.cells ?? '').split(',').filter(Boolean);
   if (cells.length === 0) return;
-  const surveyed = (el.dataset.surveyed ?? '').split(',');
+  // Without data-photos (a page cached from before), every plot counts as one photo.
+  const photos = (el.dataset.photos ?? '').split(',').map((v) => Number(v || 1));
   const focus = el.dataset.focus ?? '';
   const paths = (el.dataset.paths ?? '').split(',');
   const features = cells.map((cell, i) =>
-    feature(cell, { surveyed: surveyed[i] === '0' ? 0 : 1, focus: cell === focus ? 1 : 0, ratio: 0, path: paths[i] || undefined }),
+    feature(cell, {
+      surveyed: photos[i] > 0 ? 1 : 0,
+      photos: photos[i] ?? 1,
+      focus: cell === focus ? 1 : 0,
+      ratio: 0,
+      path: paths[i] || undefined,
+    }),
   );
   const fc: FeatureCollection<Polygon, Props> = { type: 'FeatureCollection', features };
   const map = createMap(el, boundsOf(features), focus ? 15 : 14);
@@ -120,7 +129,10 @@ function plotsMap(el: HTMLElement): void {
       id: 'cells-fill',
       type: 'fill',
       source: 'cells',
-      paint: { 'fill-color': GREEN_MID, 'fill-opacity': ['case', ['==', ['get', 'surveyed'], 1], 0.55, 0.04] },
+      paint: {
+        'fill-color': ['step', ['get', 'photos'], GREEN_LIGHT, 2, GREEN_MID, 4, GREEN],
+        'fill-opacity': ['case', ['==', ['get', 'surveyed'], 1], 0.7, 0.04],
+      },
     });
     map.addLayer({
       id: 'cells-line',
@@ -151,7 +163,7 @@ function coverageMap(el: HTMLElement): void {
         type: 'FeatureCollection',
         features: cov
           .filter((c) => c.surveyed > 0)
-          .map((c) => feature(c.cell, { surveyed: c.surveyed, focus: 0, ratio: c.total > 0 ? c.surveyed / c.total : 0 })),
+          .map((c) => feature(c.cell, { surveyed: c.surveyed, photos: 0, focus: 0, ratio: c.total > 0 ? c.surveyed / c.total : 0 })),
       };
       map.addSource('coverage', { type: 'geojson', data: fc });
       map.addLayer({

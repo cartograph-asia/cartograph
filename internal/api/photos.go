@@ -156,14 +156,16 @@ func (s *Server) createPhoto(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// photos.surveyor_id and plots.first_surveyor_id are filled from the
-	// name by the triggers of migration 0051.
+	// The triggers of migration 0051 would fill the ids from the name too;
+	// they only act when SurveyorID is null.
+	surveyorID, _ := uuid.Parse(viewer.SurveyorID)
 	claimed, err := s.repo.ClaimPhoto(ctx, db.NewPhoto{
 		ID:         id,
 		Cell:       cell,
 		Parent5:    parent5,
 		Parent6:    parent6,
 		Surveyor:   surveyor,
+		SurveyorID: surveyorID,
 		KeyLarge:   keyLarge,
 		KeyMedium:  keyMedium,
 		KeyThumb:   keyThumb,

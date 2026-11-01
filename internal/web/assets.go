@@ -9,6 +9,7 @@ import (
 	"mime"
 	"net/http"
 	"path"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -28,26 +29,63 @@ type asset struct {
 
 func loadAssets(fsys fs.FS) (*assets, error) {
 	a := &assets{byName: map[string]string{}, byHashed: map[string]asset{}}
+	var css []string
 	err := fs.WalkDir(fsys, ".", func(p string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return err
+		}
+		if path.Ext(p) == ".css" {
+			css = append(css, p) // after the files they may refer to
+			return nil
 		}
 		data, err := fs.ReadFile(fsys, p)
 		if err != nil {
 			return err
 		}
-		sum := sha256.Sum256(data)
-		ext := path.Ext(p)
-		hashed := strings.TrimSuffix(p, ext) + "." + hex.EncodeToString(sum[:4]) + ext
-		ctype := mime.TypeByExtension(ext)
-		if ctype == "" {
-			ctype = http.DetectContentType(data)
-		}
-		a.byName[p] = StaticPrefix + hashed
-		a.byHashed[hashed] = asset{data: data, ctype: ctype}
+		a.add(p, data)
 		return nil
 	})
-	return a, err
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range css {
+		data, err := fs.ReadFile(fsys, p)
+		if err != nil {
+			return nil, err
+		}
+		// url(fonts/x.woff2) in a stylesheet becomes the hashed URL, so a
+		// changed font gets a new address like any other asset.
+		data = cssURL.ReplaceAllFunc(data, func(m []byte) []byte {
+			ref := string(cssURL.FindSubmatch(m)[1])
+			u, ok := a.byName[path.Join(path.Dir(p), ref)]
+			if !ok {
+				err = fmt.Errorf("web: %s refers to unknown asset %q", p, ref)
+				return m
+			}
+			return []byte("url(" + u + ")")
+		})
+		if err != nil {
+			return nil, err
+		}
+		a.add(p, data)
+	}
+	return a, nil
+}
+
+// cssURL matches a relative url(...) in a stylesheet, quoted or not.
+var cssURL = regexp.MustCompile(`url\(["']?([a-z0-9][^"')]*)["']?\)`)
+
+// add registers data under name with a content hash in its served name.
+func (a *assets) add(name string, data []byte) {
+	sum := sha256.Sum256(data)
+	ext := path.Ext(name)
+	hashed := strings.TrimSuffix(name, ext) + "." + hex.EncodeToString(sum[:4]) + ext
+	ctype := mime.TypeByExtension(ext)
+	if ctype == "" {
+		ctype = http.DetectContentType(data)
+	}
+	a.byName[name] = StaticPrefix + hashed
+	a.byHashed[hashed] = asset{data: data, ctype: ctype}
 }
 
 // url returns the hashed URL of an embedded asset; it panics for an unknown

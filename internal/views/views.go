@@ -78,7 +78,15 @@ type Viewer struct {
 	SurveyorID string // surveyors.id (UUID string); empty until a name is chosen
 	Name       string // Surveyor name; empty until chosen
 	Email      string
+	// Admin is set by internal/auth for a named viewer whose address is in
+	// ADMIN_EMAILS. It shows the admin links; the admin area itself also
+	// checks SignedInAt.
+	Admin      bool
+	SignedInAt time.Time // when the session's magic link was redeemed
 }
+
+// IsAdmin reports whether the viewer is a signed-in admin (nil-safe, for templates).
+func (v *Viewer) IsAdmin() bool { return v != nil && v.Admin }
 
 // HasName reports whether the viewer has chosen a Surveyor name.
 func (v *Viewer) HasName() bool { return v != nil && v.Name != "" }

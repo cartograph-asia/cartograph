@@ -23,7 +23,16 @@ const (
 	msgTooMany     = "There were too many sign-in requests from your network. Please try again in an hour."
 	msgMailFailed  = "We could not send the e-mail just now. Please try again in a few minutes."
 	msgServerError = "Something went wrong on our side. Please try again."
+	msgNotInvited  = "Cartograph is invitation-only for now. Ask the person who told you about it for an invitation."
 )
+
+// msgBlocked is the blocked page's message, naming contact when known.
+func msgBlocked(contact string) string {
+	if contact == "" {
+		return "This account is blocked."
+	}
+	return "This account is blocked. Write to " + contact + "."
+}
 
 // page returns the common page base for an account page.
 func (a *Auth) page(r *http.Request, title string) views.Page {
@@ -77,7 +86,7 @@ func (a *Auth) signInForm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	r = a.ensureFormCookie(w, r)
-	a.render(w, r, http.StatusOK, views.PageSignIn, &views.SignIn{Page: a.page(r, "Sign in"), Next: next})
+	a.render(w, r, http.StatusOK, views.PageSignIn, &views.SignIn{Page: a.page(r, "Sign in"), InviteOnly: a.cfg.InviteOnly(), Next: next})
 }
 
 // signIn handles POST /signin. Whether or not the address belongs to a
@@ -98,7 +107,7 @@ func (a *Auth) signIn(w http.ResponseWriter, r *http.Request) {
 	email, ok := normalizeEmail(raw)
 	if !ok {
 		a.render(w, r, http.StatusBadRequest, views.PageSignIn, &views.SignIn{
-			Page: a.page(r, "Sign in"), Email: strings.TrimSpace(raw), Next: next, Error: msgBadEmail,
+			Page: a.page(r, "Sign in"), InviteOnly: a.cfg.InviteOnly(), Email: strings.TrimSpace(raw), Next: next, Error: msgBadEmail,
 		})
 		return
 	}
@@ -116,6 +125,36 @@ func (a *Auth) signIn(w http.ResponseWriter, r *http.Request) {
 		slog.Info("sign-in throttled", "reason", "address")
 		checkEmail()
 		return
+	}
+
+	// While sign-up is by invitation, an address without an account or a
+	// pending invitation gets the invitation-only notice instead of a link,
+	// at most once a day. The page is the same either way.
+	if a.cfg.InviteOnly() && !a.cfg.IsAdmin(email) {
+		ok, err := a.store.MaySignIn(ctx, email)
+		if err != nil {
+			a.internalError(w, r, "may sign in", err)
+			return
+		}
+		if !ok {
+			send, err := a.store.RecordRefusal(ctx, hashToken([]byte(email)), now)
+			if err != nil {
+				a.internalError(w, r, "record refusal", err)
+				return
+			}
+			if send {
+				mctx, cancel := context.WithTimeout(ctx, mailTimeout)
+				defer cancel()
+				if err := a.mail.SendInvitationOnly(mctx, email); err != nil {
+					slog.Error("send invitation-only notice", "err", err)
+					a.fail(w, r, http.StatusServiceUnavailable, msgMailFailed)
+					return
+				}
+			}
+			slog.Info("sign-in refused", "reason", "not invited", "sent", send)
+			checkEmail()
+			return
+		}
 	}
 
 	token := newToken()
@@ -176,6 +215,13 @@ func (a *Auth) confirm(w http.ResponseWriter, r *http.Request) {
 	session := newToken()
 	exp := now.Add(SessionTTL)
 	v, err := a.store.CreateSession(ctx, hashToken(session), email, now, exp)
+	if errors.Is(err, ErrBlocked) {
+		slog.Info("sign-in refused", "reason", "blocked")
+		a.render(w, r, http.StatusForbidden, views.PageError, &views.Error{
+			Page: a.page(r, "Account blocked"), Status: http.StatusForbidden, Message: msgBlocked(a.cfg.Contact),
+		})
+		return
+	}
 	if err != nil {
 		a.internalError(w, r, "create session", err)
 		return
@@ -236,10 +282,15 @@ func (a *Auth) chooseName(w http.ResponseWriter, r *http.Request) {
 		again(http.StatusBadRequest, msgBadName)
 		return
 	}
-	nv, err := a.store.ChooseName(r.Context(), sessionHashFrom(r.Context()), name, a.now())
+	inviteOnly := a.cfg.InviteOnly() && !a.cfg.IsAdmin(v.Email)
+	nv, err := a.store.ChooseName(r.Context(), sessionHashFrom(r.Context()), name, a.now(), inviteOnly)
 	switch {
 	case errors.Is(err, ErrNameTaken):
 		again(http.StatusConflict, msgNameTaken)
+		return
+	case errors.Is(err, ErrNotInvited):
+		slog.Info("sign-up refused", "reason", "not invited")
+		again(http.StatusForbidden, msgNotInvited)
 		return
 	case errors.Is(err, ErrNotFound):
 		redirect(w, r, withNext("/signin", next))
@@ -264,7 +315,10 @@ func (a *Auth) signOut(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	a.clearCookie(w, sessionCookieName)
-	redirect(w, r, "/")
+	// next lets the admin area's "sign in again" page continue to the
+	// sign-in form; ParseForm is a no-op when formOK has run.
+	_ = r.ParseForm()
+	redirect(w, r, safeNext(r.PostForm.Get("next")))
 }
 
 // settingsForm handles GET /settings, the profile form.

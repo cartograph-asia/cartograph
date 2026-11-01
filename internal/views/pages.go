@@ -169,9 +169,10 @@ type Feed struct {
 // SignIn is the sign-in form (/signin): one e-mail field.
 type SignIn struct {
 	Page
-	Email string // prefilled after an error
-	Next  string // local path to return to after sign-in, e.g. "/map"
-	Error string // plain-text message shown above the form; empty if none
+	InviteOnly bool   // SIGNUP=invite: the page says that sign-up needs an invitation
+	Email      string // prefilled after an error
+	Next       string // local path to return to after sign-in, e.g. "/map"
+	Error      string // plain-text message shown above the form; empty if none
 }
 
 // CheckEmail is shown after the sign-in form was sent.

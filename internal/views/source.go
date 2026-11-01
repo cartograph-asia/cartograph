@@ -11,6 +11,10 @@ import (
 // Handlers render PageError with status 404 for it.
 var ErrNotFound = errors.New("views: not found")
 
+// ErrGone is returned by Source.Photo for a photo an admin has hidden.
+// Handlers render PageError with status 410 for it.
+var ErrGone = errors.New("views: gone")
+
 // Source is the read side behind the server-rendered pages. *db.DB
 // implements it; viewstest.Fake is an in-memory version for templates and
 // handler tests.
@@ -39,7 +43,8 @@ type Source interface {
 	// PlotCell resolves a plot's running number in a region (by slug, any
 	// case) to its cell, for /plot/{slug}/{number}; ErrNotFound if unknown.
 	PlotCell(ctx context.Context, slug string, number int) (string, error)
-	// Photo returns a photo page, or ErrNotFound (also for a malformed id).
+	// Photo returns a photo page, ErrGone for a hidden photo, or ErrNotFound
+	// (also for a malformed id).
 	Photo(ctx context.Context, id string) (*Photo, error)
 	// Region returns one page of a region, or ErrNotFound.
 	Region(ctx context.Context, slug string, page int) (*Region, error)

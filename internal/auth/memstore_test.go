@@ -17,7 +17,10 @@ type memStore struct {
 	tokens    map[string]*memToken
 	sessions  map[string]*memSession
 	surveyors map[string]*memSurveyor // by id
-	failNext  error                   // returned once by Session, to test DB errors
+	invites   map[string]*views.Invitation
+	refusals  map[string]time.Time
+	actions   []string // "action target" of admin_actions rows
+	failNext  error    // returned once by Session, to test DB errors
 	touched   int
 }
 
@@ -29,6 +32,7 @@ type memToken struct {
 type memSession struct {
 	email      string
 	surveyorID string
+	created    time.Time
 	expires    time.Time
 	lastSeen   time.Time
 }
@@ -36,12 +40,14 @@ type memSession struct {
 type memSurveyor struct {
 	id, name, email string
 	placeholder     bool
+	blocked         bool
 	bio, home       string
 	joined          time.Time
 }
 
 func newMemStore() *memStore {
-	return &memStore{tokens: map[string]*memToken{}, sessions: map[string]*memSession{}, surveyors: map[string]*memSurveyor{}}
+	return &memStore{tokens: map[string]*memToken{}, sessions: map[string]*memSession{}, surveyors: map[string]*memSurveyor{},
+		invites: map[string]*views.Invitation{}, refusals: map[string]time.Time{}}
 }
 
 func (m *memStore) addSurveyor(name, email string, placeholder bool) *memSurveyor {
@@ -96,10 +102,13 @@ func (m *memStore) CreateSession(_ context.Context, hash []byte, email string, n
 	defer m.mu.Unlock()
 	v := &views.Viewer{Email: email}
 	if s := m.byEmail(email); s != nil {
+		if s.blocked {
+			return nil, ErrBlocked
+		}
 		s.placeholder = false
 		v.SurveyorID, v.Name = s.id, s.name
 	}
-	m.sessions[string(hash)] = &memSession{email: email, surveyorID: v.SurveyorID, expires: expires, lastSeen: now}
+	m.sessions[string(hash)] = &memSession{email: email, surveyorID: v.SurveyorID, created: now, expires: expires, lastSeen: now}
 	return v, nil
 }
 
@@ -114,8 +123,11 @@ func (m *memStore) Session(_ context.Context, hash []byte, now time.Time) (*Sess
 	if s == nil || !s.expires.After(now) {
 		return nil, ErrNotFound
 	}
-	out := &Session{Viewer: views.Viewer{Email: s.email, SurveyorID: s.surveyorID}, LastSeen: s.lastSeen}
+	out := &Session{Viewer: views.Viewer{Email: s.email, SurveyorID: s.surveyorID}, CreatedAt: s.created, LastSeen: s.lastSeen}
 	if u := m.surveyors[s.surveyorID]; u != nil {
+		if u.blocked {
+			return nil, ErrNotFound
+		}
 		out.Viewer.Name = u.name
 	}
 	return out, nil
@@ -138,7 +150,7 @@ func (m *memStore) DeleteSession(_ context.Context, hash []byte) error {
 	return nil
 }
 
-func (m *memStore) ChooseName(_ context.Context, hash []byte, name string, now time.Time) (*views.Viewer, error) {
+func (m *memStore) ChooseName(_ context.Context, hash []byte, name string, now time.Time, inviteOnly bool) (*views.Viewer, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	s := m.sessions[string(hash)]
@@ -155,8 +167,15 @@ func (m *memStore) ChooseName(_ context.Context, hash []byte, name string, now t
 				return nil, ErrNameTaken
 			}
 		}
+		inv := m.invites[s.email]
+		if inviteOnly && (inv == nil || !inv.Pending()) {
+			return nil, ErrNotInvited
+		}
 		u = &memSurveyor{id: uuid.NewString(), name: name, email: s.email, joined: now}
 		m.surveyors[u.id] = u
+		if inv != nil && inv.Pending() {
+			inv.AcceptedAt, inv.AcceptedAs = &now, name
+		}
 	}
 	for _, o := range m.sessions {
 		if o.email == s.email && o.surveyorID == "" {
@@ -185,4 +204,74 @@ func (m *memStore) UpdateProfile(_ context.Context, id, bio, home string) error 
 	}
 	u.bio, u.home = bio, home
 	return nil
+}
+
+func (m *memStore) MaySignIn(_ context.Context, email string) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	inv := m.invites[email]
+	return m.byEmail(email) != nil || (inv != nil && inv.Pending()), nil
+}
+
+func (m *memStore) RecordRefusal(_ context.Context, h []byte, now time.Time) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if last, ok := m.refusals[string(h)]; ok && now.Sub(last) < refusalEvery {
+		return false, nil
+	}
+	m.refusals[string(h)] = now
+	return true, nil
+}
+
+func (m *memStore) CreateInvite(_ context.Context, inv Invite) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if u := m.byEmail(inv.Email); u != nil {
+		return &AccountError{Name: u.name}
+	}
+	cur := m.invites[inv.Email]
+	action := "invite.create"
+	if inv.Resend {
+		if cur == nil || !cur.Pending() {
+			return ErrNotPending
+		}
+		action = "invite.resend"
+	} else {
+		m.invites[inv.Email] = &views.Invitation{Email: inv.Email, InvitedBy: inv.AdminID, Note: inv.Note, InvitedAt: inv.CreatedAt}
+	}
+	m.tokens[string(inv.Token.Hash)] = &memToken{LoginToken: inv.Token}
+	m.actions = append(m.actions, action+" "+inv.Email)
+	return nil
+}
+
+func (m *memStore) RevokeInvite(_ context.Context, _, email string, now time.Time) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	inv := m.invites[email]
+	if inv == nil || !inv.Pending() {
+		return ErrNotPending
+	}
+	inv.RevokedAt = &now
+	for k, t := range m.tokens {
+		if t.Email == email && !t.used {
+			delete(m.tokens, k)
+		}
+	}
+	for k, s := range m.sessions {
+		if s.email == email && s.surveyorID == "" {
+			delete(m.sessions, k)
+		}
+	}
+	m.actions = append(m.actions, "invite.revoke "+email)
+	return nil
+}
+
+func (m *memStore) Invitations(context.Context) ([]views.Invitation, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []views.Invitation
+	for _, i := range m.invites {
+		out = append(out, *i)
+	}
+	return out, nil
 }

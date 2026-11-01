@@ -1,6 +1,9 @@
 package views
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // Home is the front page (/).
 type Home struct {
@@ -53,7 +56,8 @@ type SurveyorList struct {
 type SurveyorListItem struct {
 	Surveyor  SurveyorRef
 	JoinedAt  time.Time
-	Plots     int // plots claimed
+	Surveyed  int // plots with at least one of their photos
+	Plots     int // plots claimed (first survey); at most Surveyed
 	Photos    int
 	LastPhoto *PhotoItem // newest photo; nil if none
 }
@@ -88,9 +92,10 @@ type SurveyorProfile struct {
 
 // SurveyorStats are the counters on a profile.
 type SurveyorStats struct {
-	Plots   int // plots they claimed (first survey)
-	Photos  int
-	Regions int // regions with at least one of their photos
+	Surveyed int // plots with at least one of their photos
+	Plots    int // plots they claimed (first survey); at most Surveyed
+	Photos   int
+	Regions  int // regions with at least one of their photos
 }
 
 // Plot is the plot page (/plot/{cell}). A valid res-8 cell inside a region
@@ -133,6 +138,7 @@ type Photo struct {
 type Region struct {
 	Page
 	Region         RegionRef
+	Kind           string // the region's kind from the regions table: "province" or "country"
 	Coverage       Coverage
 	Counters       Counters // Plots, Photos and Surveyors within the region; Regions is 0
 	Bounds         Bounds   // for the coverage map; the map script fetches /api/coverage
@@ -141,6 +147,15 @@ type Region struct {
 	ActiveRecent   []SurveyorActivity // most photos in the last ActiveDays, up to RegionTop
 	ActiveAllTime  []SurveyorActivity // most photos ever, up to RegionTop
 	LastSurveyedAt *time.Time
+}
+
+// KindName is the region's kind as the page's kicker ("Province"), so that
+// later countries can show their own word; "Region" if the kind is unknown.
+func (r Region) KindName() string {
+	if r.Kind == "" {
+		return "Region"
+	}
+	return strings.ToUpper(r.Kind[:1]) + r.Kind[1:]
 }
 
 // Feed is an RSS feed: /latest.rss, /region/{slug}.rss, /surveyor/{name}.rss.

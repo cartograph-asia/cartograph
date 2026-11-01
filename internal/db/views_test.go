@@ -238,7 +238,7 @@ func TestViews(t *testing.T) {
 
 	sl, err := v.Surveyors(ctx, 1)
 	if err != nil || len(sl.Surveyors) != 3 || sl.Surveyors[0].Surveyor.Name != "no-photos" || sl.Surveyors[0].LastPhoto != nil ||
-		sl.Surveyors[2].Plots != 3 || sl.Surveyors[2].Photos != 4 || sl.Surveyors[2].LastPhoto.ID != w.photos[5].String() {
+		sl.Surveyors[2].Surveyed != 3 || sl.Surveyors[2].Plots != 3 || sl.Surveyors[2].Photos != 4 || sl.Surveyors[2].LastPhoto.ID != w.photos[5].String() {
 		t.Fatalf("surveyors %+v %v", sl, err)
 	}
 
@@ -254,7 +254,7 @@ func TestViews(t *testing.T) {
 	if err != nil || len(rl.Regions) != 1 || rl.Regions[0].Region.Slug != "chon-buri" {
 		t.Fatalf("regions %+v %v", rl, err)
 	}
-	if c, err := v.Region(ctx, "thailand", 1); err != nil || c.Region.NameEn != "Thailand" {
+	if c, err := v.Region(ctx, "thailand", 1); err != nil || c.Region.NameEn != "Thailand" || c.Kind != "country" {
 		t.Fatalf("country page %+v %v", c, err)
 	}
 
@@ -262,7 +262,7 @@ func TestViews(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s.Profile.Name != "adrian" || s.Stats != (views.SurveyorStats{Plots: 3, Photos: 4, Regions: 1}) || len(s.PlotCells) != 3 ||
+	if s.Profile.Name != "adrian" || s.Stats != (views.SurveyorStats{Surveyed: 3, Plots: 3, Photos: 4, Regions: 1}) || len(s.PlotCells) != 3 ||
 		s.Bounds == nil || len(s.Photos) != 4 || s.Canonical != "/surveyor/adrian" || s.Feed != "/surveyor/adrian.rss" {
 		t.Fatalf("surveyor %+v", s)
 	}
@@ -314,7 +314,7 @@ func TestViews(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r.Counters.Plots != 4 || r.Counters.Photos != 6 || r.Counters.Surveyors != 2 || len(r.Latest) != 6 ||
+	if r.Kind != "province" || r.Counters.Plots != 4 || r.Counters.Photos != 6 || r.Counters.Surveyors != 2 || len(r.Latest) != 6 ||
 		len(r.ActiveRecent) != 2 || r.ActiveAllTime[0].Photos != 4 || r.LastSurveyedAt == nil || r.Bounds.MinLat == 0 || r.Feed != "/region/chon-buri.rss" {
 		t.Fatalf("region %+v", r)
 	}
@@ -347,6 +347,46 @@ func deref(s *string) string {
 		return "<nil>"
 	}
 	return *s
+}
+
+// A Surveyor's bounds come from plot boundaries, never from the exact photo
+// positions: two Surveyors with one photo each at different spots in the
+// same plot get the same bounds, centred in the plot.
+func TestSurveyorBoundsFromPlots(t *testing.T) {
+	w := newWorld(t)
+	ctx := context.Background()
+	cell, _ := h3.CellFromLatLng(walking[0], walking[1], h3.PlotRes)
+	lat, lng, err := h3.Centre(cell)
+	if err != nil {
+		t.Fatal(err)
+	}
+	spots := map[string][2]float64{"balcony-a": {lat + 0.0012, lng - 0.0009}, "balcony-b": {lat - 0.0011, lng + 0.0013}}
+	v := w.d.Views().WithNow(func() time.Time { return t0 })
+	var got []*views.Bounds
+	for name, p := range spots {
+		w.surveyor(t, name, t0.Add(-time.Hour))
+		if c, _ := w.claim(t, name, p[0], p[1], t0); c != cell {
+			t.Fatalf("%s: spot %v is in %s, not %s", name, p, c, cell)
+		}
+		s, err := v.Surveyor(ctx, name, 1)
+		if err != nil || s.Bounds == nil {
+			t.Fatalf("%s: %+v %v", name, s, err)
+		}
+		b := s.Bounds
+		for _, x := range []float64{b.MinLat, b.MaxLat} {
+			if x == p[0] {
+				t.Fatalf("%s: bounds %+v contain the photo latitude", name, b)
+			}
+		}
+		mid, _ := h3.CellFromLatLng((b.MinLat+b.MaxLat)/2, (b.MinLng+b.MaxLng)/2, h3.PlotRes)
+		if mid != cell {
+			t.Fatalf("%s: bounds %+v centred outside the plot", name, b)
+		}
+		got = append(got, b)
+	}
+	if *got[0] != *got[1] {
+		t.Fatalf("bounds depend on the photo position: %+v %+v", got[0], got[1])
+	}
 }
 
 func TestPlotNumbers(t *testing.T) {

@@ -40,7 +40,7 @@ and run `docker compose up regions places` (77 provinces and about 18,000 places
 
 ## Configuration
 
-Everything is configured through environment variables, all documented in [deploy/.env.example](deploy/.env.example). Every variable has a working default for local use, so `cp .env.example .env` is optional.
+Everything is configured through environment variables, all documented in [deploy/.env.example](deploy/.env.example). Every variable but one has a working default for local use; the copied `.env` also sets `MAIL_DEV_LOG=1`, without which the api refuses to start unless `SMTP_HOST` is set (sign-in links are then written to the api's log, `docker compose logs api`).
 
 ## Development
 

@@ -33,11 +33,13 @@ func (rd *Renderer) funcs() template.FuncMap {
 		"iso":         iso,
 		"num":         num,
 		"count":       count,
+		"surveyed":    surveyed,
 		"pct":         pct,
 		"bar":         bar,
 		"pageURL":     pageURL,
 		"dims":        dims,
 		"grid":        grid,
+		"heading":     heading,
 		"join":        strings.Join,
 		"photoCounts": photoCounts,
 		"photosFor":   photosFor,
@@ -120,10 +122,38 @@ type gridData struct {
 	Now    time.Time
 	Photos []views.PhotoItem
 	Eager  bool // the first photo is the page's first image: fetchpriority=high
+	// Of names what every photo in the grid shares, so the captions leave it
+	// out: "plot" on a plot page, "surveyor" on a Surveyor's page.
+	Of string
 }
 
-func grid(now time.Time, photos []views.PhotoItem, eager bool) gridData {
-	return gridData{Now: now, Photos: photos, Eager: eager}
+// grid is the "grid" partial's input; an optional fourth argument is Of.
+func grid(now time.Time, photos []views.PhotoItem, eager bool, of ...string) gridData {
+	g := gridData{Now: now, Photos: photos, Eager: eager}
+	if len(of) > 0 {
+		g.Of = of[0]
+	}
+	return g
+}
+
+// heading sets a plot name as a page heading: the dot stays with the last
+// word before it, so a long name breaks after the dot (Chrome still breaks
+// before a no-wrap span that starts with the space, so the span holds the
+// word as well), and the province and number are one inline block that
+// moves to the next line whole unless it is wider than the line itself
+// ("Pattaya, Bang Lamung ·" / "Chon Buri 2417"). The name itself comes from
+// PlotRef.Name.
+func heading(p views.PlotRef) template.HTML {
+	local, province, ok := strings.Cut(p.Name(), " · ")
+	if !ok {
+		return template.HTML(template.HTMLEscapeString(local))
+	}
+	head, last := "", local
+	if i := strings.LastIndexByte(local, ' '); i >= 0 {
+		head, last = local[:i+1], local[i+1:]
+	}
+	esc := template.HTMLEscapeString
+	return template.HTML(esc(head) + `<span class="nb">` + esc(last) + ` ·</span> <span class="pv">` + esc(province) + `</span>`)
 }
 
 func toTime(v any) (time.Time, bool) {
@@ -232,6 +262,24 @@ func count(n int, one, many string) string {
 		return "1 " + one
 	}
 	return num(n) + " " + many
+}
+
+// surveyed is what follows the number of plots a Surveyor surveyed, with
+// the plots they claimed, in the same words on the profile and the list:
+// "plots surveyed, 5 of them first". No claimed plots, no tail. The tail
+// does not break, so a narrow caption wraps after the comma.
+func surveyed(n, first int) template.HTML {
+	s := "plots surveyed"
+	if n == 1 {
+		s = "plot surveyed"
+	}
+	switch {
+	case first == 0:
+		return template.HTML(s)
+	case n == 1:
+		return template.HTML(s + `, <span class="nb">the first</span>`)
+	}
+	return template.HTML(s + `, <span class="nb">` + num(first) + ` of them first</span>`)
 }
 
 // pct formats a coverage share: "0%", "0.22%", "4.5%", "37%".

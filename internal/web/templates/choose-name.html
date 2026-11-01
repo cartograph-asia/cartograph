@@ -1,13 +1,13 @@
 {{define "content" -}}
 <div class="form">
 <h1>Choose your Surveyor name</h1>
-<p>Your name appears on your profile and under every photo you upload. You choose it once; it cannot be changed later.</p>
-{{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
+<p class="lede">Your name appears on your profile and under every photo you upload. You choose it once; it cannot be changed later.</p>
+{{with .Error}}<p id="name-error" class="error" role="alert">{{.}}</p>{{end}}
 <form method="post" action="/signin/name">
 {{template "csrf" .}}
 {{with .Next}}<input type="hidden" name="next" value="{{.}}">{{end}}
 <label for="name">Surveyor name</label>
-<input id="name" name="name" type="text" value="{{.Name}}" minlength="{{nameMin}}" maxlength="{{nameMax}}" pattern="{{namePat}}" autocomplete="username" autocapitalize="none" spellcheck="false" required aria-describedby="name-hint"{{if .Error}} autofocus aria-invalid="true"{{end}}>
+<input id="name" name="name" type="text" value="{{.Name}}" minlength="{{nameMin}}" maxlength="{{nameMax}}" pattern="{{namePat}}" autocomplete="username" autocapitalize="none" spellcheck="false" required aria-describedby="{{if .Error}}name-error {{end}}name-hint"{{if .Error}} autofocus aria-invalid="true"{{end}}>
 <p id="name-hint" class="hint">{{nameMin}} to {{nameMax}} letters, digits or hyphens.</p>
 <button type="submit">Save name</button>
 </form>

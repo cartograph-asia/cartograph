@@ -1,18 +1,26 @@
 {{/* The CSRF field every POST form carries; call with the page. */}}
 {{define "csrf"}}<input type="hidden" name="{{csrfField}}" value="{{.CSRF}}">{{end}}
 
-{{/* A grid of photo thumbnails, chronological as given. */}}
+{{/* The wordmark: ".asia" set smaller as a visible suffix. */}}
 {{define "wordmark"}}Cartograph<span class="tld">.asia</span>{{end}}
 
+{{/* A grid of photo thumbnails, chronological as given. With .Of set, the
+   captions leave out what all photos share ("plot" or "surveyor"). */}}
 {{define "grid" -}}
 <ul class="grid">
 {{- range $i, $p := .Photos}}
 <li><a class="ph" href="/photo/{{$p.ID}}"><img src="{{img $p.Keys.Thumb}}" width="480" height="360" alt="Photo at {{$p.Plot.Name}} by {{$p.Surveyor.Name}}" {{if and $.Eager (eq $i 0)}}fetchpriority="high"{{else}}loading="lazy"{{end}} decoding="async"></a>
-<p class="cap"><a class="plot" href="{{$p.Plot.Path}}" title="{{$p.Plot.Name}}">{{template "short-name" $p.Plot}}</a>
-<span class="line"><a href="/surveyor/{{$p.Surveyor.Name}}">{{$p.Surveyor.Name}}</a> · {{when $.Now $p.UploadedAt}}{{if $p.FirstSurvey}} <abbr class="first" title="First survey of this plot">first</abbr>{{end}}</span></p></li>
+<p class="cap">{{if eq $.Of "plot"}}<a class="who" href="/surveyor/{{$p.Surveyor.Name}}">{{$p.Surveyor.Name}}</a>
+<span class="line"><span class="lt">{{when $.Now $p.UploadedAt}}</span>{{template "first" $p}}</span>
+{{- else}}<a class="plot" href="{{$p.Plot.Path}}" title="{{$p.Plot.Name}}">{{template "short-name" $p.Plot}}</a>
+<span class="line"><span class="lt">{{if ne $.Of "surveyor"}}<a href="/surveyor/{{$p.Surveyor.Name}}">{{$p.Surveyor.Name}}</a> · {{end}}{{when $.Now $p.UploadedAt}}</span>{{template "first" $p}}</span>{{end}}</p></li>
 {{- end}}
 </ul>
 {{- end}}
+
+{{/* The "first" tag: its own flex item on a caption's second line, so the
+   text before it is cut and the tag never is. */}}
+{{define "first"}}{{if .FirstSurvey}} <abbr class="first" title="First survey of this plot">first</abbr>{{end}}{{end}}
 
 {{/* A plot's short name in two parts: only the place is cut when the
    line is too narrow, so the province and number always show. The word

@@ -70,7 +70,8 @@ type Config struct {
 	SMTP    SMTPConfig
 }
 
-// ConfigFromEnv reads BASE_URL and the SMTP_* / MAIL_FROM variables.
+// ConfigFromEnv reads BASE_URL, the SMTP_* / MAIL_FROM variables and
+// MAIL_DEV_LOG.
 // getenv is os.Getenv in production.
 func ConfigFromEnv(getenv func(string) string) (Config, error) {
 	cfg := Config{BaseURL: strings.TrimRight(strings.TrimSpace(getenv("BASE_URL")), "/")}
@@ -94,6 +95,21 @@ func ConfigFromEnv(getenv func(string) string) (Config, error) {
 			return Config{}, fmt.Errorf("auth: SMTP_PORT must be a port number, got %q", p)
 		}
 		cfg.SMTP.Port = n
+	}
+	// Without SMTP_HOST the dev mailer writes every sign-in link to the log,
+	// where anyone who reads the log can use it. That takes an explicit
+	// MAIL_DEV_LOG=1, and never on a public https origin.
+	devLog := strings.TrimSpace(getenv("MAIL_DEV_LOG"))
+	if devLog != "" && devLog != "0" && devLog != "1" {
+		return Config{}, fmt.Errorf("auth: MAIL_DEV_LOG must be 1 or empty, got %q", devLog)
+	}
+	if cfg.SMTP.Host == "" {
+		if u.Scheme == "https" {
+			return Config{}, fmt.Errorf("auth: SMTP_HOST is required when BASE_URL is https (%s); without it sign-in links would be written to the log instead of sent", cfg.BaseURL)
+		}
+		if devLog != "1" {
+			return Config{}, errors.New("auth: SMTP_HOST is empty; set SMTP_HOST to send sign-in e-mails, or MAIL_DEV_LOG=1 to write sign-in links to the log (development only)")
+		}
 	}
 	if cfg.SMTP.Host != "" {
 		if cfg.SMTP.From == "" {

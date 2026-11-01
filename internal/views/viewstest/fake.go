@@ -218,8 +218,10 @@ func (f *Fake) Surveyors(ctx context.Context, page int) (*views.SurveyorList, er
 	var all []views.SurveyorListItem
 	for si, s := range surveyors {
 		it := views.SurveyorListItem{Surveyor: views.SurveyorRef{Name: s.name}, JoinedAt: s.joined}
+		cells := map[string]bool{}
 		for _, i := range f.d.bySurveyor[si] {
 			it.Photos++
+			cells[f.d.photos[i].Plot.Cell] = true
 			if f.d.photos[i].FirstSurvey {
 				it.Plots++
 			}
@@ -228,6 +230,7 @@ func (f *Fake) Surveyors(ctx context.Context, page int) (*views.SurveyorList, er
 			last := f.d.photos[idx[len(idx)-1]]
 			it.LastPhoto = &last
 		}
+		it.Surveyed = len(cells)
 		all = append(all, it)
 	}
 	sort.Slice(all, func(i, j int) bool { return all[i].JoinedAt.After(all[j].JoinedAt) })
@@ -296,6 +299,7 @@ func (f *Fake) Surveyor(ctx context.Context, name string, page int) (*views.Surv
 			out.PlotCells = append(out.PlotCells, ph.Plot.Cell)
 		}
 	}
+	out.Stats.Surveyed = len(out.PlotCells)
 	out.PlotPaths = paths(out.PlotCells)
 	out.PlotPhotos = map[string]int{}
 	for _, c := range out.PlotCells {
@@ -453,6 +457,7 @@ func (f *Fake) Region(ctx context.Context, slug string, page int) (*views.Region
 		Page: base(r.ref.NameEn, withPage(path, pg.Page),
 			fmt.Sprintf("Survey coverage of %s: %.2f %% of %d plots.", r.ref.NameEn, sum.Coverage.Percent(), r.land), path+".rss"),
 		Region:         r.ref,
+		Kind:           "province", // every fixture region is a province
 		Coverage:       sum.Coverage,
 		Bounds:         r.bounds,
 		Latest:         items,

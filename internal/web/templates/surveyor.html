@@ -1,22 +1,27 @@
 {{define "content" -}}
 {{$s := .Profile}}
 <header class="head">
+<p class="kicker">Surveyor</p>
 <h1>{{$s.Name}}</h1>
 <p class="meta">Surveyor since {{date $s.JoinedAt}}{{with $s.HomeRegion}} · home region <a href="/region/{{.Slug}}">{{.NameEn}}</a>{{end}}</p>
 {{with $s.Bio}}<p class="bio">{{.}}</p>{{end}}
-<p class="counters"><b>{{num .Stats.Plots}}</b> {{if eq .Stats.Plots 1}}plot{{else}}plots{{end}} claimed · <b>{{num .Stats.Photos}}</b> {{if eq .Stats.Photos 1}}photo{{else}}photos{{end}} · <b>{{num .Stats.Regions}}</b> {{if eq .Stats.Regions 1}}region{{else}}regions{{end}}</p>
+<ul class="figures small">
+<li><b>{{num .Stats.Surveyed}}</b> {{surveyed .Stats.Surveyed .Stats.Plots}}</li>
+<li><b>{{num .Stats.Photos}}</b> {{if eq .Stats.Photos 1}}photo{{else}}photos{{end}}</li>
+<li><b>{{num .Stats.Regions}}</b> {{if eq .Stats.Regions 1}}region{{else}}regions{{end}}</li>
+</ul>
 <p class="note"><a href="{{.Feed}}">RSS feed of {{$s.Name}}'s photos</a>{{if and .Viewer .Viewer.HasName (eq .Viewer.Name $s.Name)}} · <a href="/settings">Edit your profile</a>{{end}}</p>
 </header>
 
-{{if .PlotCells}}<section class="minimap" aria-labelledby="map-h">
-<h2 id="map-h" class="sr">Map</h2>
+{{if .PlotCells}}<section class="block minimap" aria-labelledby="map-h">
+<div class="head-row"><h2 id="map-h">Plots</h2>{{with .Bounds}}<a class="more" href="{{mapHash .}}">Open on the map <span aria-hidden="true">→</span></a>{{end}}</div>
 <div class="mapbox" data-minimap="plots" data-cells="{{join .PlotCells ","}}" data-paths="{{pathsFor .PlotCells .PlotPaths}}" data-photos="{{photosFor .PlotCells .PlotPhotos}}">{{cellsSVG .PlotCells .PlotPhotos (printf "Outline of the plots %s surveyed." $s.Name)}}</div>
-<p class="note">{{count (len .PlotCells) "plot" "plots"}} surveyed by {{$s.Name}}.{{with .Bounds}} <a href="{{mapHash .}}">Open on the map</a>.{{end}}</p>
+<p class="note">{{count (len .PlotCells) "plot" "plots"}} surveyed by {{$s.Name}}.</p>
 </section>{{end}}
 
-<section aria-labelledby="photos-h">
-<h2 id="photos-h">Photos</h2>
-{{if .Photos}}{{template "grid" (grid .Now .Photos true)}}{{else}}<p>{{$s.Name}} has not uploaded a photo yet.</p>{{end}}
+<section class="block" aria-labelledby="photos-h">
+<div class="head-row"><h2 id="photos-h">Photos</h2><span class="note">Newest first.</span></div>
+{{if .Photos}}{{template "grid" (grid .Now .Photos true "surveyor")}}{{else}}<p>{{$s.Name}} has not uploaded a photo yet.</p>{{end}}
 {{template "pagination" .}}
 </section>
 {{if .PlotCells}}{{template "minimap-script"}}{{end}}

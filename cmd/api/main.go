@@ -34,6 +34,7 @@ import (
 type config struct {
 	addr        string
 	databaseURL string
+	auth        auth.Config
 	s3          storage.S3Config
 	maxUploadMB int
 	tilesURL    string // TILES_URL, see api.Config.TilesURL
@@ -117,10 +118,7 @@ func run() error {
 // The auth middleware wraps all of them, so the upload handler sees the
 // signed-in Surveyor and every page can show "Sign in" or the name.
 func routes(cfg config, database *db.DB, store storage.Store) (http.Handler, error) {
-	acfg, err := auth.ConfigFromEnv(os.Getenv)
-	if err != nil {
-		return nil, err
-	}
+	acfg := cfg.auth
 	rd, err := web.NewRenderer(web.Config{BaseURL: acfg.BaseURL, ImgBaseURL: cfg.s3.BaseURL})
 	if err != nil {
 		return nil, err
@@ -207,6 +205,11 @@ func loadConfig() (config, error) {
 		errs = append(errs, fmt.Errorf("missing required environment variables: %s", strings.Join(missing, ", ")))
 	}
 	var err error
+	// Checked here, before the database is touched: a public site refuses
+	// to start without SMTP rather than log sign-in links.
+	if c.auth, err = auth.ConfigFromEnv(os.Getenv); err != nil {
+		errs = append(errs, err)
+	}
 	if c.s3.PathStyle, err = envBool("S3_USE_PATH_STYLE", false); err != nil {
 		errs = append(errs, err)
 	}

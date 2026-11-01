@@ -8,7 +8,9 @@
 // 300 KB (tall pages at a reduced device scale) into docs/design/<out>/ with
 // the names <page>-<width>.jpg. It runs against cmd/webpreview on
 // 127.0.0.1:8093 and starts it (go run ./cmd/webpreview) when nothing
-// answers there. It drives the installed Google Chrome through
+// answers there. Pages given as full URLs (the /map page and the small
+// maps, which need tiles and the API) are taken from there instead, as a
+// rule the compose stack on 127.0.0.1:8080, which must be running. It drives the installed Google Chrome through
 // playwright-core (a dev dependency in web/), so no browser is downloaded;
 // set CHROME_PATH to use another Chromium.
 import { spawn } from 'node:child_process';
@@ -76,7 +78,13 @@ async function loadEverything(page) {
     await Promise.all([...document.images].map((img) => (img.complete ? null : img.decode().catch(() => null))));
     await document.fonts.ready;
   });
-  await page.waitForLoadState('networkidle');
+  // A map keeps fetching tile ranges for a while and may never let the
+  // network fall quiet; past a limit, give it a moment to draw instead.
+  const map = await page.$('.maplibregl-canvas, [data-minimap]');
+  await page.waitForLoadState('networkidle', { timeout: map ? 10000 : 30000 }).catch((err) => {
+    if (!map) throw err;
+  });
+  if (map) await page.waitForTimeout(2500);
 }
 
 // Each shot is tried at full scale first; a tall page that does not fit
@@ -93,6 +101,15 @@ async function shoot(browser, url, width, file) {
     try {
       await page.goto(url, { waitUntil: 'load' });
       await loadEverything(page);
+      // A full-page shot stretches the viewport for the capture, and a map
+      // caught in that resize is drawn at MapLibre's 400 × 300 fallback size.
+      // So a page with a small map gets its full height first and a moment
+      // to redraw.
+      if (await page.$('[data-minimap]')) {
+        const height = await page.evaluate(() => document.documentElement.scrollHeight);
+        await page.setViewportSize({ width, height });
+        await page.waitForTimeout(2000);
+      }
       for (const q of QUALITIES) {
         const buf = await page.screenshot({ fullPage: true, type: 'jpeg', quality: q });
         if (buf.length <= MAX_BYTES) {
@@ -122,7 +139,8 @@ try {
   for (const width of WIDTHS) {
     for (const n of names) {
       const file = join(outDir, `${n}-${width}.jpg`);
-      const { scale, q, kb } = await shoot(browser, BASE + pages[n], width, file);
+      const url = /^https?:\/\//.test(pages[n]) ? pages[n] : BASE + pages[n];
+      const { scale, q, kb } = await shoot(browser, url, width, file);
       console.log(`${file.slice(root.length + 1)}  scale ${scale}  q${q}  ${kb} KB`);
     }
   }

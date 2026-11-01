@@ -27,9 +27,8 @@ type Repo interface {
 // Config holds the handler settings.
 type Config struct {
 	MaxUploadMB int // reject photo files larger than this
-	// MaxConcurrentProcessing bounds how many uploads read and decode a
-	// photo at once; a photo at the pixel limit needs up to about 400 MB while
-	// being resized, plus up to MaxUploadMB for the file.
+	// MaxConcurrentProcessing bounds how many uploads decode images at once;
+	// a 48 MP photo needs a few hundred MB while being resized.
 	MaxConcurrentProcessing int
 }
 

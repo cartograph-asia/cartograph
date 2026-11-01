@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -26,6 +27,8 @@ var (
 	ErrNotInvited = errors.New("auth: not invited")
 	// ErrNotPending: the invitation does not exist or was accepted or revoked.
 	ErrNotPending = errors.New("auth: no pending invitation")
+	// ErrDisplayTaken: the display name is another Surveyor's Surveyor name.
+	ErrDisplayTaken = errors.New("auth: display name is another Surveyor's name")
 )
 
 // AccountError reports that an invited address is a Surveyor already.
@@ -47,6 +50,13 @@ type Session struct {
 	Viewer    views.Viewer
 	CreatedAt time.Time // when the magic link was redeemed
 	LastSeen  time.Time
+}
+
+// Profile is what a Surveyor edits in /settings.
+type Profile struct {
+	Display    string
+	Bio        string
+	HomeRegion string // region slug
 }
 
 // Invite is an invitation to write, with the magic link that goes with it.
@@ -87,7 +97,9 @@ type Store interface {
 	// ErrNameTaken when the name is taken regardless of case, and
 	// ErrNotFound for an unknown or expired session. If the session already
 	// has a Surveyor, that one is returned unchanged.
-	ChooseName(ctx context.Context, hash []byte, name string, now time.Time, inviteOnly bool) (*views.Viewer, error)
+	// display is the optional display name, already cleaned; ErrDisplayTaken
+	// if it is another Surveyor's name, ignoring case.
+	ChooseName(ctx context.Context, hash []byte, name, display string, now time.Time, inviteOnly bool) (*views.Viewer, error)
 	// MaySignIn reports whether email belongs to a Surveyor or has a pending
 	// invitation.
 	MaySignIn(ctx context.Context, email string) (bool, error)
@@ -107,10 +119,12 @@ type Store interface {
 	RevokeInvite(ctx context.Context, adminID, email string, now time.Time) error
 	// Invitations returns every invitation, newest first.
 	Invitations(ctx context.Context) ([]views.Invitation, error)
-	// Profile returns a Surveyor's bio and home region slug ("" for none).
-	Profile(ctx context.Context, surveyorID string) (bio, homeRegion string, err error)
-	// UpdateProfile sets bio and home region (slug, "" for none).
-	UpdateProfile(ctx context.Context, surveyorID, bio, homeRegion string) error
+	// Profile returns a Surveyor's display name, bio and home region slug
+	// ("" for none).
+	Profile(ctx context.Context, surveyorID string) (Profile, error)
+	// UpdateProfile sets display name, bio and home region (slug); "" means
+	// none. ErrDisplayTaken if the display name is another Surveyor's name.
+	UpdateProfile(ctx context.Context, surveyorID string, p Profile) error
 }
 
 // PGStore is the Postgres Store.
@@ -173,8 +187,8 @@ func (s *PGStore) CreateSession(ctx context.Context, hash []byte, email string, 
 			return err
 		}
 		var placeholder, blocked bool
-		err := tx.QueryRow(ctx, "select id::text, name, placeholder, blocked_at is not null from surveyors where lower(email) = $1", email).
-			Scan(&v.SurveyorID, &v.Name, &placeholder, &blocked)
+		err := tx.QueryRow(ctx, "select id::text, name, coalesce(display_name, ''), placeholder, blocked_at is not null from surveyors where lower(email) = $1", email).
+			Scan(&v.SurveyorID, &v.Name, &v.Display, &placeholder, &blocked)
 		switch {
 		case errors.Is(err, pgx.ErrNoRows):
 		case err != nil:
@@ -209,10 +223,10 @@ func (s *PGStore) CreateSession(ctx context.Context, hash []byte, email string, 
 func (s *PGStore) Session(ctx context.Context, hash []byte, now time.Time) (*Session, error) {
 	var out Session
 	err := s.pool.QueryRow(ctx, `
-		select s.email, coalesce(u.id::text, ''), coalesce(u.name, ''), s.created_at, s.last_seen_at
+		select s.email, coalesce(u.id::text, ''), coalesce(u.name, ''), coalesce(u.display_name, ''), s.created_at, s.last_seen_at
 		from sessions s left join surveyors u on u.id = s.surveyor_id
 		where s.token_hash = $1 and s.expires_at > $2 and u.blocked_at is null`, hash, now).
-		Scan(&out.Viewer.Email, &out.Viewer.SurveyorID, &out.Viewer.Name, &out.CreatedAt, &out.LastSeen)
+		Scan(&out.Viewer.Email, &out.Viewer.SurveyorID, &out.Viewer.Name, &out.Viewer.Display, &out.CreatedAt, &out.LastSeen)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -239,7 +253,7 @@ func (s *PGStore) DeleteSession(ctx context.Context, hash []byte) error {
 }
 
 // ChooseName implements Store.
-func (s *PGStore) ChooseName(ctx context.Context, hash []byte, name string, now time.Time, inviteOnly bool) (*views.Viewer, error) {
+func (s *PGStore) ChooseName(ctx context.Context, hash []byte, name, display string, now time.Time, inviteOnly bool) (*views.Viewer, error) {
 	v := &views.Viewer{}
 	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
 		var sid *string
@@ -255,8 +269,8 @@ func (s *PGStore) ChooseName(ctx context.Context, hash []byte, name string, now 
 		// Already named (this session, or another session of the same
 		// e-mail chose a name in the meantime): keep that name.
 		err = tx.QueryRow(ctx, `
-			select id::text, name from surveyors
-			where id = $1::uuid or lower(email) = $2 limit 1`, sid, v.Email).Scan(&v.SurveyorID, &v.Name)
+			select id::text, name, coalesce(display_name, '') from surveyors
+			where id = $1::uuid or lower(email) = $2 limit 1`, sid, v.Email).Scan(&v.SurveyorID, &v.Name, &v.Display)
 		switch {
 		case errors.Is(err, pgx.ErrNoRows):
 			tag, err := tx.Exec(ctx, `
@@ -268,10 +282,27 @@ func (s *PGStore) ChooseName(ctx context.Context, hash []byte, name string, now 
 			if inviteOnly && tag.RowsAffected() == 0 {
 				return ErrNotInvited
 			}
-			v.SurveyorID, v.Name = uuid.NewString(), name
+			// Nobody's display name may be this Surveyor name either.
+			var clash bool
+			if err := tx.QueryRow(ctx, `select exists (select 1 from surveyors where lower(display_name) = lower($1))`, name).Scan(&clash); err != nil {
+				return err
+			}
+			if clash {
+				return ErrNameTaken
+			}
+			if display != "" && !strings.EqualFold(display, name) {
+				taken, err := displayTaken(ctx, tx, display, "")
+				if err != nil {
+					return err
+				}
+				if taken {
+					return ErrDisplayTaken
+				}
+			}
+			v.SurveyorID, v.Name, v.Display = uuid.NewString(), name, display
 			_, err = tx.Exec(ctx, `
-				insert into surveyors (id, name, email, joined_at) values ($1::uuid, $2, $3, $4)`,
-				v.SurveyorID, name, v.Email, now)
+				insert into surveyors (id, name, display_name, email, joined_at) values ($1::uuid, $2, nullif($3, ''), $4, $5)`,
+				v.SurveyorID, name, display, v.Email, now)
 			var pe *pgconn.PgError
 			if errors.As(err, &pe) && pe.Code == "23505" && pe.ConstraintName == "surveyors_name_lower_idx" {
 				return ErrNameTaken
@@ -293,7 +324,7 @@ func (s *PGStore) ChooseName(ctx context.Context, hash []byte, name string, now 
 			where email = $2 and surveyor_id is null`, v.SurveyorID, v.Email)
 		return err
 	})
-	if errors.Is(err, ErrNotFound) || errors.Is(err, ErrNameTaken) || errors.Is(err, ErrNotInvited) {
+	if errors.Is(err, ErrNotFound) || errors.Is(err, ErrNameTaken) || errors.Is(err, ErrNotInvited) || errors.Is(err, ErrDisplayTaken) {
 		return nil, err
 	}
 	if err != nil {
@@ -302,27 +333,47 @@ func (s *PGStore) ChooseName(ctx context.Context, hash []byte, name string, now 
 	return v, nil
 }
 
+// displayTaken reports whether display is the Surveyor name of anyone
+// but the Surveyor with id self ("" for nobody), ignoring case.
+func displayTaken(ctx context.Context, q interface {
+	QueryRow(context.Context, string, ...any) pgx.Row
+}, display, self string) (bool, error) {
+	var taken bool
+	err := q.QueryRow(ctx, `select exists (select 1 from surveyors where lower(name) = lower($1) and ($2 = '' or id::text <> $2))`,
+		display, self).Scan(&taken)
+	return taken, err
+}
+
 // Profile implements Store.
-func (s *PGStore) Profile(ctx context.Context, surveyorID string) (string, string, error) {
-	var bio, home string
+func (s *PGStore) Profile(ctx context.Context, surveyorID string) (Profile, error) {
+	var p Profile
 	err := s.pool.QueryRow(ctx, `
-		select s.bio, coalesce(r.slug, '')
+		select coalesce(s.display_name, ''), s.bio, coalesce(r.slug, '')
 		from surveyors s left join regions r on r.id = s.home_region_id
-		where s.id = $1::uuid`, surveyorID).Scan(&bio, &home)
+		where s.id = $1::uuid`, surveyorID).Scan(&p.Display, &p.Bio, &p.HomeRegion)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", "", ErrNotFound
+		return p, ErrNotFound
 	}
 	if err != nil {
-		return "", "", fmt.Errorf("auth: profile: %w", err)
+		return p, fmt.Errorf("auth: profile: %w", err)
 	}
-	return bio, home, nil
+	return p, nil
 }
 
 // UpdateProfile implements Store.
-func (s *PGStore) UpdateProfile(ctx context.Context, surveyorID, bio, homeRegion string) error {
+func (s *PGStore) UpdateProfile(ctx context.Context, surveyorID string, p Profile) error {
+	if p.Display != "" {
+		taken, err := displayTaken(ctx, s.pool, p.Display, surveyorID)
+		if err != nil {
+			return fmt.Errorf("auth: update profile: %w", err)
+		}
+		if taken {
+			return ErrDisplayTaken
+		}
+	}
 	tag, err := s.pool.Exec(ctx, `
-		update surveyors set bio = $2, home_region_id = (select id from regions where slug = $3)
-		where id = $1::uuid`, surveyorID, bio, homeRegion)
+		update surveyors set display_name = nullif($2, ''), bio = $3, home_region_id = (select id from regions where slug = $4)
+		where id = $1::uuid`, surveyorID, p.Display, p.Bio, p.HomeRegion)
 	if err != nil {
 		return fmt.Errorf("auth: update profile: %w", err)
 	}

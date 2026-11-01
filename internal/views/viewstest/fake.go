@@ -194,7 +194,7 @@ func (f *Fake) Home(ctx context.Context) (*views.Home, error) {
 			continue
 		}
 		h.NewSurveyors = append(h.NewSurveyors, views.NewSurveyor{
-			Surveyor: views.SurveyorRef{Name: surveyors[si].name}, JoinedAt: surveyors[si].joined,
+			Surveyor: views.SurveyorRef{Name: surveyors[si].name, Display: surveyors[si].display}, JoinedAt: surveyors[si].joined,
 			FirstPhoto: f.d.photos[idx[0]],
 		})
 	}
@@ -217,7 +217,7 @@ func (f *Fake) Latest(ctx context.Context, page int) (*views.Latest, error) {
 func (f *Fake) Surveyors(ctx context.Context, page int) (*views.SurveyorList, error) {
 	var all []views.SurveyorListItem
 	for si, s := range surveyors {
-		it := views.SurveyorListItem{Surveyor: views.SurveyorRef{Name: s.name}, JoinedAt: s.joined}
+		it := views.SurveyorListItem{Surveyor: views.SurveyorRef{Name: s.name, Display: s.display}, JoinedAt: s.joined}
 		cells := map[string]bool{}
 		for _, i := range f.d.bySurveyor[si] {
 			it.Photos++
@@ -275,13 +275,13 @@ func (f *Fake) Surveyor(ctx context.Context, name string, page int) (*views.Surv
 	}
 	path := "/surveyor/" + url.PathEscape(s.name)
 	out := &views.Surveyor{
-		Page:       base(s.name, withPage(path, pg.Page), s.bio, path+".rss"),
-		Profile:    views.SurveyorProfile{Name: s.name, JoinedAt: s.joined, Bio: s.bio, HomeRegion: s.home},
+		Page:       base(label(s), withPage(path, pg.Page), s.bio, path+".rss"),
+		Profile:    views.SurveyorProfile{Name: s.name, Display: s.display, JoinedAt: s.joined, Bio: s.bio, HomeRegion: s.home},
 		Photos:     items,
 		Pagination: pg,
 	}
 	if out.Description == "" {
-		out.Description = fmt.Sprintf("Photos by %s on Cartograph.", s.name)
+		out.Description = fmt.Sprintf("Photos by %s on Cartograph.", label(s))
 	}
 	seenCell, seenRegion := map[string]bool{}, map[string]bool{}
 	for _, i := range idx {
@@ -402,8 +402,8 @@ func (f *Fake) Photo(ctx context.Context, id string) (*views.Photo, error) {
 	ph := f.d.photos[i]
 	siblings := f.d.byPlot[plotIndex(ph.Plot.Cell)]
 	out := &views.Photo{
-		Page: base(fmt.Sprintf("%s by %s", ph.Plot.Name(), ph.Surveyor.Name),
-			"/photo/"+ph.ID, fmt.Sprintf("A photo of %s by %s. %s.", ph.Plot.Name(), ph.Surveyor.Name, views.CCBYSA4.Name), ""),
+		Page: base(fmt.Sprintf("%s by %s", ph.Plot.Name(), ph.Surveyor.Label()),
+			"/photo/"+ph.ID, fmt.Sprintf("A photo of %s by %s. %s.", ph.Plot.Name(), ph.Surveyor.Label(), views.CCBYSA4.Name), ""),
 		Photo:   ph,
 		Licence: views.CCBYSA4,
 		Count:   len(siblings),
@@ -524,5 +524,8 @@ func (f *Fake) SurveyorFeed(ctx context.Context, name string) (*views.Feed, erro
 		return nil, views.ErrNotFound
 	}
 	s := surveyors[si]
-	return f.feed(views.Wordmark+": "+s.name, "/surveyor/"+url.PathEscape(s.name), "The newest photos by "+s.name+".", f.d.bySurveyor[si]), nil
+	return f.feed(views.Wordmark+": "+label(s), "/surveyor/"+url.PathEscape(s.name), "The newest photos by "+label(s)+".", f.d.bySurveyor[si]), nil
 }
+
+// label is a fixture Surveyor's name to show.
+func label(s surveyor) string { return views.SurveyorRef{Name: s.name, Display: s.display}.Label() }

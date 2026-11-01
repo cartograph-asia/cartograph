@@ -39,6 +39,9 @@ const (
 	NameMaxLen  = 30
 	NamePattern = `^[A-Za-z0-9-]{3,30}$` // as in the surveyors.name check
 	BioMaxLen   = 500                    // characters, not bytes
+	// DisplayNameMax is the longest display name in characters
+	// (docs/DISPLAY_NAME_BRIEF.md; the surveyors.display_name check).
+	DisplayNameMax = 50
 )
 
 // Page is the common base of every page. Source implementations fill Title,
@@ -77,6 +80,7 @@ type OpenGraph struct {
 type Viewer struct {
 	SurveyorID string // surveyors.id (UUID string); empty until a name is chosen
 	Name       string // Surveyor name; empty until chosen
+	Display    string // display name; empty for none
 	Email      string
 	// Admin is set by internal/auth for a named viewer whose address is in
 	// ADMIN_EMAILS. It shows the admin links; the admin area itself also
@@ -84,6 +88,9 @@ type Viewer struct {
 	Admin      bool
 	SignedInAt time.Time // when the session's magic link was redeemed
 }
+
+// Label is the viewer's name to show: the display name, else the Surveyor name.
+func (v *Viewer) Label() string { return label(v.Name, v.Display) }
 
 // IsAdmin reports whether the viewer is a signed-in admin (nil-safe, for templates).
 func (v *Viewer) IsAdmin() bool { return v != nil && v.Admin }
@@ -217,8 +224,20 @@ func (p PlotRef) Path() string {
 }
 
 // SurveyorRef identifies a Surveyor for links and labels (/surveyor/{name}).
+// Templates use Name in every URL and Label in text.
 type SurveyorRef struct {
-	Name string
+	Name    string // the Surveyor name, the handle: URLs, "@handle"
+	Display string // the optional display name; empty for none
+}
+
+// Label is the name to show: the display name, else the Surveyor name.
+func (s SurveyorRef) Label() string { return label(s.Name, s.Display) }
+
+func label(name, display string) string {
+	if display != "" {
+		return display
+	}
+	return name
 }
 
 // PhotoItem is one photo in a grid, a list or a feed.

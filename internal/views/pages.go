@@ -85,10 +85,14 @@ type Surveyor struct {
 // SurveyorProfile is what a Surveyor says about themselves.
 type SurveyorProfile struct {
 	Name       string // canonical spelling; handlers redirect other spellings to it
+	Display    string // display name; empty for none
 	JoinedAt   time.Time
 	Bio        string     // plain text, at most BioMaxLen characters; may be empty
 	HomeRegion *RegionRef // self-chosen; nil if not set
 }
+
+// Label is the name to show: the display name, else the Surveyor name.
+func (p SurveyorProfile) Label() string { return label(p.Name, p.Display) }
 
 // SurveyorStats are the counters on a profile.
 type SurveyorStats struct {
@@ -193,15 +197,21 @@ type ConfirmSignIn struct {
 // ChooseName is the one-time Surveyor name form shown after the first sign-in.
 type ChooseName struct {
 	Page
-	Name  string // prefilled after an error
-	Next  string
-	Error string
+	Display string // the optional display name, prefilled after an error
+	Name    string // prefilled after an error
+	// ErrorField is the field Error is about: "name" (default) or "display".
+	ErrorField string
+	Next       string
+	Error      string
 }
 
-// EditProfile is the profile form (/settings or similar) for bio and home region.
+// EditProfile is the profile form (/settings or similar) for display name,
+// bio and home region.
 type EditProfile struct {
 	Page
 	Name       string      // the viewer's Surveyor name, shown read-only
+	Display    string      // current or submitted display name
+	ErrorField string      // the field Error is about: "display", "bio" or "home_region"
 	Bio        string      // current or submitted value
 	HomeRegion string      // slug of the chosen region; empty for none
 	Regions    []RegionRef // options for the home-region select, by name

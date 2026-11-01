@@ -23,6 +23,7 @@ Stage names, so everyone means the same: *prototype* (done) → *alpha* (now: Ad
 
 - **Plot** – one H3 cell at resolution 8 (~0.74 km²). Never "square", never "hex" in user-facing text (`/about/plots` is the one exception).
 - **Surveyor** – a member. **Survey** – the act of uploading a photo into a plot.
+- **Surveyor name** – a Surveyor's handle (3–30 letters, digits, hyphens), chosen once: the profile URL, the feed URL and the name copied into `photos` and `plots`. **Display name** – a Surveyor's optional, changeable name for display (`surveyors.display_name`); shown instead of the Surveyor name wherever names are shown, beside it ("@handle") on the profile and the photo page. Templates use `SurveyorRef.Label` in text and `.Name` in URLs.
 - **Claimed / surveyed** – a plot with at least one visible photo. **Blank / unsurveyed** – no visible photo yet.
 - **First surveyor** – the member whose photo claimed the plot. Stored permanently; it changes only when an admin hides the claiming photo, and back when it is unhidden (see `docs/ADMIN_BRIEF.md`, Moderation).
 - **Coverage** – percentage of surveyed plots in an area.
@@ -38,7 +39,7 @@ Stage names, so everyone means the same: *prototype* (done) → *alpha* (now: Ad
 - **Backend:** Go (single binary), `net/http` + `chi`, `pgx` for Postgres. Image processing in Go, EXIF via `rwcarlsen/goexif`. OSM import in `internal/geo` (`cmd/regions`, `cmd/places`, `cmd/fixture`).
 - **Database:** PostgreSQL 16 (PostGIS available in the image but not used).
 - **Photo storage:** any S3-compatible store, accessed only through `internal/storage`. Development: Garage in Docker. Production: decided in the deployment brief (Hetzner Object Storage is the candidate); the api must not care. **The database stores object keys, never full URLs.** Public image URLs are built at runtime from `IMG_BASE_URL` + key.
-- **Accounts:** e-mail + magic link, no passwords, one Surveyor name chosen once. No OAuth. While `SIGNUP=invite` (the default) a new account needs an invitation from an admin; `SIGNUP=open` lets any address join. One role besides Surveyor: **admin**, given to the accounts whose e-mail is listed in `ADMIN_EMAILS`. Admins work in the admin area under `/admin` (`docs/ADMIN_BRIEF.md`): invitations, plot of the week, place-name overrides, hiding photos, blocking Surveyors. Every admin action is written to `admin_actions`. SQL by hand is for what the admin area does not cover and gets a line in `docs/decisions.md`.
+- **Accounts:** e-mail + magic link, no passwords, one Surveyor name chosen once, an optional display name changed at will (`docs/DISPLAY_NAME_BRIEF.md`). No OAuth. While `SIGNUP=invite` (the default) a new account needs an invitation from an admin; `SIGNUP=open` lets any address join. One role besides Surveyor: **admin**, given to the accounts whose e-mail is listed in `ADMIN_EMAILS`. Admins work in the admin area under `/admin` (`docs/ADMIN_BRIEF.md`): invitations, plot of the week, place-name overrides, hiding photos, blocking Surveyors. Every admin action is written to `admin_actions`. SQL by hand is for what the admin area does not cover and gets a line in `docs/decisions.md`.
 - **Deployment:** Docker Compose. Backend image built from scratch/distroless. Everything configured via environment variables, documented in `deploy/.env.example`.
 
 ## Conventions

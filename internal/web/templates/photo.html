@@ -1,15 +1,15 @@
 {{define "content" -}}
 {{$p := .Photo}}{{$d := dims $p 2000}}
 <figure class="photo">
-<img src="{{img $p.Keys.Best}}" srcset="{{srcset $p.Keys 2000}}" sizes="(min-width: 76rem) 72rem, 100vw" width="{{$d.W}}" height="{{$d.H}}" alt="Photo at {{$p.Plot.Name}} by {{$p.Surveyor.Name}}" fetchpriority="high" decoding="async">
+<img src="{{img $p.Keys.Best}}" srcset="{{srcset $p.Keys 2000}}" sizes="(min-width: 76rem) 72rem, 100vw" width="{{$d.W}}" height="{{$d.H}}" alt="Photo at {{$p.Plot.Name}} by {{$p.Surveyor.Label}}" fetchpriority="high" decoding="async">
 <figcaption>
 <div class="photo-title">
 <h1><a href="{{$p.Plot.Path}}">{{heading $p.Plot}}</a></h1>
-<p class="by">by <a href="/surveyor/{{$p.Surveyor.Name}}">{{$p.Surveyor.Name}}</a>{{if $p.FirstSurvey}} <span class="first">first survey of this plot</span>{{end}}</p>
+<p class="by">by <a href="/surveyor/{{$p.Surveyor.Name}}">{{$p.Surveyor.Label}}</a>{{if $p.Surveyor.Display}} @{{$p.Surveyor.Name}}{{end}}{{if $p.FirstSurvey}} <span class="first">first survey of this plot</span>{{end}}</p>
 </div>
 <div class="photo-meta">
 <p>{{with $p.TakenAt}}Taken {{date .}}<br>{{end}}Uploaded {{when .Now $p.UploadedAt}}</p>
-<p class="licence">© {{$p.Surveyor.Name}}, <a rel="license" href="{{.Licence.URL}}">{{.Licence.Name}}</a> · <a href="{{img $p.Keys.Large}}">Full size</a></p>
+<p class="licence">© <a href="/surveyor/{{$p.Surveyor.Name}}">{{$p.Surveyor.Label}}{{if $p.Surveyor.Display}} (@{{$p.Surveyor.Name}}){{end}}</a>, <a rel="license" href="{{.Licence.URL}}">{{.Licence.Name}}</a> · <a href="{{img $p.Keys.Large}}">Full size</a></p>
 {{if .Viewer.IsAdmin}}<p class="admin-line">Admin: <a href="/admin/photo/{{$p.ID}}">details</a> · <a href="/admin/featured?photo={{$p.ID}}">feature</a> · <a href="/admin/photo/{{$p.ID}}/hide">hide</a></p>{{end}}
 </div>
 </figcaption>

@@ -25,6 +25,7 @@ type plotSummary struct {
 	Cell          string    `json:"cell"`
 	PhotoCount    int       `json:"photo_count"`
 	FirstSurveyor string    `json:"first_surveyor"`
+	FirstLabel    string    `json:"first_surveyor_label"`
 	ClaimedAt     time.Time `json:"claimed_at"`
 	Thumb         string    `json:"thumb"`
 }
@@ -32,6 +33,7 @@ type plotSummary struct {
 type plotPhoto struct {
 	ID         string     `json:"id"`
 	Surveyor   string     `json:"surveyor"`
+	Label      string     `json:"surveyor_label"`
 	TakenAt    *time.Time `json:"taken_at"`
 	UploadedAt time.Time  `json:"uploaded_at"`
 	URLs       photoURLs  `json:"urls"`
@@ -41,6 +43,7 @@ type plotDetail struct {
 	Cell          string      `json:"cell"`
 	PhotoCount    int         `json:"photo_count"`
 	FirstSurveyor string      `json:"first_surveyor"`
+	FirstLabel    string      `json:"first_surveyor_label"`
 	ClaimedAt     time.Time   `json:"claimed_at"`
 	Name          string      `json:"name"`
 	Path          string      `json:"path"`
@@ -108,6 +111,7 @@ func (s *Server) listPlots(w http.ResponseWriter, r *http.Request) {
 				Cell:          p.Cell,
 				PhotoCount:    p.PhotoCount,
 				FirstSurveyor: p.FirstSurveyor,
+				FirstLabel:    p.FirstLabel,
 				ClaimedAt:     p.ClaimedAt.UTC(),
 				Thumb:         thumb,
 			})
@@ -137,6 +141,7 @@ func (s *Server) getPlot(w http.ResponseWriter, r *http.Request) {
 		Cell:          p.Cell,
 		PhotoCount:    p.PhotoCount,
 		FirstSurveyor: p.FirstSurveyor,
+		FirstLabel:    p.FirstLabel,
 		ClaimedAt:     p.ClaimedAt.UTC(),
 		Name:          plotRef(p).Name(),
 		Path:          plotRef(p).Path(),
@@ -154,6 +159,7 @@ func (s *Server) getPlot(w http.ResponseWriter, r *http.Request) {
 		out.Photos = append(out.Photos, plotPhoto{
 			ID:         ph.ID.String(),
 			Surveyor:   ph.Surveyor,
+			Label:      ph.Label,
 			TakenAt:    taken,
 			UploadedAt: ph.UploadedAt.UTC(),
 			URLs:       photoURLs{Large: s.store.URL(ph.KeyLarge), Thumb: s.store.URL(ph.KeyThumb)},

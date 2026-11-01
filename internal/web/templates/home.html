@@ -18,12 +18,12 @@
 {{with .Featured}}{{$p := .Photo}}{{$d := dims $p 1200}}
 <section class="block featured" aria-labelledby="featured-h">
 <figure>
-<a class="ph-feature" href="/photo/{{$p.ID}}"><img src="{{img $p.Keys.Best}}" srcset="{{srcset $p.Keys 1200}}" sizes="(min-width: 76rem) 53rem, (min-width: 64rem) 70vw, 100vw" width="{{$d.W}}" height="{{$d.H}}" alt="Photo at {{$p.Plot.Name}} by {{$p.Surveyor.Name}}" loading="lazy" decoding="async"></a>
+<a class="ph-feature" href="/photo/{{$p.ID}}"><img src="{{img $p.Keys.Best}}" srcset="{{srcset $p.Keys 1200}}" sizes="(min-width: 76rem) 53rem, (min-width: 64rem) 70vw, 100vw" width="{{$d.W}}" height="{{$d.H}}" alt="Photo at {{$p.Plot.Name}} by {{$p.Surveyor.Label}}" loading="lazy" decoding="async"></a>
 <figcaption>
 <h2 id="featured-h" class="kicker">{{if .Editorial}}Plot of the week{{else}}Newest plot{{end}}</h2>
 <p class="feature-name"><a href="{{$p.Plot.Path}}">{{$p.Plot.Name}}</a></p>
 {{if .Text}}<p>{{.Text}}</p>{{else}}<p>The most recently claimed plot. An editor picks a plot of the week from time to time.</p>{{end}}
-<p class="by">Photo by <a href="/surveyor/{{$p.Surveyor.Name}}">{{$p.Surveyor.Name}}</a> · {{when $.Now $p.UploadedAt}}</p>
+<p class="by">Photo by <a href="/surveyor/{{$p.Surveyor.Name}}">{{$p.Surveyor.Label}}</a> · {{when $.Now $p.UploadedAt}}</p>
 </figcaption>
 </figure>
 </section>
@@ -38,8 +38,8 @@
 {{if .NewSurveyors}}<section class="block" aria-labelledby="new-h">
 <div class="head-row"><h2 id="new-h">New Surveyors</h2><span class="note">Welcome to the survey.</span></div>
 <ul class="newcomers">{{range .NewSurveyors}}{{$p := .FirstPhoto}}
-<li><a class="ph" href="/photo/{{$p.ID}}"><img src="{{img $p.Keys.Thumb}}" width="480" height="360" alt="First photo by {{.Surveyor.Name}}, at {{$p.Plot.Name}}" loading="lazy" decoding="async"></a>
-<p class="cap"><a class="who" href="/surveyor/{{.Surveyor.Name}}">{{.Surveyor.Name}}</a> <span class="when">joined {{when $.Now .JoinedAt}}</span></p></li>{{end}}
+<li><a class="ph" href="/photo/{{$p.ID}}"><img src="{{img $p.Keys.Thumb}}" width="480" height="360" alt="First photo by {{.Surveyor.Label}}, at {{$p.Plot.Name}}" loading="lazy" decoding="async"></a>
+<p class="cap"><a class="who" href="/surveyor/{{.Surveyor.Name}}">{{.Surveyor.Label}}</a> <span class="when">joined {{when $.Now .JoinedAt}}</span></p></li>{{end}}
 </ul>
 </section>{{end}}
 {{- end}}

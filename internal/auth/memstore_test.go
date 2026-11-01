@@ -39,6 +39,7 @@ type memSession struct {
 
 type memSurveyor struct {
 	id, name, email string
+	display         string
 	placeholder     bool
 	blocked         bool
 	bio, home       string
@@ -128,7 +129,7 @@ func (m *memStore) Session(_ context.Context, hash []byte, now time.Time) (*Sess
 		if u.blocked {
 			return nil, ErrNotFound
 		}
-		out.Viewer.Name = u.name
+		out.Viewer.Name, out.Viewer.Display = u.name, u.display
 	}
 	return out, nil
 }
@@ -150,7 +151,7 @@ func (m *memStore) DeleteSession(_ context.Context, hash []byte) error {
 	return nil
 }
 
-func (m *memStore) ChooseName(_ context.Context, hash []byte, name string, now time.Time, inviteOnly bool) (*views.Viewer, error) {
+func (m *memStore) ChooseName(_ context.Context, hash []byte, name, display string, now time.Time, inviteOnly bool) (*views.Viewer, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	s := m.sessions[string(hash)]
@@ -171,7 +172,10 @@ func (m *memStore) ChooseName(_ context.Context, hash []byte, name string, now t
 		if inviteOnly && (inv == nil || !inv.Pending()) {
 			return nil, ErrNotInvited
 		}
-		u = &memSurveyor{id: uuid.NewString(), name: name, email: s.email, joined: now}
+		if display != "" && !strings.EqualFold(display, name) && m.handleTaken(display, "") {
+			return nil, ErrDisplayTaken
+		}
+		u = &memSurveyor{id: uuid.NewString(), name: name, display: display, email: s.email, joined: now}
 		m.surveyors[u.id] = u
 		if inv != nil && inv.Pending() {
 			inv.AcceptedAt, inv.AcceptedAs = &now, name
@@ -182,27 +186,39 @@ func (m *memStore) ChooseName(_ context.Context, hash []byte, name string, now t
 			o.surveyorID = u.id
 		}
 	}
-	return &views.Viewer{SurveyorID: u.id, Name: u.name, Email: s.email}, nil
+	return &views.Viewer{SurveyorID: u.id, Name: u.name, Display: u.display, Email: s.email}, nil
 }
 
-func (m *memStore) Profile(_ context.Context, id string) (string, string, error) {
+func (m *memStore) handleTaken(display, self string) bool {
+	for _, o := range m.surveyors {
+		if o.id != self && strings.EqualFold(o.name, display) {
+			return true
+		}
+	}
+	return false
+}
+
+func (m *memStore) Profile(_ context.Context, id string) (Profile, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	u := m.surveyors[id]
 	if u == nil {
-		return "", "", ErrNotFound
+		return Profile{}, ErrNotFound
 	}
-	return u.bio, u.home, nil
+	return Profile{Display: u.display, Bio: u.bio, HomeRegion: u.home}, nil
 }
 
-func (m *memStore) UpdateProfile(_ context.Context, id, bio, home string) error {
+func (m *memStore) UpdateProfile(_ context.Context, id string, p Profile) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	u := m.surveyors[id]
 	if u == nil {
 		return ErrNotFound
 	}
-	u.bio, u.home = bio, home
+	if p.Display != "" && m.handleTaken(p.Display, id) {
+		return ErrDisplayTaken
+	}
+	u.display, u.bio, u.home = p.Display, p.Bio, p.HomeRegion
 	return nil
 }
 

@@ -8,6 +8,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"golang.org/x/text/unicode/norm"
+
 	"github.com/cartograph-asia/cartograph/internal/views"
 )
 
@@ -70,4 +72,54 @@ func cleanBio(s string) (string, bool) {
 	}, s)
 	s = strings.TrimSpace(s)
 	return s, utf8.RuneCountInString(s) <= views.BioMaxLen
+}
+
+// cleanDisplayName normalises a display name (docs/DISPLAY_NAME_BRIEF.md):
+// NFC, surrounding space trimmed, runs of white space collapsed to one
+// space. It allows letters and marks of any script, digits, spaces and
+// . ' ’ -, needs at least one letter and at most views.DisplayNameMax
+// characters. Characters that render as nothing (Unicode's default
+// ignorables: variation selectors, the combining grapheme joiner, Hangul
+// fillers, …) are refused, so that "adrian" plus an invisible character
+// cannot pass as someone's Surveyor name; a mark must follow a letter or
+// another mark. "" with ok true means no display name.
+func cleanDisplayName(s string) (string, bool) {
+	if !utf8.ValidString(s) {
+		return "", false
+	}
+	s = strings.Join(strings.Fields(norm.NFC.String(s)), " ")
+	if s == "" {
+		return "", true
+	}
+	if utf8.RuneCountInString(s) > views.DisplayNameMax {
+		return "", false
+	}
+	letter, afterLetter := false, false
+	for _, r := range s {
+		if invisible(r) {
+			return "", false
+		}
+		switch {
+		case unicode.IsLetter(r):
+			letter, afterLetter = true, true
+		case unicode.Is(unicode.M, r):
+			if !afterLetter {
+				return "", false
+			}
+		case unicode.IsDigit(r), r == ' ', r == '.', r == '\'', r == '’', r == '-':
+			afterLetter = false
+		default:
+			return "", false
+		}
+	}
+	return s, letter
+}
+
+// invisible reports whether r is a default-ignorable code point: format
+// characters, variation selectors and the other code points Unicode lists
+// as ignorable (U+034F, U+115F, U+1160, U+17B4, U+17B5, U+3164, U+FFA0, …).
+func invisible(r rune) bool {
+	return unicode.Is(unicode.Cf, r) || unicode.Is(unicode.Variation_Selector, r) ||
+		unicode.Is(unicode.Other_Default_Ignorable_Code_Point, r) ||
+		(r >= 0x180B && r <= 0x180F) || (r >= 0xFE00 && r <= 0xFE0F) || (r >= 0xE0000 && r <= 0xE0FFF)
 }

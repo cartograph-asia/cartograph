@@ -56,6 +56,7 @@ type PlotSummary struct {
 	Cell          string
 	PhotoCount    int
 	FirstSurveyor string
+	FirstLabel    string // the first surveyor's display name, else their name
 	ClaimedAt     time.Time
 	ThumbKey      string // thumb of the first photo; may be empty
 }
@@ -64,6 +65,7 @@ type PlotSummary struct {
 type PlotPhoto struct {
 	ID         uuid.UUID
 	Surveyor   string
+	Label      string // the Surveyor's display name, else Surveyor
 	TakenAt    *time.Time
 	UploadedAt time.Time
 	KeyLarge   string
@@ -75,6 +77,7 @@ type PlotDetail struct {
 	Cell          string
 	PhotoCount    int
 	FirstSurveyor string
+	FirstLabel    string
 	ClaimedAt     time.Time
 	Place         string // nearest place, else the region name; empty outside every region
 	Region        string // region name_en; empty outside every region
@@ -155,9 +158,11 @@ func (d *DB) ClaimPhoto(ctx context.Context, p NewPhoto) (claimed bool, err erro
 // Plots returns the surveyed plots among cells.
 func (d *DB) Plots(ctx context.Context, cells []string) ([]PlotSummary, error) {
 	rows, err := d.Pool.Query(ctx, `
-		select p.cell, p.photo_count, coalesce(p.first_surveyor, ''), p.claimed_at, coalesce(ph.key_thumb, '')
+		select p.cell, p.photo_count, coalesce(p.first_surveyor, ''), coalesce(s.display_name, s.name, p.first_surveyor, ''),
+		       p.claimed_at, coalesce(ph.key_thumb, '')
 		from plots p
 		left join visible_photos ph on ph.id = p.first_photo
+		left join surveyors s on s.id = p.first_surveyor_id
 		where p.cell = any($1) and p.photo_count > 0
 		order by p.cell`, cells)
 	if err != nil {
@@ -165,7 +170,7 @@ func (d *DB) Plots(ctx context.Context, cells []string) ([]PlotSummary, error) {
 	}
 	out, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (PlotSummary, error) {
 		var s PlotSummary
-		err := r.Scan(&s.Cell, &s.PhotoCount, &s.FirstSurveyor, &s.ClaimedAt, &s.ThumbKey)
+		err := r.Scan(&s.Cell, &s.PhotoCount, &s.FirstSurveyor, &s.FirstLabel, &s.ClaimedAt, &s.ThumbKey)
 		return s, err
 	})
 	if err != nil {
@@ -178,14 +183,15 @@ func (d *DB) Plots(ctx context.Context, cells []string) ([]PlotSummary, error) {
 func (d *DB) Plot(ctx context.Context, cell string) (*PlotDetail, error) {
 	var p PlotDetail
 	err := d.Pool.QueryRow(ctx, `
-		select pl.cell, pl.photo_count, coalesce(pl.first_surveyor, ''), pl.claimed_at,
+		select pl.cell, pl.photo_count, coalesce(pl.first_surveyor, ''), coalesce(fs.display_name, fs.name, pl.first_surveyor, ''), pl.claimed_at,
 		       coalesce(pl.place_name, r.name_en, ''), coalesce(r.name_en, ''), coalesce(r.slug, ''), coalesce(n.number, 0),
 		       coalesce(dr.name_en, '')
 		from plots pl left join regions r on r.id = pl.region_id
+		left join surveyors fs on fs.id = pl.first_surveyor_id
 		left join regions dr on dr.id = pl.district_id
 		left join plot_numbers n on n.cell = pl.cell
 		where pl.cell = $1 and pl.photo_count > 0`, cell,
-	).Scan(&p.Cell, &p.PhotoCount, &p.FirstSurveyor, &p.ClaimedAt, &p.Place, &p.Region, &p.RegionSlug, &p.Number, &p.District)
+	).Scan(&p.Cell, &p.PhotoCount, &p.FirstSurveyor, &p.FirstLabel, &p.ClaimedAt, &p.Place, &p.Region, &p.RegionSlug, &p.Number, &p.District)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -193,15 +199,15 @@ func (d *DB) Plot(ctx context.Context, cell string) (*PlotDetail, error) {
 		return nil, fmt.Errorf("db: plot: %w", err)
 	}
 	rows, err := d.Pool.Query(ctx, `
-		select id, surveyor, taken_at, uploaded_at, key_large, key_thumb
-		from visible_photos where cell = $1
-		order by uploaded_at, id`, cell)
+		select ph.id, coalesce(s.name, ph.surveyor), coalesce(s.display_name, s.name, ph.surveyor), ph.taken_at, ph.uploaded_at, ph.key_large, ph.key_thumb
+		from visible_photos ph left join surveyors s on s.id = ph.surveyor_id where ph.cell = $1
+		order by ph.uploaded_at, ph.id`, cell)
 	if err != nil {
 		return nil, fmt.Errorf("db: plot photos: %w", err)
 	}
 	p.Photos, err = pgx.CollectRows(rows, func(r pgx.CollectableRow) (PlotPhoto, error) {
 		var ph PlotPhoto
-		err := r.Scan(&ph.ID, &ph.Surveyor, &ph.TakenAt, &ph.UploadedAt, &ph.KeyLarge, &ph.KeyThumb)
+		err := r.Scan(&ph.ID, &ph.Surveyor, &ph.Label, &ph.TakenAt, &ph.UploadedAt, &ph.KeyLarge, &ph.KeyThumb)
 		return ph, err
 	})
 	if err != nil {

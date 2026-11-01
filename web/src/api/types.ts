@@ -9,7 +9,10 @@ export interface PhotoUrls {
 export interface PlotSummary {
   cell: string;
   photo_count: number;
+  /** Surveyor name (the handle, for links). */
   first_surveyor: string;
+  /** Display name, else the Surveyor name: the text to show. */
+  first_surveyor_label: string;
   claimed_at: string;
   thumb: string;
 }
@@ -17,6 +20,7 @@ export interface PlotSummary {
 export interface PhotoInfo {
   id: string;
   surveyor: string;
+  surveyor_label: string;
   taken_at: string | null;
   uploaded_at: string;
   urls: PhotoUrls;
@@ -27,6 +31,7 @@ export interface PlotDetail {
   cell: string;
   photo_count: number;
   first_surveyor: string;
+  first_surveyor_label: string;
   claimed_at: string;
   /** User-facing name, "{place} · {province} {number}". */
   name: string;
@@ -57,7 +62,10 @@ export interface UploadResult {
 
 /** 200 of GET /api/me: the signed-in Surveyor. */
 export interface Me {
+  /** Surveyor name (the handle, for links). */
   name: string;
+  /** Display name, else the Surveyor name. */
+  label: string;
 }
 
 /** The Surveyor comes from the session; there is no name field. */

@@ -33,6 +33,7 @@ func (rd *Renderer) funcs() template.FuncMap {
 		"iso":       iso,
 		"num":       num,
 		"count":     count,
+		"surveyed":  surveyed,
 		"pct":       pct,
 		"bar":       bar,
 		"pageURL":   pageURL,
@@ -260,6 +261,23 @@ func count(n int, one, many string) string {
 		return "1 " + one
 	}
 	return num(n) + " " + many
+}
+
+// surveyed is what follows the number of plots a Surveyor surveyed, with
+// the plots they claimed, in the same words on the profile and the list:
+// "plots surveyed, 5 of them first". No claimed plots, no tail.
+func surveyed(n, first int) string {
+	s := "plots surveyed"
+	if n == 1 {
+		s = "plot surveyed"
+	}
+	switch {
+	case first == 0:
+		return s
+	case n == 1:
+		return s + ", the first"
+	}
+	return s + ", " + num(first) + " of them first"
 }
 
 // pct formats a coverage share: "0%", "0.22%", "4.5%", "37%".

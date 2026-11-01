@@ -6,7 +6,7 @@
 <p class="meta">Surveyor since {{date $s.JoinedAt}}{{with $s.HomeRegion}} · home region <a href="/region/{{.Slug}}">{{.NameEn}}</a>{{end}}</p>
 {{with $s.Bio}}<p class="bio">{{.}}</p>{{end}}
 <ul class="figures small">
-<li><b>{{num .Stats.Plots}}</b> {{if eq .Stats.Plots 1}}plot{{else}}plots{{end}} claimed</li>
+<li><b>{{num .Stats.Surveyed}}</b> {{surveyed .Stats.Surveyed .Stats.Plots}}</li>
 <li><b>{{num .Stats.Photos}}</b> {{if eq .Stats.Photos 1}}photo{{else}}photos{{end}}</li>
 <li><b>{{num .Stats.Regions}}</b> {{if eq .Stats.Regions 1}}region{{else}}regions{{end}}</li>
 </ul>

@@ -238,7 +238,7 @@ func TestViews(t *testing.T) {
 
 	sl, err := v.Surveyors(ctx, 1)
 	if err != nil || len(sl.Surveyors) != 3 || sl.Surveyors[0].Surveyor.Name != "no-photos" || sl.Surveyors[0].LastPhoto != nil ||
-		sl.Surveyors[2].Plots != 3 || sl.Surveyors[2].Photos != 4 || sl.Surveyors[2].LastPhoto.ID != w.photos[5].String() {
+		sl.Surveyors[2].Surveyed != 3 || sl.Surveyors[2].Plots != 3 || sl.Surveyors[2].Photos != 4 || sl.Surveyors[2].LastPhoto.ID != w.photos[5].String() {
 		t.Fatalf("surveyors %+v %v", sl, err)
 	}
 
@@ -254,7 +254,7 @@ func TestViews(t *testing.T) {
 	if err != nil || len(rl.Regions) != 1 || rl.Regions[0].Region.Slug != "chon-buri" {
 		t.Fatalf("regions %+v %v", rl, err)
 	}
-	if c, err := v.Region(ctx, "thailand", 1); err != nil || c.Region.NameEn != "Thailand" {
+	if c, err := v.Region(ctx, "thailand", 1); err != nil || c.Region.NameEn != "Thailand" || c.Kind != "country" {
 		t.Fatalf("country page %+v %v", c, err)
 	}
 
@@ -262,7 +262,7 @@ func TestViews(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s.Profile.Name != "adrian" || s.Stats != (views.SurveyorStats{Plots: 3, Photos: 4, Regions: 1}) || len(s.PlotCells) != 3 ||
+	if s.Profile.Name != "adrian" || s.Stats != (views.SurveyorStats{Surveyed: 3, Plots: 3, Photos: 4, Regions: 1}) || len(s.PlotCells) != 3 ||
 		s.Bounds == nil || len(s.Photos) != 4 || s.Canonical != "/surveyor/adrian" || s.Feed != "/surveyor/adrian.rss" {
 		t.Fatalf("surveyor %+v", s)
 	}
@@ -314,7 +314,7 @@ func TestViews(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r.Counters.Plots != 4 || r.Counters.Photos != 6 || r.Counters.Surveyors != 2 || len(r.Latest) != 6 ||
+	if r.Kind != "province" || r.Counters.Plots != 4 || r.Counters.Photos != 6 || r.Counters.Surveyors != 2 || len(r.Latest) != 6 ||
 		len(r.ActiveRecent) != 2 || r.ActiveAllTime[0].Photos != 4 || r.LastSurveyedAt == nil || r.Bounds.MinLat == 0 || r.Feed != "/region/chon-buri.rss" {
 		t.Fatalf("region %+v", r)
 	}

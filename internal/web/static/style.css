@@ -45,6 +45,7 @@
   --s-2xl: 6rem;
   --gutter: 1rem;
   --page: 72rem; /* content width; 76 rem with the gutters */
+  --tap: 2.75rem; /* the least height of a tap target (44 px) */
 
   color-scheme: light;
 }
@@ -110,7 +111,7 @@ h1:has(.nb) { text-wrap: wrap; }
    the same baseline, in muted ink. */
 .tld { font-size: 0.6em; letter-spacing: 0; color: var(--ink-muted); }
 .claim { margin: var(--s-xs) 0 0; color: var(--ink-muted); font-size: var(--step-meta); align-self: start; }
-.acts { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s-s) var(--s-m); font-size: var(--step-meta); }
+.acts { display: flex; flex-wrap: wrap; align-items: baseline; gap: calc(var(--tap) - 1lh) var(--s-m); font-size: var(--step-meta); }
 .acts form { margin: 0; }
 .acts a { text-decoration: none; }
 .acts a:hover, .acts a:focus-visible { text-decoration: underline; }
@@ -122,6 +123,13 @@ button.link {
   text-decoration: none;
 }
 button.link:hover, button.link:focus-visible { text-decoration: underline; }
+/* Small text links stand alone: padding makes them --tap high, a negative
+   margin of the same size keeps the line where it was. */
+.acts a, .acts button.link, .more, .foot nav a {
+  display: inline-block;
+  padding-top: calc((var(--tap) - 1lh) / 2); padding-bottom: calc((var(--tap) - 1lh) / 2);
+  margin-top: calc((var(--tap) - 1lh) / -2); margin-bottom: calc((var(--tap) - 1lh) / -2);
+}
 
 /* Front page: intro and counters as one statement. */
 .lead { display: grid; gap: var(--s-l); margin-bottom: var(--s-xl); }
@@ -166,11 +174,15 @@ button.link:hover, button.link:focus-visible { text-decoration: underline; }
 .cap .plot .pl { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .cap .plot .pn { flex: none; }
 .cap .line, .cap .when { display: block; color: var(--ink-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* In grids the "first" tag is a flex item of its own: only the Surveyor
+   and time before it are cut. */
+.grid .cap .line { display: flex; align-items: baseline; }
+.cap .lt { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .cap .line a { color: var(--ink-muted); }
 /* The first-survey mark: data, so green; a short tag on the second line. */
 .first {
   color: var(--data); font-variant: all-small-caps; letter-spacing: 0.06em; font-weight: 700;
-  margin-left: var(--s-xs);
+  margin-left: var(--s-xs); flex: none;
 }
 .cap .who { display: block; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .grid li p, .people p { margin: var(--s-s) 0 0; font-size: var(--step-meta); line-height: 1.4; }
@@ -295,7 +307,10 @@ input[type="email"], input[type="text"], textarea, select {
   border: 1px solid var(--ink-line); border-radius: 0; padding: var(--s-s);
 }
 input:focus-visible, textarea:focus-visible, select:focus-visible { border-color: var(--ink); outline-offset: 0; }
-[aria-invalid="true"], [aria-invalid="true"]:focus-visible { border-color: var(--error); outline-color: var(--error); }
+/* After the field rules and as specific as they are, so an invalid field
+   stays red with and without focus. */
+input[aria-invalid="true"], textarea[aria-invalid="true"], select[aria-invalid="true"] { border-color: var(--error); }
+input[aria-invalid="true"]:focus, textarea[aria-invalid="true"]:focus, select[aria-invalid="true"]:focus { border-color: var(--error); outline-color: var(--error); }
 textarea { resize: vertical; }
 .hint { color: var(--ink-muted); font-size: var(--step-meta); margin: var(--s-xs) 0 0; }
 .form button[type="submit"]:not(.link) {
@@ -329,7 +344,10 @@ textarea { resize: vertical; }
 }
 .foot-mark { margin: 0; font-family: var(--font-display); font-weight: var(--display-weight); letter-spacing: var(--display-tracking); font-size: var(--step-title); }
 .foot-mark a { color: var(--ink); text-decoration: none; }
-.foot nav { display: flex; flex-wrap: wrap; gap: var(--s-xs) var(--s-m); }
+.foot nav { display: flex; flex-wrap: wrap; align-items: baseline; gap: calc(var(--tap) - 1lh) var(--s-m); }
+/* The site's sections, a quiet line on every page. */
+.foot .site { gap: calc(var(--tap) - 1lh) var(--s-s); }
+.foot .site span { color: var(--ink-muted); }
 .foot nav a { text-decoration: none; }
 .foot nav a:hover, .foot nav a:focus-visible { text-decoration: underline; }
 .foot-meta p { margin: 0 0 var(--s-xs); }
@@ -354,7 +372,7 @@ textarea { resize: vertical; }
   h1.name { font-size: var(--step-display); }
   .figures.small { column-gap: var(--s-xl); }
   .foot { grid-template-columns: auto 1fr; }
-  .foot-mark { grid-row: span 2; }
+  .foot-mark { grid-row: span 3; }
 }
 @media (min-width: 64rem) {
   .lead { grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: var(--s-xl); align-items: end; }

@@ -223,17 +223,18 @@ func (v *Views) photosByID(ctx context.Context, ids []uuid.UUID) (map[string]vie
 type regionRow struct {
 	id   int
 	ref  views.RegionRef
+	kind string
 	cov  views.Coverage
 	last *time.Time
 	b    views.Bounds
 }
 
-const regionCols = `id, slug, name_en, coalesce(name_th, ''), claimed_cells, land_cells, last_surveyed_at,
+const regionCols = `id, kind, slug, name_en, coalesce(name_th, ''), claimed_cells, land_cells, last_surveyed_at,
 	min_lat, min_lng, max_lat, max_lng`
 
 func scanRegion(r pgx.CollectableRow) (regionRow, error) {
 	var x regionRow
-	err := r.Scan(&x.id, &x.ref.Slug, &x.ref.NameEn, &x.ref.NameTh, &x.cov.Claimed, &x.cov.Land, &x.last,
+	err := r.Scan(&x.id, &x.kind, &x.ref.Slug, &x.ref.NameEn, &x.ref.NameTh, &x.cov.Claimed, &x.cov.Land, &x.last,
 		&x.b.MinLat, &x.b.MinLng, &x.b.MaxLat, &x.b.MaxLng)
 	if x.last != nil {
 		t := x.last.UTC()
@@ -335,6 +336,7 @@ func (v *Views) Surveyors(ctx context.Context, page int) (*views.SurveyorList, e
 	}
 	rows, err := v.d.Pool.Query(ctx, `
 		select s.name, s.joined_at,
+		  (select count(distinct cell) from photos where surveyor_id = s.id),
 		  (select count(*) from plots where first_surveyor_id = s.id),
 		  (select count(*) from photos where surveyor_id = s.id),
 		  (select id from photos where surveyor_id = s.id order by uploaded_at desc, id desc limit 1)
@@ -348,7 +350,7 @@ func (v *Views) Surveyors(ctx context.Context, page int) (*views.SurveyorList, e
 	}
 	rs, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (row, error) {
 		var x row
-		err := r.Scan(&x.item.Surveyor.Name, &x.item.JoinedAt, &x.item.Plots, &x.item.Photos, &x.last)
+		err := r.Scan(&x.item.Surveyor.Name, &x.item.JoinedAt, &x.item.Surveyed, &x.item.Plots, &x.item.Photos, &x.last)
 		x.item.JoinedAt = x.item.JoinedAt.UTC()
 		return x, err
 	})
@@ -435,11 +437,11 @@ func (v *Views) Surveyor(ctx context.Context, name string, page int) (*views.Sur
 	var minLat, minLng, maxLat, maxLng *float64
 	err = v.d.Pool.QueryRow(ctx, `
 		select
-		  (select count(*) from plots where first_surveyor_id = $1),
+		  count(distinct ph.cell), (select count(*) from plots where first_surveyor_id = $1),
 		  count(*), count(distinct pl.region_id),
 		  min(ph.lat), min(ph.lng), max(ph.lat), max(ph.lng)
 		from photos ph join plots pl on pl.cell = ph.cell where ph.surveyor_id = $1`, s.id,
-	).Scan(&out.Stats.Plots, &out.Stats.Photos, &out.Stats.Regions, &minLat, &minLng, &maxLat, &maxLng)
+	).Scan(&out.Stats.Surveyed, &out.Stats.Plots, &out.Stats.Photos, &out.Stats.Regions, &minLat, &minLng, &maxLat, &maxLng)
 	if err != nil {
 		return nil, fmt.Errorf("db: surveyor stats: %w", err)
 	}
@@ -737,7 +739,7 @@ func (v *Views) Region(ctx context.Context, slug string, page int) (*views.Regio
 	if err != nil {
 		return nil, err
 	}
-	out := &views.Region{Region: r.ref, Coverage: r.cov, Bounds: r.b, LastSurveyedAt: r.last}
+	out := &views.Region{Region: r.ref, Kind: r.kind, Coverage: r.cov, Bounds: r.b, LastSurveyedAt: r.last}
 	out.Counters.Plots = r.cov.Claimed
 	err = v.d.Pool.QueryRow(ctx, `select count(*), count(distinct `+surveyorKey+`)`+photoFrom+`where pl.region_id = $1`, r.id).
 		Scan(&out.Counters.Photos, &out.Counters.Surveyors)

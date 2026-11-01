@@ -97,20 +97,19 @@ func IsDistrict(r *osm.Relation) bool {
 }
 
 // DistrictName returns a district's English and Thai names without the
-// words for district ("Bang Kapi District", "เขตบางกะปิ", "อำเภอบ้านโคก"),
-// and whether it is a khet (เขต), i.e. a district of a city.
-func DistrictName(en, th string) (string, string, bool) {
+// words for district ("Bang Kapi District", "เขตบางกะปิ", "อำเภอบ้านโคก").
+// Whether a district is urban comes from place_naming, not from its name.
+func DistrictName(en, th string) (string, string) {
 	en = strings.TrimSpace(en)
 	en = strings.TrimSpace(strings.TrimSuffix(en, " District"))
 	for _, p := range []string{"Khet ", "Amphoe "} {
 		en = strings.TrimSpace(strings.TrimPrefix(en, p))
 	}
 	th = strings.TrimSpace(th)
-	khet := strings.HasPrefix(th, "เขต")
 	for _, p := range []string{"เขต", "อำเภอ"} {
 		th = strings.TrimSpace(strings.TrimPrefix(th, p))
 	}
-	return en, th, khet
+	return en, th
 }
 
 // ReadBoundaryData reads the relations accepted by keep together with all

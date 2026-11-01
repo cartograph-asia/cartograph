@@ -181,6 +181,9 @@ func Regions(ctx context.Context, d *db.DB, o RegionOptions) (*RegionStats, erro
 	if _, err := d.UpsertRegions(ctx, drows); err != nil {
 		return nil, err
 	}
+	if err := d.MarkUrbanDistricts(ctx); err != nil {
+		return nil, err
+	}
 	t = time.Now()
 	numbered := 0
 	for i, id := range ids {
@@ -233,7 +236,7 @@ func districtRows(bs []osmfile.Boundary, provinces []db.Region, ids []int, idx *
 		}
 		pi, ok := idx.Contains(centre)
 		en, th := osmfile.Names(b.Tags)
-		en, th, khet := osmfile.DistrictName(en, th)
+		en, th = osmfile.DistrictName(en, th)
 		if !ok || en == "" {
 			dropped++
 			continue
@@ -245,7 +248,7 @@ func districtRows(bs []osmfile.Boundary, provinces []db.Region, ids []int, idx *
 		}
 		slugs[slug] = true
 		out = append(out, db.Region{OSMID: b.OSMID, Kind: "district", AdminLevel: 6, Country: provinces[pi].Country,
-			ParentID: &parent, Urban: khet, Slug: slug, NameEn: en, NameTh: th, Boundary: simple})
+			ParentID: &parent, Slug: slug, NameEn: en, NameTh: th, Boundary: simple})
 	}
 	slog.Info("read districts", "districts", len(out), "dropped", dropped)
 	return out

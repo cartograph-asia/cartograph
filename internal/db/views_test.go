@@ -478,19 +478,59 @@ func TestPlaceTiers(t *testing.T) {
 		km         float64
 		want       string
 	}{
-		{1, "neighbourhood", "Estate", 0.2, "Chon Buri"},    // outside a city: no suburbs, quarters or estates
-		{2, "town", "Some Town", 4.8, "Some Town"},          // town within 5 km
-		{3, "village", "Ban Near", 3, "Ban Near"},           // nearest of village/town
-		{4, "city", "Big City", 4.9, "Estate"},              // a city within 5 km: urban, an estate when nothing finer
-		{5, "quarter", "Old Quarter", 2.9, "Old Quarter"},   // a quarter beats a neighbourhood
-		{6, "suburb", "Far Suburb", 3.2, "Old Quarter"},     // suburbs count within 3 km only
-		{7, "suburb", "Khwaeng Near", 2.95, "Khwaeng Near"}, // a suburb beats a nearer quarter
+		{1, "neighbourhood", "Estate", 0.2, "Chon Buri"}, // outside a city: no quarters, estates or suburbs
+		{2, "town", "Some Town", 4.8, "Some Town"},       // town within 5 km
+		{3, "village", "Ban Near", 3, "Ban Near"},        // nearest of village/town
 	}
 	for _, s := range steps {
 		place(s.id, s.kind, s.name, s.km)
 		if got := name(); got != s.want {
 			t.Fatalf("after adding %s %q at %.2f km: name %q, want %q", s.kind, s.name, s.km, got, s.want)
 		}
+	}
+	reconfigure := func(sql string) {
+		t.Helper()
+		if _, err := d.Pool.Exec(ctx, sql); err != nil {
+			t.Fatal(err)
+		}
+		if err := d.MarkUrbanDistricts(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if err := d.ReloadRegions(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A province listed in urban_regions makes all its districts urban.
+	reconfigure(`update place_naming set urban_regions = '{chon-buri}' where country = 'th'`)
+	if got := name(); got != "Estate" {
+		t.Fatalf("urban province: name %q, want Estate", got)
+	}
+	reconfigure(`update place_naming set urban_regions = '{bangkok}' where country = 'th'`)
+	if got := name(); got != "Ban Near" {
+		t.Fatalf("rural again: name %q, want Ban Near", got)
+	}
+	steps = steps[:0]
+	steps = append(steps, []struct {
+		id         int64
+		kind, name string
+		km         float64
+		want       string
+	}{
+		{4, "city", "Big City", 4.9, "Estate"},               // a city within 5 km: urban
+		{5, "suburb", "Khet Name", 2.9, "Estate"},            // a neighbourhood beats a suburb
+		{6, "quarter", "Far Quarter", 3.2, "Estate"},         // quarters count within 3 km only
+		{7, "quarter", "Khwaeng Near", 2.95, "Khwaeng Near"}, // a quarter beats both
+	}...)
+	for _, s := range steps {
+		place(s.id, s.kind, s.name, s.km)
+		if got := name(); got != s.want {
+			t.Fatalf("after adding %s %q at %.2f km: name %q, want %q", s.kind, s.name, s.km, got, s.want)
+		}
+	}
+	// The order is data: suburbs first if the table says so.
+	reconfigure(`update place_naming set urban_kinds = '{suburb,quarter,neighbourhood}' where country = 'th'`)
+	if got := name(); got != "Khet Name" {
+		t.Fatalf("suburbs first: name %q, want Khet Name", got)
 	}
 }
 

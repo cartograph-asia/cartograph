@@ -99,6 +99,21 @@ func TestClaimAndRead(t *testing.T) {
 	if err != nil || !claimed {
 		t.Fatalf("first claim: %v %v", claimed, err)
 	}
+	// New Year's night in Bangkok: the UTC year is 2026, the local one 2027.
+	local := time.Date(2027, 1, 1, 2, 0, 0, 0, time.UTC)
+	offset := 7 * 60
+	p0 := newPhoto("88658bd10bfffff", "Ada", t0) // own plot and parents, so the counts below stay
+	p0.Parent5, p0.Parent6 = "p0-parent5", "p0-parent6"
+	p0.TakenLocal, p0.TakenUTCOffset = &local, &offset
+	if _, err := d.ClaimPhoto(ctx, p0); err != nil {
+		t.Fatal(err)
+	}
+	var year, month, gotOffset int
+	if err := d.Pool.QueryRow(ctx, `select extract(year from taken_at_local), extract(month from taken_at_local), taken_utc_offset
+		from photos where id = $1`, p0.ID).Scan(&year, &month, &gotOffset); err != nil || year != 2027 || month != 1 || gotOffset != 420 {
+		t.Fatalf("local time: %d-%d %+d %v", year, month, gotOffset, err)
+	}
+
 	claimed, err = d.ClaimPhoto(ctx, newPhoto(cell, "Grace", t0.Add(time.Minute)))
 	if err != nil || claimed {
 		t.Fatalf("second claim: %v %v", claimed, err)

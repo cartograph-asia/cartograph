@@ -160,21 +160,23 @@ func (s *Server) createPhoto(w http.ResponseWriter, r *http.Request) {
 	// they only act when SurveyorID is null.
 	surveyorID, _ := uuid.Parse(viewer.SurveyorID)
 	claimed, err := s.repo.ClaimPhoto(ctx, db.NewPhoto{
-		ID:         id,
-		Cell:       cell,
-		Parent5:    parent5,
-		Parent6:    parent6,
-		Surveyor:   surveyor,
-		SurveyorID: surveyorID,
-		KeyLarge:   keyLarge,
-		KeyMedium:  keyMedium,
-		KeyThumb:   keyThumb,
-		Width:      variants.LargeWidth,
-		Height:     variants.LargeHeight,
-		Lat:        lat,
-		Lng:        lng,
-		TakenAt:    meta.TakenAt,
-		UploadedAt: now,
+		ID:             id,
+		Cell:           cell,
+		Parent5:        parent5,
+		Parent6:        parent6,
+		Surveyor:       surveyor,
+		SurveyorID:     surveyorID,
+		KeyLarge:       keyLarge,
+		KeyMedium:      keyMedium,
+		KeyThumb:       keyThumb,
+		Width:          variants.LargeWidth,
+		Height:         variants.LargeHeight,
+		Lat:            lat,
+		Lng:            lng,
+		TakenAt:        meta.TakenAt,
+		TakenLocal:     meta.TakenLocal,
+		TakenUTCOffset: meta.TakenOffset,
+		UploadedAt:     now,
 	})
 	if errors.Is(err, db.ErrOutsideRegions) {
 		slog.Info("photo outside every region", "cell", cell, "orphaned_keys", []string{keyLarge, keyMedium, keyThumb})

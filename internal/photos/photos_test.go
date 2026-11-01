@@ -35,6 +35,14 @@ func TestReadMetaWithGPS(t *testing.T) {
 	if m.TakenAt == nil || !m.TakenAt.Equal(want) {
 		t.Errorf("TakenAt = %v, want %v", m.TakenAt, want)
 	}
+	// The wall clock is kept as is, so year and month stay local.
+	wantLocal := time.Date(2026, 9, 9, 16, 38, 6, 0, time.UTC)
+	if m.TakenLocal == nil || !m.TakenLocal.Equal(wantLocal) {
+		t.Errorf("TakenLocal = %v, want %v", m.TakenLocal, wantLocal)
+	}
+	if m.TakenOffset == nil || *m.TakenOffset != 7*60 {
+		t.Errorf("TakenOffset = %v, want 420", m.TakenOffset)
+	}
 }
 
 func TestReadMetaWithoutGPS(t *testing.T) {

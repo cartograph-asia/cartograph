@@ -12,20 +12,22 @@ import (
 
 // NewPhoto is a photo to be inserted by ClaimPhoto.
 type NewPhoto struct {
-	ID         uuid.UUID
-	Cell       string // res-8 plot
-	Parent5    string
-	Parent6    string
-	Surveyor   string    // name as typed or the account's name; kept in photos.surveyor
-	SurveyorID uuid.UUID // account; uuid.Nil stores null
-	KeyLarge   string
-	KeyMedium  string // empty stores null
-	KeyThumb   string
-	Width      int // of the large variant; 0 stores null
-	Height     int
-	Lat, Lng   float64
-	TakenAt    *time.Time
-	UploadedAt time.Time
+	ID             uuid.UUID
+	Cell           string // res-8 plot
+	Parent5        string
+	Parent6        string
+	Surveyor       string    // name as typed or the account's name; kept in photos.surveyor
+	SurveyorID     uuid.UUID // account; uuid.Nil stores null
+	KeyLarge       string
+	KeyMedium      string // empty stores null
+	KeyThumb       string
+	Width          int // of the large variant; 0 stores null
+	Height         int
+	Lat, Lng       float64
+	TakenAt        *time.Time
+	TakenLocal     *time.Time // camera wall clock (location UTC, not converted)
+	TakenUTCOffset *int       // minutes east of UTC; nil if unknown
+	UploadedAt     time.Time
 }
 
 func nullUUID(u uuid.UUID) *uuid.UUID {
@@ -107,10 +109,10 @@ func (d *DB) ClaimPhoto(ctx context.Context, p NewPhoto) (claimed bool, err erro
 		}
 		_, err = tx.Exec(ctx, `
 			insert into photos (id, cell, surveyor, surveyor_id, key_large, key_medium, key_thumb,
-			                    width, height, lat, lng, taken_at, uploaded_at)
-			values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+			                    width, height, lat, lng, taken_at, taken_at_local, taken_utc_offset, uploaded_at)
+			values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
 			p.ID, p.Cell, p.Surveyor, nullUUID(p.SurveyorID), p.KeyLarge, nullString(p.KeyMedium), p.KeyThumb,
-			nullInt(p.Width), nullInt(p.Height), p.Lat, p.Lng, p.TakenAt, p.UploadedAt,
+			nullInt(p.Width), nullInt(p.Height), p.Lat, p.Lng, p.TakenAt, p.TakenLocal, p.TakenUTCOffset, p.UploadedAt,
 		)
 		if err != nil {
 			return fmt.Errorf("insert photo: %w", err)

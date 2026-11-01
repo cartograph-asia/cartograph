@@ -167,18 +167,22 @@ func BuildBoundaries(o *osm.OSM) (out []Boundary, skipped []int64, err error) {
 	return out, skipped, nil
 }
 
-// Place is an OSM city, town or village.
+// Place is an OSM place node of one of PlaceKinds.
 type Place struct {
 	OSMType string // "n", "w" or "r"
 	OSMID   int64
-	Kind    string // city, town, village
+	Kind    string // a key of PlaceKinds
 	NameEn  string
 	NameTh  string
 	Point   orb.Point
 }
 
-// PlaceKinds are the place=* values imported as plot names.
-var PlaceKinds = map[string]bool{"city": true, "town": true, "village": true}
+// PlaceKinds are the place=* values imported as plot names. Only nodes are
+// read; places mapped as areas alone are not imported.
+var PlaceKinds = map[string]bool{
+	"city": true, "town": true, "village": true,
+	"suburb": true, "quarter": true, "neighbourhood": true,
+}
 
 // ReadPlaces reads the place nodes of PlaceKinds inside bound (whole file if
 // geo.NoBound(bound)) that have a Latin-script name (see Names).

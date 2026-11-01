@@ -24,7 +24,7 @@ type PlaceStats struct {
 	PlotsBackfilled int
 }
 
-// Places replaces the places table with the city/town/village nodes of the
+// Places replaces the places table with the place nodes (osmfile.PlaceKinds) of the
 // extract (inside BBox if set), each with the region containing it, then
 // fills place names of plots that have none. Run it after Regions.
 func Places(ctx context.Context, d *db.DB, o PlaceOptions) (*PlaceStats, error) {

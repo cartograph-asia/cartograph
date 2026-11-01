@@ -1,6 +1,6 @@
 // Command fixture cuts the test fixture out of the full inputs: every
 // province boundary intersecting -bbox (complete relation, member ways and
-// their nodes, without metadata) plus the city/town/village nodes inside
+// their nodes, without metadata) plus the place nodes (osmfile.PlaceKinds) inside
 // -bbox, as gzipped OSM XML; and the water polygons clipped to -bbox as a
 // .shp file. The defaults reproduce testdata/pattaya.osm.gz and
 // testdata/pattaya-water.shp from the repository root:

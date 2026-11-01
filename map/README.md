@@ -44,16 +44,17 @@ centerlines ~80 MB, tile weights ~6 MB). Later builds reuse them.
 
 Everything under `map/data/` and the `.pmtiles` output is git-ignored.
 
-## Resources (measured on an M-series Mac, 16 GB RAM, Docker Desktop with 7.7 GB / 10 CPUs)
+## Resources (measured on an M-series Mac, 16 GB RAM, 10 CPUs; data on an external SSD)
 
-| | Thailand alone | Thailand and neighbours (default) |
-|---|---|---|
-| OSM extracts | 330 MB | 1.3 GB merged (six extracts) |
-| Merge | – | ~1 min, including installing osmium |
-| Build time | ~95 s (Docker) | ~3½ min on the host incl. merge; ~7 min in Docker (sources already downloaded) |
-| JVM heap peak | ~2.1 GB | 2–4 GB of 5 GB (`-Xmx5g`, the default); 6.2 GB resident on the host incl. memory-mapped files |
-| Disk | ~1.7 GB in `map/data/` | ~3.8 GB in `map/data/` |
-| Output | ~400 MB | `asia.pmtiles`, ~1.4 GB |
+| | Thailand alone | Thailand and neighbours | Southeast and East Asia (default, 15 extracts) |
+|---|---|---|---|
+| OSM extracts | 330 MB | 1.3 GB merged | 8.7 GB merged (~1.2 billion nodes, 162 million ways) |
+| Download | – | ~1 GB | ~7 GB more, about 1½ hours at ~1.3 MB/s from Geofabrik |
+| Merge (osmium) | – | ~1 min | ~10 min |
+| Build (Planetiler) | ~95 s (Docker) | ~3½ min on the host; ~7 min in Docker | 46 min on the host |
+| Memory | ~2.1 GB heap | 2–4 GB heap, 6.2 GB resident | ~4 GB of the 5 GB heap, 5.5 GB resident |
+| Disk | ~1.7 GB in `map/data/` | ~3.8 GB | ~18 GB in `map/data/` plus ~40 GB temporary during the build |
+| Output | ~400 MB | ~1.4 GB | `asia.pmtiles`, 9.3 GB |
 
 In Docker, Docker Desktop needs at least ~6 GB memory assigned for the default set.
 Override the heap with `JAVA_XMX=4g map/build.sh`, the set with

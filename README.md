@@ -4,9 +4,9 @@
 
 Cartograph is a community game: a photo for every plot of land in South, Southeast and East Asia. The map is divided into plots of about 0.74 km², and the first Surveyor to upload a geotagged photo into a plot claims it. More about the idea on the [organisation profile](https://github.com/cartograph-asia).
 
-This repository holds the prototype: Thailand only, one page with a map, a side panel and an upload form.
+This repository holds the prototype, Thailand only: a server-rendered community front page with Surveyor, plot, photo and region pages and RSS feeds, the map at `/map`, and magic-link sign-in for uploading.
 
-## Run the prototype
+## Run it
 
 You need Docker (with at least 5 GB of memory assigned) and about 3 GB of free disk.
 
@@ -18,7 +18,21 @@ docker compose up --build
 open http://localhost:8080
 ```
 
-Upload a geotagged JPEG or PNG (the photos in `testdata/` work) and its plot turns surveyed. The stack runs PostgreSQL, Garage (local S3 for the photos), the api, the web build and Caddy, with only port 8080 published. `docker compose down -v` resets all data.
+The first start imports the Pattaya fixture (Chon Buri province and its places) and seeds five example Surveyors with 30 synthetic photos, so the front page is populated. To upload, choose "Sign in", enter any address, and open the sign-in link that the api logs (`docker compose logs api | grep sign-in`; no mail is sent while `SMTP_HOST` is empty). Then pick a Surveyor name and upload a geotagged JPEG or PNG from `/map` (the photos in `testdata/` are taken in Pattaya and work).
+
+The stack runs PostgreSQL, Garage (local S3 for the photos), the api (pages, sign-in and JSON API), the map's web build and Caddy, with only port 8080 published. The one-shot services `regions`, `places` and `seed` run before you use it and exit. `docker compose down -v` resets all data.
+
+### All of Thailand
+
+After `map/build.sh`, set in `deploy/.env`:
+
+```sh
+IMPORT_PBF=/srv/map/data/thailand-latest.osm.pbf
+IMPORT_WATER=/srv/map/data/sources/water-polygons-split-3857.zip
+IMPORT_BBOX=
+```
+
+and run `docker compose up regions places` (about 20 s for the 77 provinces and 18,000 places). Set `SEED_PHOTOS=0` if you do not want the synthetic photos.
 
 ## Build the map
 
@@ -30,14 +44,15 @@ Everything is configured through environment variables, all documented in [deplo
 
 ## Development
 
-- Backend (Go, `cmd/api` and `internal/`): `go test ./...`. Database tests run only when `TEST_DATABASE_URL` points at a Postgres instance.
-- Frontend (`web/`): `npm ci && npm run dev:mock` runs against in-memory fixtures; `npm run dev` proxies to the stack on :8080.
-- The API contract is in [docs/PROTOTYPE_BRIEF.md](docs/PROTOTYPE_BRIEF.md); decisions made while building it are in [docs/decisions.md](docs/decisions.md).
+- Backend (Go, `cmd/` and `internal/`): `go test ./...`. Database tests run only when `TEST_DATABASE_URL` points at a Postgres instance.
+- Pages (`internal/web`, `html/template`): `go run ./cmd/webpreview` serves every page from in-memory fixtures on 127.0.0.1:8093.
+- Map (`web/`, served under `/map/`): `npm ci && npm run dev:mock` runs against in-memory fixtures; `npm run dev` proxies to the stack on :8080. Open http://localhost:5173/map/.
+- Importers: `regions`, `places` and `seed` in `cmd/`; `go run ./cmd/fixture` regenerates the Pattaya fixture in `testdata/` from `map/data/`.
+- Briefs: [docs/PROTOTYPE_BRIEF.md](docs/PROTOTYPE_BRIEF.md) (map and JSON API) and [docs/HOME_BRIEF.md](docs/HOME_BRIEF.md) (front page, pages, accounts). [docs/PRINCIPLES.md](docs/PRINCIPLES.md) decides feature questions, [docs/GAMIFICATION.md](docs/GAMIFICATION.md) is the design reference the data model leaves room for, and decisions made while building are in [docs/decisions.md](docs/decisions.md).
 
 ## Not there yet (on purpose)
 
-- Accounts and authentication: the upload form takes a free-text name.
-- Ranks, leaderboards, the "where was this" mode, moderation and rate limiting.
+- Comments, ranks, points and leaderboards (the `points` table exists but stays empty), country titles, the "where was this" mode, moderation tools and the e-mail digest.
 - HEIC uploads: JPEG and PNG only for now.
-- Country and province boundaries, land/sea distinction in coverage, and anything beyond Thailand.
+- Anything beyond Thailand, and city-level regions.
 - An image CDN.

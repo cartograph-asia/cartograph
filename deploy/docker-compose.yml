@@ -31,6 +31,10 @@ x-api-env: &api-env
   MAIL_FROM: ${MAIL_FROM:-cartograph.asia <hello@cartograph.asia>}
   # No default: without SMTP_HOST the api starts only with MAIL_DEV_LOG=1.
   MAIL_DEV_LOG: ${MAIL_DEV_LOG:-}
+  ADMIN_EMAILS: ${ADMIN_EMAILS:-}
+  ADMIN_SESSION_MAX_AGE: ${ADMIN_SESSION_MAX_AGE:-24h}
+  SIGNUP: ${SIGNUP:-invite}
+  INVITE_TTL: ${INVITE_TTL:-168h}
 
 services:
   postgres:

@@ -23,8 +23,8 @@ Stage names, so everyone means the same: *prototype* (done) → *alpha* (now: Ad
 
 - **Plot** – one H3 cell at resolution 8 (~0.74 km²). Never "square", never "hex" in user-facing text (`/about/plots` is the one exception).
 - **Surveyor** – a member. **Survey** – the act of uploading a photo into a plot.
-- **Claimed / surveyed** – a plot with at least one photo. **Blank / unsurveyed** – no photo yet.
-- **First surveyor** – the member whose photo claimed the plot. Stored permanently.
+- **Claimed / surveyed** – a plot with at least one visible photo. **Blank / unsurveyed** – no visible photo yet.
+- **First surveyor** – the member whose photo claimed the plot. Stored permanently; it changes only when an admin hides the claiming photo, and back when it is unhidden (see `docs/ADMIN_BRIEF.md`, Moderation).
 - **Coverage** – percentage of surveyed plots in an area.
 - **Wordmark** – the site's mark is `cartograph.asia`, all lower case: "cartograph" in the display size, ".asia" set smaller (about 60 %, same baseline, muted ink) as a visible suffix, never dropped. It appears wherever the site stands as a mark: masthead, footer, `<title>`, `og:site_name`, feed titles, and the sender name and signature of e-mails (plain text there: "cartograph.asia"). In running text the project is called **Cartograph**, capitalised as a name ("Cartograph divides the land …"). Never "Cartograph Asia" on the site itself; the social handles keep their own spelling.
 - **Plot name** – "{place}, {district} · {province} {number}", formatted only by `views.PlotRef.Name()`. The H3 index appears in links and a details line, never as a title.
@@ -38,7 +38,7 @@ Stage names, so everyone means the same: *prototype* (done) → *alpha* (now: Ad
 - **Backend:** Go (single binary), `net/http` + `chi`, `pgx` for Postgres. Image processing in Go, EXIF via `rwcarlsen/goexif`. OSM import in `internal/geo` (`cmd/regions`, `cmd/places`, `cmd/fixture`).
 - **Database:** PostgreSQL 16 (PostGIS available in the image but not used).
 - **Photo storage:** any S3-compatible store, accessed only through `internal/storage`. Development: Garage in Docker. Production: decided in the deployment brief (Hetzner Object Storage is the candidate); the api must not care. **The database stores object keys, never full URLs.** Public image URLs are built at runtime from `IMG_BASE_URL` + key.
-- **Accounts:** e-mail + magic link, no passwords, one Surveyor name chosen once. No OAuth, no roles, no admin UI; editorial data (`featured`, overrides) is edited in SQL until a brief says otherwise.
+- **Accounts:** e-mail + magic link, no passwords, one Surveyor name chosen once. No OAuth. While `SIGNUP=invite` (the default) a new account needs an invitation from an admin; `SIGNUP=open` lets any address join. One role besides Surveyor: **admin**, given to the accounts whose e-mail is listed in `ADMIN_EMAILS`. Admins work in the admin area under `/admin` (`docs/ADMIN_BRIEF.md`): invitations, plot of the week, place-name overrides, hiding photos, blocking Surveyors. Every admin action is written to `admin_actions`. SQL by hand is for what the admin area does not cover and gets a line in `docs/decisions.md`.
 - **Deployment:** Docker Compose. Backend image built from scratch/distroless. Everything configured via environment variables, documented in `deploy/.env.example`.
 
 ## Conventions
@@ -62,6 +62,7 @@ cartograph/
   cmd/api/            Go entry point: pages, sign-in, JSON API, migrations
   cmd/regions, cmd/places, cmd/fixture, cmd/seed, cmd/webpreview
   internal/
+    admin/            admin pages and actions (/admin)
     api/              JSON handlers, routing, middleware
     auth/             magic links, sessions, CSRF
     db/               queries (pgx), migrations runner, views source
@@ -82,4 +83,4 @@ cartograph/
 
 ## Data model
 
-The schema lives in `migrations/`; read it there, it is the truth. The core tables are `plots` (cell, first photo and surveyor, counts, region, place name, number), `photos` (variants as keys, position, taken/uploaded times, surveyor), `surveyors` and the auth tables, `regions` (country / province / district, boundaries, land cells, coverage), `places`, `plot_numbers`, `place_naming` and `place_overrides`, `featured`, and the empty gamification hooks (`points`, `tags`, `photo_tags`). Coverage per parent cell is computed on read; materialise later if it gets slow.
+The schema lives in `migrations/`; read it there, it is the truth. The core tables are `plots` (cell, first photo and surveyor, counts, region, place name, number), `photos` (variants as keys, position, taken/uploaded times, surveyor), `surveyors` and the auth tables, `regions` (country / province / district, boundaries, land cells, coverage), `places`, `plot_numbers`, `place_naming` and `place_overrides`, `featured`, the admin tables (`admin_actions`, `invitations`, `signup_refusals`; hidden photos and blocked Surveyors are columns on `photos` and `surveyors`, and public reads use the view `visible_photos`), and the empty gamification hooks (`points`, `tags`, `photo_tags`). Coverage per parent cell is computed on read; materialise later if it gets slow.

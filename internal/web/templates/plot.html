@@ -20,7 +20,7 @@
 
 <section class="minimap" aria-labelledby="map-h">
 <h2 id="map-h">Around this plot</h2>
-<div class="mapbox" data-minimap="plots" data-focus="{{$pl.Cell}}" data-cells="{{join (plotCells .) ","}}" data-paths="{{pathsFor (plotCells .) .Paths}}" data-surveyed="{{statuses .Surveyed .Neighbours}}">{{plotSVG .}}</div>
+<div class="mapbox" data-minimap="plots" data-focus="{{$pl.Cell}}" data-cells="{{join (plotCells .) ","}}" data-paths="{{pathsFor (plotCells .) .Paths}}" data-photos="{{photoCounts .PhotoCount .Neighbours}}">{{plotSVG .}}</div>
 <p class="note">Green plots have at least one photo. <a href="/map?cell={{$pl.Cell}}">Open on the map</a>.</p>
 </section>
 {{template "minimap-script"}}

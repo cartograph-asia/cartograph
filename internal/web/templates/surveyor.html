@@ -10,7 +10,7 @@
 
 {{if .PlotCells}}<section class="minimap" aria-labelledby="map-h">
 <h2 id="map-h" class="sr">Map</h2>
-<div class="mapbox" data-minimap="plots" data-cells="{{join .PlotCells ","}}" data-paths="{{pathsFor .PlotCells .PlotPaths}}">{{cellsSVG .PlotCells (printf "Outline of the plots %s surveyed." $s.Name)}}</div>
+<div class="mapbox" data-minimap="plots" data-cells="{{join .PlotCells ","}}" data-paths="{{pathsFor .PlotCells .PlotPaths}}" data-photos="{{photosFor .PlotCells .PlotPhotos}}">{{cellsSVG .PlotCells .PlotPhotos (printf "Outline of the plots %s surveyed." $s.Name)}}</div>
 <p class="note">{{count (len .PlotCells) "plot" "plots"}} surveyed by {{$s.Name}}.{{with .Bounds}} <a href="{{mapHash .}}">Open on the map</a>.{{end}}</p>
 </section>{{end}}
 

@@ -20,23 +20,29 @@ const maxSVGCells = 2000
 
 type svgCell struct {
 	ring  []h3.LatLng
-	class string // "s" surveyed, "b" blank, plus " f" for the focused plot
+	class string // "s s1" … "s s3" surveyed (by photo count), "b" blank, plus " f" for the focused plot
+}
+
+// photoClass is a cell's class by its photo count, in the three steps of
+// the /map page: 1 photo, 2–3, 4 or more.
+func photoClass(n int) string {
+	switch {
+	case n <= 0:
+		return "b"
+	case n == 1:
+		return "s s1"
+	case n <= 3:
+		return "s s2"
+	}
+	return "s s3"
 }
 
 // plotSVG draws a plot and its neighbours.
 func plotSVG(p *views.Plot) template.HTML {
-	cls := "b"
-	if p.Surveyed {
-		cls = "s"
-	}
-	cells := []svgCell{{class: cls + " f"}}
+	cells := []svgCell{{class: photoClass(p.PhotoCount) + " f"}}
 	cellIDs := []string{p.Plot.Cell}
 	for _, n := range p.Neighbours {
-		c := "b"
-		if n.Surveyed {
-			c = "s"
-		}
-		cells = append(cells, svgCell{class: c})
+		cells = append(cells, svgCell{class: photoClass(n.Photos)})
 		cellIDs = append(cellIDs, n.Cell)
 	}
 	surveyed := 0
@@ -52,14 +58,15 @@ func plotSVG(p *views.Plot) template.HTML {
 	return drawSVG(cellIDs, cells, label)
 }
 
-// cellsSVG draws a set of surveyed plots, e.g. a Surveyor's.
-func cellsSVG(ids []string, label string) template.HTML {
+// cellsSVG draws a set of surveyed plots, e.g. a Surveyor's, coloured by
+// their photo counts.
+func cellsSVG(ids []string, photos map[string]int, label string) template.HTML {
 	if len(ids) == 0 || len(ids) > maxSVGCells {
 		return ""
 	}
 	cells := make([]svgCell, len(ids))
-	for i := range cells {
-		cells[i].class = "s"
+	for i, id := range ids {
+		cells[i].class = photoClass(max(photos[id], 1))
 	}
 	return drawSVG(ids, cells, label)
 }

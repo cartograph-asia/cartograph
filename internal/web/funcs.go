@@ -22,29 +22,30 @@ const (
 
 func (rd *Renderer) funcs() template.FuncMap {
 	return template.FuncMap{
-		"asset":     rd.assets.url,
-		"abs":       rd.abs,
-		"img":       rd.img,
-		"absimg":    rd.absImg,
-		"srcset":    rd.srcset,
-		"minimap":   func() string { return rd.cfg.MinimapScript },
-		"when":      when,
-		"date":      date,
-		"iso":       iso,
-		"num":       num,
-		"count":     count,
-		"pct":       pct,
-		"bar":       bar,
-		"pageURL":   pageURL,
-		"dims":      dims,
-		"grid":      grid,
-		"join":      strings.Join,
-		"statuses":  statuses,
-		"plotSVG":   plotSVG,
-		"cellsSVG":  cellsSVG,
-		"mapHash":   mapHash,
-		"bounds":    boundsAttr,
-		"plotCells": func(p *views.Plot) []string { return neighbourCells(p.Plot.Cell, p.Neighbours) },
+		"asset":       rd.assets.url,
+		"abs":         rd.abs,
+		"img":         rd.img,
+		"absimg":      rd.absImg,
+		"srcset":      rd.srcset,
+		"minimap":     func() string { return rd.cfg.MinimapScript },
+		"when":        when,
+		"date":        date,
+		"iso":         iso,
+		"num":         num,
+		"count":       count,
+		"pct":         pct,
+		"bar":         bar,
+		"pageURL":     pageURL,
+		"dims":        dims,
+		"grid":        grid,
+		"join":        strings.Join,
+		"photoCounts": photoCounts,
+		"photosFor":   photosFor,
+		"plotSVG":     plotSVG,
+		"cellsSVG":    cellsSVG,
+		"mapHash":     mapHash,
+		"bounds":      boundsAttr,
+		"plotCells":   func(p *views.Plot) []string { return neighbourCells(p.Plot.Cell, p.Neighbours) },
 		// pathsFor is the link of each cell for data-paths, parallel to data-cells.
 		"pathsFor": func(cells []string, paths map[string]string) string {
 			out := make([]string, len(cells))
@@ -264,15 +265,22 @@ func pageURL(canonical string, n int) string {
 	return p + "?page=" + strconv.Itoa(n)
 }
 
-// statuses is "1,0,1" for the cells of a small map: the plot itself, then its neighbours.
-func statuses(self bool, ns []views.CellStatus) string {
+// photoCounts is "6,0,2" for the cells of a small map, the plot itself and
+// then its neighbours: their photo counts, 0 for a blank plot.
+func photoCounts(self int, ns []views.CellStatus) string {
 	b := make([]string, 0, len(ns)+1)
-	for _, s := range append([]views.CellStatus{{Surveyed: self}}, ns...) {
-		if s.Surveyed {
-			b = append(b, "1")
-		} else {
-			b = append(b, "0")
-		}
+	b = append(b, strconv.Itoa(self))
+	for _, s := range ns {
+		b = append(b, strconv.Itoa(s.Photos))
+	}
+	return strings.Join(b, ",")
+}
+
+// photosFor is the photo count of each cell for data-photos, parallel to data-cells.
+func photosFor(cells []string, n map[string]int) string {
+	b := make([]string, len(cells))
+	for i, c := range cells {
+		b[i] = strconv.Itoa(n[c])
 	}
 	return strings.Join(b, ",")
 }

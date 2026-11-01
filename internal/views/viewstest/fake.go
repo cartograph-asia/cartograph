@@ -297,6 +297,10 @@ func (f *Fake) Surveyor(ctx context.Context, name string, page int) (*views.Surv
 		}
 	}
 	out.PlotPaths = paths(out.PlotCells)
+	out.PlotPhotos = map[string]int{}
+	for _, c := range out.PlotCells {
+		out.PlotPhotos[c] = len(f.d.byPlot[plotIndex(c)])
+	}
 	for _, c := range out.PlotCells {
 		pl := plots[plotIndex(c)]
 		if out.Bounds == nil {
@@ -370,7 +374,8 @@ func (f *Fake) Plot(ctx context.Context, cell string) (*views.Plot, error) {
 	}
 	if pi == 0 {
 		for _, n := range plots[1:7] {
-			out.Neighbours = append(out.Neighbours, views.CellStatus{Cell: n.ref.Cell, Surveyed: len(f.d.byPlot[plotIndex(n.ref.Cell)]) > 0})
+			k := len(f.d.byPlot[plotIndex(n.ref.Cell)])
+			out.Neighbours = append(out.Neighbours, views.CellStatus{Cell: n.ref.Cell, Surveyed: k > 0, Photos: k})
 		}
 	}
 	cells := []string{pl.ref.Cell}

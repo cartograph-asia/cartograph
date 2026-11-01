@@ -82,6 +82,12 @@ export class Panel {
     this.form.hidden = name === null;
     this.signinPrompt.hidden = name !== null;
     this.surveyingAs.textContent = name ? `Surveying as ${name}` : '';
+    // The masthead's account link, as on the pages.
+    const me = document.getElementById('me-link') as HTMLAnchorElement | null;
+    if (me) {
+      me.textContent = name ?? 'Sign in';
+      me.href = name ? `/surveyor/${encodeURIComponent(name)}` : '/signin?next=/map';
+    }
   }
 
   get isOpen(): boolean {
@@ -143,16 +149,32 @@ export class Panel {
     this.info.replaceChildren(el('p', 'muted', 'Loading…'));
     this.formTitle.textContent = 'Add a photo';
     this.show();
-    if (focus) $<HTMLButtonElement>('panel-close').focus();
+    if (focus) this.title.focus();
     try {
       const detail = await this.api.getPlot(cell);
       if (token !== this.token) return;
-      if (detail?.name) this.title.textContent = detail.name;
+      if (detail?.name) this.setTitle(detail.name);
       this.renderInfo(cell, detail);
     } catch (err) {
       if (token !== this.token) return;
       this.info.replaceChildren(el('p', 'error', `Could not load this plot: ${message(err)}`));
     }
+  }
+
+  /**
+   * The plot name, broken after its dot like the pages' headings: the last
+   * word of the place stays with the dot, and province and number stay
+   * together. (A nowrap span holding only " ·" is not enough; Chrome still
+   * breaks before it.)
+   */
+  private setTitle(name: string): void {
+    const [local, province] = name.split(' · ', 2);
+    if (province === undefined) {
+      this.title.textContent = name;
+      return;
+    }
+    const cut = local.lastIndexOf(' ') + 1;
+    this.title.replaceChildren(local.slice(0, cut), el('span', 'nb', `${local.slice(cut)} ·`), ' ', el('span', 'nb', province));
   }
 
   private renderInfo(cell: string, d: PlotDetail | null): void {
@@ -163,7 +185,7 @@ export class Panel {
       if (!v) return;
       meta.append(el('dt', '', k), el('dd', '', v));
     };
-    const pill = el('span', d ? 'pill surveyed' : 'pill blank', d ? 'Surveyed' : 'Blank');
+    const pill = el('span', d ? 'tag surveyed' : 'tag blank', d ? 'Surveyed' : 'Blank');
     nodes.push(pill);
     if (d) {
       row('First surveyor', d.first_surveyor);

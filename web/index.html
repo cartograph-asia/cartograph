@@ -3,23 +3,43 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#f6f5f2" />
+    <meta name="theme-color" content="#F6F2EA" />
     <meta name="description" content="Cartograph: a photo for every plot of land." />
     <title>Map · Cartograph.asia</title>
     <link rel="icon" type="image/svg+xml" href="/logo.svg" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   </head>
-  <body>
-    <header class="topbar">
-      <h1 class="brand"><a href="/"><img class="brand-logo" src="/logo.svg" alt="" width="24" height="24" />Cartograph<span class="brand-tld">.asia</span></a></h1>
-      <span class="mock-badge" aria-hidden="true">mock data</span>
-    </header>
+  <body data-layout="a">
+    <!-- The page masthead (internal/web/templates/layout.html) and the map's
+         key. Where they stand depends on the layout (styles.css): a bar above
+         the map (a), a column beside it (b) or labels on it (c). -->
+    <div class="chrome">
+      <header class="mast">
+        <div class="brand">
+          <a class="mark" href="/"><img src="/logo.svg" alt="" width="56" height="56" /><span class="wordmark">Cartograph<span class="tld">.asia</span></span></a>
+          <p class="claim">A photo for every plot of land in Asia.</p>
+        </div>
+        <nav class="acts" aria-label="Account">
+          <button id="open-upload" class="go" type="button">Upload a photo <span aria-hidden="true">→</span></button>
+          <a id="me-link" href="/signin?next=/map">Sign in</a>
+          <span class="mock-badge" aria-hidden="true">mock data</span>
+        </nav>
+      </header>
+
+      <section class="key" aria-label="Map key">
+        <p class="kicker">Map key</p>
+        <ul class="legend">
+          <li><span class="sw blank" aria-hidden="true"></span>Blank plot</li>
+          <li><span class="sw s1" aria-hidden="true"></span>1 photo</li>
+          <li><span class="sw s2" aria-hidden="true"></span>2–3 photos</li>
+          <li><span class="sw s3" aria-hidden="true"></span>4 or more</li>
+        </ul>
+        <p class="about">Each plot is about 0.74 km². The first photo taken inside a plot claims it. <a href="/about/plots">About the plots</a></p>
+        <p id="map-status" class="map-status" role="status" aria-live="polite" hidden></p>
+      </section>
+    </div>
 
     <main id="map" aria-label="Map of plots"></main>
-
-    <p id="map-status" class="map-status" role="status" aria-live="polite" hidden></p>
-
-    <button id="open-upload" class="primary fab" type="button">Upload photo</button>
 
     <aside id="panel" class="panel" aria-labelledby="panel-title" aria-hidden="true" inert>
       <div class="panel-head">
@@ -27,7 +47,7 @@
         <h2 id="panel-title" tabindex="-1">Plot</h2>
         <button id="panel-close" class="icon" type="button" aria-label="Close panel">
           <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-            <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+            <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.6" stroke-linecap="square" />
           </svg>
         </button>
       </div>
@@ -35,11 +55,11 @@
         <section id="plot-info" class="plot-info" aria-live="polite"></section>
 
         <p id="signin-prompt" class="signin-prompt" hidden>
-          <a class="primary" href="/signin?next=/map">Sign in to survey</a>
+          <a class="go" href="/signin?next=/map">Sign in to survey <span aria-hidden="true">→</span></a>
         </p>
 
         <form id="upload-form" class="upload" novalidate hidden>
-          <h3 id="upload-title">Add a photo</h3>
+          <h3 id="upload-title" class="kicker">Add a photo</h3>
           <p id="surveying-as" class="hint"></p>
           <div class="field">
             <label for="photo-input">Photo</label>
@@ -63,7 +83,7 @@
     <dialog id="lightbox" class="lightbox" aria-label="Photo">
       <button id="lightbox-close" class="icon" type="button" aria-label="Close photo">
         <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
-          <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+          <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.6" stroke-linecap="square" />
         </svg>
       </button>
       <figure>

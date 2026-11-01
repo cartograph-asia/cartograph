@@ -1,26 +1,53 @@
+/* The /map page in the pages' look (docs/DESIGN_BRIEF.md, round 3): the
+   tokens, masthead and buttons of internal/web/static/style.css, no
+   shadows, no rounded pills. Three layouts are compared on
+   body[data-layout]: a (masthead bar above the map, key in a strip below),
+   b (masthead and key in a column beside the map), c (the map full-bleed,
+   masthead and key as labels on it). */
+
 :root {
-  --bg: #f6f5f2;
-  --surface: #ffffff;
-  --text: #22272b;
-  --muted: #646b70;
-  --line: #dedbd4;
-  --green: #2e8b57;
-  --green-dark: #23704a;
-  --green-soft: #e3f1e8;
-  --error: #a33a2c;
-  --error-soft: #fbeae7;
-  --radius: 12px;
-  --shadow: 0 6px 24px rgba(30, 35, 40, 0.14);
-  --panel-w: 400px;
+  /* Colour roles, as on the pages. */
+  --paper: #f6f2ea;
+  --paper-deep: #ece6da;
+  --paper-light: #fffdf8;
+  --ink: #2f3a3f;
+  --ink-muted: #5d676b;
+  --ink-line: rgba(47, 58, 63, 0.32);
+  --rule: rgba(47, 58, 63, 0.16);
+  --rule-strong: #2f3a3f;
+  --action: #2e7d4f;
+  --action-dark: #1d5e3a;
+  --data: #2e7d4f;
+  --data-mid: #5fa57a;
+  --data-light: #a8cdb3;
+  --error: #9b2c1f;
+
+  --font-text: Charter, 'Bitstream Charter', 'Sitka Text', Cambria, 'Noto Serif', Georgia, serif;
+  --display-weight: 700;
+  --display-tracking: -0.02em;
+  --step-title: 1.375rem;
+  --step-body: 1rem;
+  --step-meta: 0.875rem;
+  --step-small: 0.8125rem;
+
+  --s-xs: 0.25rem;
+  --s-s: 0.5rem;
+  --s-m: 1rem;
+  --s-l: 2rem;
+
   --tap: 44px;
+  --panel-w: 26rem;
+  --side-w: 22rem;
+  --mast-h: 3.5rem;
+
   color-scheme: light;
-  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  font-size: 16px;
-  line-height: 1.45;
-  color: var(--text);
+  font: var(--step-body) / 1.5 var(--font-text);
+  color: var(--ink);
 }
 
-* {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
 }
 
@@ -29,122 +56,162 @@ body {
   margin: 0;
   height: 100%;
   overflow: hidden;
-  background: var(--bg);
+  background: var(--paper);
 }
 
+/* One grid for every layout; the chrome's children take part in it. */
+body {
+  display: grid;
+  height: 100dvh;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+.chrome {
+  display: contents;
+}
 #map {
-  position: fixed;
-  inset: 0;
+  grid-row: 2;
+  grid-column: 1;
+  min-height: 0;
+  background: #efe9dd;
 }
 
-/* --- top bar ---------------------------------------------------------- */
+a {
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-color: var(--ink-line);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.18em;
+}
+a:hover,
+a:focus-visible {
+  text-decoration-color: currentColor;
+}
+:focus-visible {
+  outline: 2px solid var(--action);
+  outline-offset: 2px;
+}
 
-.topbar {
-  position: fixed;
-  top: 12px;
-  left: 12px;
-  z-index: 2;
+.kicker {
+  margin: 0 0 var(--s-s);
+  font-size: var(--step-meta);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  font-variant: all-small-caps;
+  color: var(--ink-muted);
+}
+
+/* --- masthead: the pages' mark, claim and text actions ---------------- */
+
+.mast {
+  grid-row: 1;
+  grid-column: 1;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 14px;
-  background: rgba(255, 255, 255, 0.92);
-  border-radius: 999px;
-  box-shadow: 0 1px 6px rgba(30, 35, 40, 0.12);
-  pointer-events: none;
+  justify-content: space-between;
+  gap: var(--s-m);
+  height: var(--mast-h);
+  padding: 0 var(--s-m);
+  background: var(--paper);
+  border-bottom: 1px solid var(--rule);
+  z-index: 3;
 }
-
 .brand {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: var(--s-s);
   align-items: center;
-  gap: 8px;
-  margin: 0;
-  font-size: 1rem;
-  font-weight: 650;
-  letter-spacing: 0.01em;
+  min-width: 0;
 }
-
-.brand a {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: inherit;
+.mark {
+  display: contents;
+  color: var(--ink);
   text-decoration: none;
 }
-
-/* The wordmark's ".asia" suffix: smaller, same baseline, muted. */
-.brand-tld {
+.mark img {
+  grid-row: span 2;
+  width: 32px;
+  height: 32px;
+}
+.wordmark {
+  font-weight: var(--display-weight);
+  letter-spacing: var(--display-tracking);
+  font-size: 1.3rem;
+  line-height: 1;
+  white-space: nowrap;
+}
+.tld {
   font-size: 0.6em;
   letter-spacing: 0;
-  color: var(--muted);
+  color: var(--ink-muted);
 }
-
-.brand-logo {
-  display: block;
-  width: 24px;
-  height: 24px;
-  margin-left: -6px;
+.claim {
+  display: none;
+  margin: var(--s-xs) 0 0;
+  font-size: var(--step-meta);
+  color: var(--ink-muted);
+}
+.acts {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-s) var(--s-m);
+  font-size: var(--step-meta);
+  white-space: nowrap;
+}
+.acts a {
+  text-decoration: none;
+}
+.acts a:hover,
+.acts a:focus-visible {
+  text-decoration: underline;
 }
 
 .mock-badge {
   display: none;
-  font-size: 0.75rem;
-  color: var(--muted);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 0 8px;
+  font-size: var(--step-small);
+  color: var(--ink-muted);
+  font-variant: all-small-caps;
+  letter-spacing: 0.06em;
 }
-
 body.mock .mock-badge {
-  display: inline-block;
-}
-
-.map-status {
-  position: fixed;
-  left: 12px;
-  bottom: 28px;
-  z-index: 2;
-  margin: 0;
-  max-width: calc(100vw - 24px);
-  padding: 6px 12px;
-  font-size: 0.875rem;
-  color: var(--muted);
-  background: rgba(255, 255, 255, 0.92);
-  border-radius: 999px;
-  box-shadow: 0 1px 6px rgba(30, 35, 40, 0.12);
-}
-
-.map-status[data-kind='error'] {
-  color: var(--error);
+  display: inline;
 }
 
 /* --- buttons ---------------------------------------------------------- */
 
 button {
   font: inherit;
+  color: inherit;
   cursor: pointer;
 }
 
-button:focus-visible,
-input:focus-visible {
-  outline: 3px solid rgba(46, 139, 87, 0.45);
-  outline-offset: 2px;
+/* The one primary action: green text with an arrow, not a filled block. */
+.go {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--action);
+  font-weight: 700;
+  text-decoration: none;
+}
+.go:hover,
+.go:focus-visible {
+  text-decoration: underline;
 }
 
+/* Form submit: an action, so green, filled, square like the pages' forms. */
 .primary {
   min-height: var(--tap);
-  padding: 10px 20px;
+  padding: 0.6rem 1.1rem;
   border: 0;
-  border-radius: 999px;
-  background: var(--green);
-  color: #fff;
-  font-weight: 600;
+  border-radius: 2px;
+  background: var(--action);
+  color: var(--paper);
+  font-weight: 700;
 }
-
 .primary:hover {
-  background: var(--green-dark);
+  background: var(--ink);
 }
-
 .primary:disabled {
   opacity: 0.6;
   cursor: progress;
@@ -152,24 +219,22 @@ input:focus-visible {
 
 .secondary {
   min-height: var(--tap);
-  padding: 8px 16px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--surface);
-  color: var(--text);
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--ink-line);
+  border-radius: 2px;
+  background: transparent;
 }
-
 .secondary:hover {
-  border-color: #c4c0b7;
+  border-color: var(--ink);
 }
 
 .link {
   min-height: var(--tap);
-  padding: 0 8px;
+  padding: 0 var(--s-s);
   border: 0;
   background: none;
-  color: var(--green-dark);
   text-decoration: underline;
+  text-decoration-color: var(--ink-line);
 }
 
 .icon {
@@ -178,26 +243,84 @@ input:focus-visible {
   width: var(--tap);
   height: var(--tap);
   border: 0;
-  border-radius: 50%;
   background: transparent;
-  color: var(--muted);
+  color: var(--ink-muted);
 }
-
 .icon:hover {
-  background: rgba(0, 0, 0, 0.06);
-  color: var(--text);
+  color: var(--ink);
 }
 
-.fab {
-  position: fixed;
-  right: 16px;
-  bottom: 32px;
-  z-index: 3;
-  box-shadow: var(--shadow);
-}
+/* --- key: legend, a line about plots, the status line ------------------ */
 
-body.panel-open .fab {
+.key {
+  grid-row: 3;
+  grid-column: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s-xs) var(--s-l);
+  padding: var(--s-s) var(--s-m);
+  background: var(--paper);
+  border-top: 1px solid var(--rule);
+  font-size: var(--step-meta);
+  z-index: 2;
+}
+.key .kicker,
+.key .about {
   display: none;
+}
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-xs) var(--s-m);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--ink-muted);
+}
+.legend li {
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+  white-space: nowrap;
+}
+.sw {
+  width: 0.95em;
+  height: 0.95em;
+  /* the plot's own shape */
+  clip-path: polygon(25% 3%, 75% 3%, 100% 50%, 75% 97%, 25% 97%, 0 50%);
+}
+.sw.blank {
+  background: var(--ink-line);
+  position: relative;
+}
+.sw.blank::after {
+  content: '';
+  position: absolute;
+  inset: 1px;
+  clip-path: inherit;
+  background: var(--paper);
+}
+.sw.s1 {
+  background: var(--data-light);
+}
+.sw.s2 {
+  background: var(--data-mid);
+}
+.sw.s3 {
+  background: var(--data);
+}
+.about {
+  margin: 0;
+  color: var(--ink-muted);
+}
+.map-status {
+  margin: 0 0 0 auto;
+  color: var(--ink);
+  font-variant-numeric: lining-nums tabular-nums;
+}
+.map-status[data-kind='error'] {
+  color: var(--error);
 }
 
 /* --- panel ------------------------------------------------------------ */
@@ -212,45 +335,40 @@ body.panel-open .fab {
   max-width: 100vw;
   display: flex;
   flex-direction: column;
-  background: var(--surface);
-  box-shadow: var(--shadow);
+  background: var(--paper);
+  border-left: 1px solid var(--rule);
   transform: translateX(105%);
   transition: transform 220ms ease;
 }
-
 .panel.open {
   transform: none;
 }
 
-/* Keep zoom buttons and the map attribution visible beside the open panel
-   (desktop only; on mobile the panel is a bottom sheet). */
-@media (min-width: 768px) {
-  .maplibregl-ctrl-top-right,
-  .maplibregl-ctrl-bottom-right {
-    transition: right 220ms ease;
-  }
-
-  body.panel-open .maplibregl-ctrl-top-right,
-  body.panel-open .maplibregl-ctrl-bottom-right {
-    right: var(--panel-w);
-  }
-}
-
 .panel-head {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 8px 8px 20px;
-  border-bottom: 1px solid var(--line);
+  align-items: flex-start;
+  gap: var(--s-s);
+  padding: var(--s-m) var(--s-s) var(--s-s) var(--s-m);
+  border-bottom: 2px solid var(--rule-strong);
+  margin: 0 var(--s-m);
+  padding-left: 0;
 }
-
+/* Plot names break after the dot, as on the pages. */
+.nb {
+  white-space: nowrap;
+}
 .panel-head h2 {
   flex: 1;
-  margin: 0;
-  font-size: 1.125rem;
+  margin: var(--s-s) 0 0;
+  font-size: var(--step-title);
+  font-weight: var(--display-weight);
+  letter-spacing: -0.01em;
+  line-height: 1.15;
   outline: none;
 }
-
+.panel-head .icon {
+  margin-right: calc(-1 * var(--s-s));
+}
 .grabber {
   display: none;
 }
@@ -258,90 +376,73 @@ body.panel-open .fab {
 .panel-body {
   flex: 1;
   overflow-y: auto;
-  padding: 16px 20px 24px;
+  padding: var(--s-m) var(--s-m) var(--s-l);
   overscroll-behavior: contain;
 }
-
 .plot-info {
-  margin-bottom: 20px;
+  margin-bottom: var(--s-l);
 }
 
-.pill {
-  display: inline-block;
-  padding: 2px 10px;
-  border-radius: 999px;
-  font-size: 0.8125rem;
-  font-weight: 600;
+/* Surveyed is data, so green; blank is meta. Small caps, like the "first" tag. */
+.tag {
+  font-size: var(--step-meta);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  font-variant: all-small-caps;
 }
-
-.pill.surveyed {
-  background: var(--green-soft);
-  color: var(--green-dark);
+.tag.surveyed {
+  color: var(--data);
 }
-
-.pill.blank {
-  background: #efede8;
-  color: var(--muted);
+.tag.blank {
+  color: var(--ink-muted);
 }
 
 .meta {
   display: grid;
   grid-template-columns: max-content 1fr;
-  gap: 4px 16px;
-  margin: 12px 0;
-  font-size: 0.9375rem;
+  gap: var(--s-xs) var(--s-m);
+  margin: var(--s-s) 0;
+  font-size: var(--step-meta);
 }
-
 .meta dt {
-  color: var(--muted);
+  color: var(--ink-muted);
 }
-
 .meta dd {
   margin: 0;
   min-width: 0;
   overflow-wrap: anywhere;
 }
-
-.meta code {
-  font-size: 0.8125rem;
-}
-
 .muted {
-  color: var(--muted);
+  color: var(--ink-muted);
 }
-
 /* The plot's H3 index: the one place it is shown, small and quiet. */
 .details {
-  margin: 4px 0 0;
-  color: var(--muted);
-  font-size: 0.75rem;
+  margin: var(--s-xs) 0 0;
+  color: var(--ink-muted);
+  font-size: var(--step-small);
   overflow-wrap: anywhere;
 }
-
 .error {
   color: var(--error);
 }
 
 .thumbs {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
-  gap: 8px;
-  margin: 12px 0 0;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--s-s);
+  margin: var(--s-m) 0 0;
   padding: 0;
   list-style: none;
 }
-
 .thumb {
   display: block;
   width: 100%;
-  aspect-ratio: 1;
+  aspect-ratio: 4 / 3;
   padding: 0;
   border: 0;
-  border-radius: 8px;
   overflow: hidden;
-  background: #eceae5;
+  background: var(--paper-deep);
 }
-
 .thumb img {
   display: block;
   width: 100%;
@@ -354,106 +455,74 @@ body.panel-open .fab {
 .upload {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  padding-top: 16px;
-  border-top: 1px solid var(--line);
+  gap: var(--s-m);
+  padding-top: var(--s-m);
+  border-top: 1px solid var(--rule);
 }
-
 .upload[hidden],
 .signin-prompt[hidden] {
   display: none;
 }
-
+.upload .kicker {
+  margin: 0;
+}
 .signin-prompt {
   margin: 0;
-  padding-top: 16px;
-  border-top: 1px solid var(--line);
+  padding-top: var(--s-m);
+  border-top: 1px solid var(--rule);
 }
-
-.signin-prompt a {
-  display: inline-flex;
-  align-items: center;
-  text-decoration: none;
-}
-
-.upload h3 {
-  margin: 0;
-  font-size: 1rem;
-}
-
 .field {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--s-xs);
 }
-
 .field label {
-  font-weight: 600;
-  font-size: 0.9375rem;
+  font-weight: 700;
 }
-
-.field input[type='text'] {
-  min-height: var(--tap);
-  padding: 8px 12px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  font: inherit;
-}
-
 .field input[type='file'] {
   min-height: var(--tap);
   font: inherit;
-  font-size: 0.9375rem;
+  font-size: var(--step-meta);
 }
-
 .field input[type='file']::file-selector-button {
   min-height: var(--tap);
-  margin-right: 12px;
-  padding: 8px 16px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--surface);
+  margin-right: var(--s-m);
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--ink-line);
+  border-radius: 2px;
+  background: var(--paper-light);
   font: inherit;
   cursor: pointer;
 }
-
 .hint {
   margin: 0;
-  font-size: 0.8125rem;
-  color: var(--muted);
+  font-size: var(--step-meta);
+  color: var(--ink-muted);
 }
-
 .hint:empty {
   display: none;
 }
-
 .location-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--s-s);
 }
-
 .form-status {
   margin: 0;
-  font-size: 0.9375rem;
 }
-
 .form-status:empty {
   display: none;
 }
-
+.form-status[data-kind='error'],
+.form-status[data-kind='ok'] {
+  padding-left: var(--s-m);
+  border-left: 2px solid currentColor;
+}
 .form-status[data-kind='error'] {
-  padding: 8px 12px;
-  border-radius: 8px;
-  background: var(--error-soft);
   color: var(--error);
 }
-
 .form-status[data-kind='ok'] {
-  padding: 8px 12px;
-  border-radius: 8px;
-  background: var(--green-soft);
-  color: var(--green-dark);
+  color: var(--action);
 }
 
 /* --- lightbox --------------------------------------------------------- */
@@ -463,91 +532,322 @@ body.panel-open .fab {
   max-height: 94vh;
   padding: 0;
   border: 0;
-  border-radius: var(--radius);
-  background: #111;
-  color: #eee;
+  background: var(--ink);
+  color: var(--paper);
   overflow: hidden;
 }
-
 .lightbox::backdrop {
-  background: rgba(10, 12, 14, 0.78);
+  background: rgba(30, 37, 40, 0.82);
 }
-
 .lightbox figure {
   margin: 0;
 }
-
 .lightbox img {
   display: block;
   max-width: min(96vw, 1400px);
   max-height: calc(94vh - 40px);
   object-fit: contain;
 }
-
 .lightbox figcaption {
-  padding: 8px 14px;
-  font-size: 0.875rem;
+  padding: var(--s-s) var(--s-m);
+  font-size: var(--step-meta);
 }
-
 .lightbox .icon {
   position: absolute;
-  top: 8px;
-  right: 8px;
-  color: #fff;
-  background: rgba(0, 0, 0, 0.45);
+  top: var(--s-s);
+  right: var(--s-s);
+  color: var(--paper);
+  background: rgba(30, 37, 40, 0.6);
 }
 
-/* --- narrow screens: bottom sheet --------------------------------------- */
+/* --- MapLibre's own controls, in the page's look ----------------------- */
+
+.maplibregl-ctrl-group,
+.maplibregl-ctrl-group:not(:empty) {
+  border-radius: 0;
+  box-shadow: none;
+  border: 1px solid var(--ink-line);
+  background: var(--paper);
+}
+.maplibregl-ctrl-group button {
+  width: 36px;
+  height: 36px;
+}
+.maplibregl-ctrl-group button + button {
+  border-top: 1px solid var(--rule);
+}
+.maplibregl-ctrl-group button:focus:first-child,
+.maplibregl-ctrl-group button:focus:last-child {
+  border-radius: 0;
+}
+.maplibregl-ctrl-attrib,
+.maplibregl-ctrl.maplibregl-ctrl-attrib {
+  font: var(--step-small) / 1.4 var(--font-text);
+  color: var(--ink-muted);
+  background: rgba(246, 242, 234, 0.88);
+}
+.maplibregl-ctrl-attrib a {
+  color: var(--ink-muted);
+}
+.maplibregl-ctrl-attrib.maplibregl-compact {
+  border-radius: 0;
+  min-height: 24px;
+}
+.maplibregl-ctrl-attrib.maplibregl-compact-show {
+  padding: 2px 28px 2px 8px;
+}
+.maplibregl-ctrl-attrib-button {
+  border-radius: 0;
+  background-color: transparent;
+}
+
+/* --- layout a: masthead bar above, key strip below ---------------------- */
+
+@media (min-width: 768px) {
+  :root {
+    --mast-h: 4.5rem;
+  }
+  .mast {
+    padding: 0 var(--s-l);
+  }
+  .mark img {
+    width: 40px;
+    height: 40px;
+  }
+  .wordmark {
+    font-size: 1.75rem;
+    align-self: end;
+  }
+  .claim {
+    display: block;
+    align-self: start;
+  }
+  .acts {
+    font-size: var(--step-body);
+  }
+  .key {
+    padding: var(--s-s) var(--s-l);
+  }
+  .key .about {
+    display: block;
+  }
+  body[data-layout='a'] .panel {
+    top: var(--mast-h);
+  }
+  body[data-layout='a'] .panel-head h2 {
+    margin-top: 0;
+  }
+
+  /* Keep zoom buttons and the attribution visible beside the open panel. */
+  .maplibregl-ctrl-top-right,
+  .maplibregl-ctrl-bottom-right {
+    transition: right 220ms ease;
+  }
+  body:not([data-layout='b']).panel-open .maplibregl-ctrl-top-right,
+  body:not([data-layout='b']).panel-open .maplibregl-ctrl-bottom-right {
+    right: var(--panel-w);
+  }
+}
+
+/* --- layout b: a column beside the map, like an atlas page ------------- */
+
+@media (min-width: 768px) {
+  body[data-layout='b'] {
+    grid-template-columns: var(--side-w) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+  }
+  body[data-layout='b'] .chrome {
+    grid-row: 1;
+    grid-column: 1;
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-l);
+    padding: var(--s-l);
+    border-right: 1px solid var(--rule);
+    overflow-y: auto;
+  }
+  body[data-layout='b'] #map {
+    grid-row: 1;
+    grid-column: 2;
+  }
+  body[data-layout='b'] .mast {
+    flex-direction: column;
+    align-items: flex-start;
+    height: auto;
+    padding: 0 0 var(--s-l);
+    gap: var(--s-l);
+    border-bottom: 2px solid var(--rule-strong);
+  }
+  body[data-layout='b'] .brand {
+    grid-template-columns: 1fr;
+    row-gap: var(--s-s);
+  }
+  body[data-layout='b'] .mark img {
+    grid-row: auto;
+    width: 56px;
+    height: 56px;
+  }
+  body[data-layout='b'] .wordmark {
+    font-size: 2rem;
+  }
+  body[data-layout='b'] .claim {
+    margin: 0;
+    font-size: var(--step-body);
+  }
+  body[data-layout='b'] .acts {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--s-s);
+  }
+  body[data-layout='b'] .key {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--s-m);
+    padding: 0;
+    border: 0;
+    background: none;
+  }
+  body[data-layout='b'] .key .kicker {
+    display: block;
+    margin: 0;
+    padding-bottom: var(--s-xs);
+    border-bottom: 1px solid var(--rule);
+  }
+  body[data-layout='b'] .legend {
+    flex-direction: column;
+    gap: var(--s-s);
+    font-size: var(--step-body);
+    color: var(--ink);
+  }
+  body[data-layout='b'] .sw {
+    width: 1.1em;
+    height: 1.1em;
+  }
+  body[data-layout='b'] .map-status {
+    margin: 0;
+    padding-top: var(--s-s);
+    border-top: 1px solid var(--rule);
+  }
+  /* The panel takes the column's place instead of covering the map. */
+  body[data-layout='b'] .panel {
+    left: 0;
+    right: auto;
+    width: var(--side-w);
+    border-left: 0;
+    border-right: 1px solid var(--rule);
+    transform: translateX(-105%);
+  }
+  body[data-layout='b'] .panel.open {
+    transform: none;
+  }
+}
+
+/* --- layout c: the map full-bleed, masthead and key as labels ----------- */
+
+body[data-layout='c'] #map {
+  grid-row: 1 / -1;
+}
+body[data-layout='c'] .mast,
+body[data-layout='c'] .key {
+  position: fixed;
+  z-index: 2;
+  background: rgba(246, 242, 234, 0.94);
+  border: 1px solid var(--ink-line);
+}
+/* Phones: one label across the top, the key across the bottom. */
+body[data-layout='c'] .mast {
+  top: var(--s-s);
+  left: var(--s-s);
+  right: var(--s-s);
+  height: 3rem;
+  padding: 0 var(--s-m) 0 var(--s-s);
+}
+body[data-layout='c'] .key {
+  left: var(--s-s);
+  right: var(--s-s);
+  bottom: var(--s-l);
+  padding: var(--s-s) var(--s-m);
+}
+body[data-layout='c'] .maplibregl-ctrl-top-right {
+  top: calc(3rem + var(--s-s));
+}
+/* Wider: the mark top left, the actions top right, the key bottom left. */
+@media (min-width: 768px) {
+  body[data-layout='c'] .mast {
+    display: contents;
+  }
+  body[data-layout='c'] .brand,
+  body[data-layout='c'] .acts {
+    position: fixed;
+    z-index: 2;
+    top: var(--s-l);
+    background: rgba(246, 242, 234, 0.94);
+    border: 1px solid var(--ink-line);
+  }
+  body[data-layout='c'] .brand {
+    left: var(--s-l);
+    padding: var(--s-s) var(--s-m) var(--s-s) var(--s-s);
+  }
+  body[data-layout='c'] .acts {
+    right: var(--s-l);
+    height: 2.75rem;
+    align-items: center;
+    padding: 0 var(--s-m);
+  }
+  body[data-layout='c'] .key {
+    left: var(--s-l);
+    right: auto;
+    bottom: var(--s-l);
+    max-width: 30rem;
+    flex-direction: column;
+    gap: var(--s-s);
+  }
+  body[data-layout='c'] .map-status {
+    margin: 0;
+  }
+  body[data-layout='c'] .maplibregl-ctrl-top-right {
+    top: calc(2.75rem + var(--s-l));
+    right: calc(var(--s-l) - 10px);
+  }
+}
+
+/* --- narrow screens: the panel is a bottom sheet ----------------------- */
 
 @media (max-width: 767px) {
+  .acts .mock-badge {
+    display: none;
+  }
+  .map-status {
+    margin: 0;
+    flex-basis: 100%;
+  }
   .panel {
     top: auto;
     left: 0;
     width: 100%;
     max-height: 78dvh;
-    border-radius: 16px 16px 0 0;
+    border-left: 0;
+    border-top: 1px solid var(--ink-line);
     transform: translateY(105%);
     padding-bottom: env(safe-area-inset-bottom);
   }
-
   .panel.open {
     transform: none;
   }
-
   .panel-head {
     position: relative;
-    padding-top: 14px;
+    padding-top: var(--s-m);
   }
-
   .grabber {
     display: block;
     position: absolute;
     top: 6px;
     left: 50%;
     width: 40px;
-    height: 4px;
+    height: 3px;
     margin-left: -20px;
-    border-radius: 2px;
-    background: var(--line);
+    background: var(--ink-line);
   }
-
-  .fab {
-    left: 50%;
-    right: auto;
-    bottom: calc(40px + env(safe-area-inset-bottom));
-    transform: translateX(-50%);
-    min-width: 200px;
-    min-height: 52px;
-    font-size: 1.0625rem;
-  }
-
-  .map-status {
-    bottom: calc(104px + env(safe-area-inset-bottom));
-    left: 50%;
-    transform: translateX(-50%);
-    white-space: nowrap;
-  }
-
   .upload .primary {
     min-height: 52px;
   }

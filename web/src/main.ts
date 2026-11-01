@@ -12,6 +12,19 @@ import { Panel } from './panel';
 import { baseStyle } from './style';
 
 setWorkerUrl(workerUrl);
+
+// Layout variants for design review (docs/design/round-3): ?layout=a|b|c,
+// remembered for the session. a is the default until Adrian picks one.
+const LAYOUTS = ['a', 'b', 'c'];
+const asked = new URLSearchParams(location.search).get('layout');
+let layout = 'a';
+try {
+  if (asked && LAYOUTS.includes(asked)) sessionStorage.setItem('map-layout', asked);
+  layout = sessionStorage.getItem('map-layout') ?? layout;
+} catch {
+  if (asked && LAYOUTS.includes(asked)) layout = asked;
+}
+document.body.dataset.layout = layout;
 addProtocol('pmtiles', new Protocol().tile);
 
 const api = await loadApi();
@@ -114,9 +127,26 @@ const panel = new Panel(api, {
 
 const panelEl = document.getElementById('panel')!;
 
+/**
+ * How much of the map the open panel covers: a width along the right edge,
+ * or a height along the bottom (the sheet on phones). Nothing where the
+ * panel stands beside the map (layout b). Layout positions ignore the
+ * panel's slide transform, so this is right while it is still moving in.
+ */
+function panelCover(): { x: number; y: number } {
+  const m = map.getContainer().getBoundingClientRect();
+  const left = panelEl.offsetLeft;
+  const top = panelEl.offsetTop;
+  const w = Math.max(0, Math.min(m.right, left + panelEl.offsetWidth) - Math.max(m.left, left));
+  const h = Math.max(0, Math.min(m.bottom, top + panelEl.offsetHeight) - Math.max(m.top, top));
+  if (!w || !h) return { x: 0, y: 0 };
+  return w >= m.width - 1 ? { x: 0, y: h } : { x: w, y: 0 };
+}
+
 /** Offset that centres a point in the part of the map the open panel does not cover. */
 function panelOffset(): [number, number] {
-  return innerWidth >= 768 ? [-panelEl.offsetWidth / 2, 0] : [0, -panelEl.offsetHeight / 2];
+  const c = panelCover();
+  return [-c.x / 2, -c.y / 2];
 }
 
 /** Move the map only if the cell would end up under the panel or off-screen. */
@@ -124,9 +154,10 @@ function revealCell(cell: string): void {
   const [lat, lng] = cellToLatLng(cell);
   const pt = map.project([lng, lat]);
   const margin = 48;
-  const wide = innerWidth >= 768;
-  const freeW = wide ? innerWidth - panelEl.offsetWidth : innerWidth;
-  const freeH = wide ? innerHeight : innerHeight - panelEl.offsetHeight;
+  const c = panelCover();
+  const box = map.getContainer();
+  const freeW = box.clientWidth - c.x;
+  const freeH = box.clientHeight - c.y;
   if (pt.x < margin || pt.y < margin || pt.x > freeW - margin || pt.y > freeH - margin) {
     map.easeTo({ center: [lng, lat], offset: panelOffset() });
   }
@@ -157,8 +188,10 @@ map.on('load', () => {
   addLayers(map);
   const cell = linkedCell();
   if (cell) {
-    // Drop the query so that a reload keeps the user's own view from the hash.
-    history.replaceState(null, '', location.pathname + location.hash);
+    // Drop the cell so that a reload keeps the user's own view from the hash.
+    const q = new URLSearchParams(location.search);
+    q.delete('cell');
+    history.replaceState(null, '', location.pathname + (q.size ? `?${q}` : '') + location.hash);
     const [lat, lng] = cellToLatLng(cell);
     select(cell);
     void panel.openPlot(cell);

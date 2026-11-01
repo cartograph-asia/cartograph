@@ -1,20 +1,27 @@
 {{define "content" -}}
-<p class="counters"><a href="/latest"><b>{{num .Counters.Plots}}</b> plots surveyed</a> · <a href="/latest"><b>{{num .Counters.Photos}}</b> photos</a> · <a href="/surveyors"><b>{{num .Counters.Surveyors}}</b> Surveyors</a> · <a href="/regions"><b>{{num .Counters.Regions}}</b> {{if eq .Counters.Regions 1}}region{{else}}regions{{end}} with activity</a></p>
+<section class="lead" aria-label="What Cartograph is">
+<p class="lede">Cartograph divides the land into plots of about 0.74 km². Surveyors photograph them; the first photo claims a plot, later photos add to its story. Every photo is open under CC BY-SA 4.0. <a href="/about">More about Cartograph</a></p>
+<ul class="figures">
+<li><a href="/latest"><b>{{num .Counters.Plots}}</b> plots surveyed</a></li>
+<li><a href="/latest"><b>{{num .Counters.Photos}}</b> photos</a></li>
+<li><a href="/surveyors"><b>{{num .Counters.Surveyors}}</b> Surveyors</a></li>
+<li><a href="/regions"><b>{{num .Counters.Regions}}</b> {{if eq .Counters.Regions 1}}region{{else}}regions{{end}} with activity</a></li>
+</ul>
+</section>
 
-<section aria-labelledby="latest-h">
-<h2 id="latest-h">Latest surveys</h2>
+<section class="block" aria-labelledby="latest-h">
+<div class="head-row"><h2 id="latest-h">Latest surveys</h2>{{if .Latest}}<a class="more" href="/latest">More surveys <span aria-hidden="true">→</span></a>{{end}}</div>
 {{if .Latest}}{{template "grid" (grid .Now .Latest true)}}
-<p class="more"><a href="/latest">More surveys →</a></p>
 {{else}}<p>Nobody has surveyed a plot yet. <a href="/map">Be the first.</a></p>{{end}}
 </section>
 
 {{with .Featured}}{{$p := .Photo}}{{$d := dims $p 1200}}
-<section class="featured" aria-labelledby="featured-h">
-<h2 id="featured-h">{{if .Editorial}}Plot of the week{{else}}Newest plot{{end}}</h2>
+<section class="block featured" aria-labelledby="featured-h">
 <figure>
-<a href="/photo/{{$p.ID}}"><img src="{{img $p.Keys.Thumb}}" srcset="{{srcset $p.Keys 1200}}" sizes="(min-width: 64rem) 40rem, 100vw" width="{{$d.W}}" height="{{$d.H}}" alt="Photo at {{$p.Plot.Name}} by {{$p.Surveyor.Name}}" loading="lazy" decoding="async"></a>
+<a class="ph-feature" href="/photo/{{$p.ID}}"><img src="{{img $p.Keys.Best}}" srcset="{{srcset $p.Keys 1200}}" sizes="(min-width: 76rem) 53rem, (min-width: 64rem) 70vw, 100vw" width="{{$d.W}}" height="{{$d.H}}" alt="Photo at {{$p.Plot.Name}} by {{$p.Surveyor.Name}}" loading="lazy" decoding="async"></a>
 <figcaption>
-<p class="place"><a href="{{$p.Plot.Path}}">{{$p.Plot.Name}}</a></p>
+<h2 id="featured-h" class="kicker">{{if .Editorial}}Plot of the week{{else}}Newest plot{{end}}</h2>
+<p class="feature-name"><a href="{{$p.Plot.Path}}">{{$p.Plot.Name}}</a></p>
 {{if .Text}}<p>{{.Text}}</p>{{else}}<p>The most recently claimed plot. An editor picks a plot of the week from time to time.</p>{{end}}
 <p class="by">Photo by <a href="/surveyor/{{$p.Surveyor.Name}}">{{$p.Surveyor.Name}}</a> · {{when $.Now $p.UploadedAt}}</p>
 </figcaption>
@@ -22,24 +29,17 @@
 </section>
 {{end}}
 
-{{if .Regions}}<section aria-labelledby="regions-h">
-<h2 id="regions-h">Regions</h2>
+{{if .Regions}}<section class="block" aria-labelledby="regions-h">
+<div class="head-row"><h2 id="regions-h">Regions</h2><a class="more" href="/regions">All regions <span aria-hidden="true">→</span></a></div>
 <p class="note">Newest activity first. Coverage is the share of a region's plots with at least one photo.</p>
 <ul class="regions">{{range .Regions}}{{template "region-row" .}}{{end}}</ul>
-<p class="more"><a href="/regions">All regions →</a></p>
 </section>{{end}}
 
-{{if .NewSurveyors}}<section aria-labelledby="new-h">
-<h2 id="new-h">New Surveyors</h2>
-<p class="note">Welcome to the survey.</p>
+{{if .NewSurveyors}}<section class="block" aria-labelledby="new-h">
+<div class="head-row"><h2 id="new-h">New Surveyors</h2><span class="note">Welcome to the survey.</span></div>
 <ul class="newcomers">{{range .NewSurveyors}}{{$p := .FirstPhoto}}
 <li><a class="ph" href="/photo/{{$p.ID}}"><img src="{{img $p.Keys.Thumb}}" width="480" height="360" alt="First photo by {{.Surveyor.Name}}, at {{$p.Plot.Name}}" loading="lazy" decoding="async"></a>
-<p><a href="/surveyor/{{.Surveyor.Name}}">{{.Surveyor.Name}}</a><br><span class="quiet">joined {{when $.Now .JoinedAt}}, first photo at {{$p.Plot.Name}}</span></p></li>{{end}}
+<p class="cap"><a class="who" href="/surveyor/{{.Surveyor.Name}}">{{.Surveyor.Name}}</a> <span class="when">joined {{when $.Now .JoinedAt}}</span></p></li>{{end}}
 </ul>
 </section>{{end}}
-
-<section class="intro" aria-labelledby="intro-h">
-<h2 id="intro-h">What is this?</h2>
-<p>Cartograph divides the land into plots of about 0.74 km². Surveyors photograph them; the first photo claims a plot, later photos add to its story. Every photo is open under CC BY-SA 4.0. <a href="/about">More about Cartograph</a>.</p>
-</section>
 {{- end}}

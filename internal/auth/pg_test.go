@@ -309,3 +309,109 @@ func TestPGStore(t *testing.T) {
 		t.Fatalf("unknown surveyor: %v", err)
 	}
 }
+
+func TestPGStoreInvitations(t *testing.T) {
+	pool := testPool(t)
+	migrate(t, pool, "")
+	s := NewPGStore(pool)
+	ctx := context.Background()
+	now := time.Date(2026, 11, 1, 9, 0, 0, 0, time.UTC)
+	adminID := uuid.NewString()
+	if _, err := pool.Exec(ctx, `insert into surveyors (id, name, email) values ($1, 'boss', 'admin@example.org')`, adminID); err != nil {
+		t.Fatal(err)
+	}
+	tok := func(email string) LoginToken {
+		return LoginToken{Hash: hashToken(newToken()), Email: email, Next: "/", CreatedAt: now, ExpiresAt: now.Add(7 * 24 * time.Hour)}
+	}
+
+	var ae *AccountError
+	if err := s.CreateInvite(ctx, Invite{Email: "admin@example.org", AdminID: adminID, Token: tok("admin@example.org"), CreatedAt: now}); !errors.As(err, &ae) || ae.Name != "boss" {
+		t.Fatalf("invite an account: %v", err)
+	}
+	if err := s.CreateInvite(ctx, Invite{Email: "new@example.org", AdminID: adminID, Resend: true, Token: tok("new@example.org"), CreatedAt: now}); !errors.Is(err, ErrNotPending) {
+		t.Fatalf("resend without invitation: %v", err)
+	}
+	if ok, err := s.MaySignIn(ctx, "new@example.org"); err != nil || ok {
+		t.Fatalf("may sign in before: %v %v", ok, err)
+	}
+	if err := s.CreateInvite(ctx, Invite{Email: "new@example.org", AdminID: adminID, Note: "hi", Token: tok("new@example.org"), CreatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := s.MaySignIn(ctx, "new@example.org"); err != nil || !ok {
+		t.Fatalf("may sign in after: %v %v", ok, err)
+	}
+	if ok, _ := s.MaySignIn(ctx, "admin@example.org"); !ok {
+		t.Fatal("an account may not sign in")
+	}
+
+	// A session without an invitation cannot choose a name; with one it can.
+	strangerSession := hashToken(newToken())
+	if _, err := s.CreateSession(ctx, strangerSession, "stranger@example.org", now, now.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ChooseName(ctx, strangerSession, "stranger", now, true); !errors.Is(err, ErrNotInvited) {
+		t.Fatalf("stranger chose a name: %v", err)
+	}
+	newSession := hashToken(newToken())
+	if _, err := s.CreateSession(ctx, newSession, "new@example.org", now, now.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	v, err := s.ChooseName(ctx, newSession, "newbie", now, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	list, err := s.Invitations(ctx)
+	if err != nil || len(list) != 1 || list[0].AcceptedAs != "newbie" || list[0].InvitedBy != "boss" || list[0].Note != "hi" || list[0].Pending() {
+		t.Fatalf("invitations %+v %v", list, err)
+	}
+	if err := s.RevokeInvite(ctx, adminID, "new@example.org", now); !errors.Is(err, ErrNotPending) {
+		t.Fatalf("revoke an accepted invitation: %v", err)
+	}
+
+	// Revoking deletes unused links and nameless sessions; inviting again reopens the row.
+	if err := s.CreateInvite(ctx, Invite{Email: "late@example.org", AdminID: adminID, Token: tok("late@example.org"), CreatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RevokeInvite(ctx, adminID, "late@example.org", now); err != nil {
+		t.Fatal(err)
+	}
+	var links int
+	if err := pool.QueryRow(ctx, `select count(*) from login_tokens where email = 'late@example.org'`).Scan(&links); err != nil || links != 0 {
+		t.Fatalf("links after revoke: %d %v", links, err)
+	}
+	if err := s.CreateInvite(ctx, Invite{Email: "late@example.org", AdminID: adminID, Token: tok("late@example.org"), CreatedAt: now.Add(time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
+	if ok, _ := s.MaySignIn(ctx, "late@example.org"); !ok {
+		t.Fatal("reopened invitation does not count")
+	}
+	var actions int
+	if err := pool.QueryRow(ctx, `select count(*) from admin_actions where action like 'invite.%'`).Scan(&actions); err != nil || actions != 4 {
+		t.Fatalf("audit rows %d %v", actions, err)
+	}
+
+	// Refusals: once a day per address hash.
+	h := hashToken([]byte("stranger@example.org"))
+	for i, want := range []bool{true, false} {
+		if got, err := s.RecordRefusal(ctx, h, now.Add(time.Duration(i)*time.Hour)); err != nil || got != want {
+			t.Fatalf("refusal %d: %v %v", i, got, err)
+		}
+	}
+	if got, _ := s.RecordRefusal(ctx, h, now.Add(25*time.Hour)); !got {
+		t.Fatal("no refusal after a day")
+	}
+
+	// A blocked Surveyor's sessions stop working and they get no new ones.
+	if _, err := pool.Exec(ctx, `update surveyors set blocked_at = $2, blocked_reason = 'spam' where id = $1::uuid`, v.SurveyorID, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Session(ctx, newSession, now); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("blocked session: %v", err)
+	}
+	if _, err := s.CreateSession(ctx, hashToken(newToken()), "new@example.org", now, now.Add(time.Hour)); !errors.Is(err, ErrBlocked) {
+		t.Fatalf("blocked new session: %v", err)
+	}
+	if sess, err := s.Session(ctx, strangerSession, now); err != nil || !sess.CreatedAt.Equal(now) {
+		t.Fatalf("nameless session %+v %v", sess, err)
+	}
+}

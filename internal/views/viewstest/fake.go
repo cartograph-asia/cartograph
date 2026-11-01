@@ -392,6 +392,9 @@ func (f *Fake) Plot(ctx context.Context, cell string) (*views.Plot, error) {
 
 // Photo implements views.Source.
 func (f *Fake) Photo(ctx context.Context, id string) (*views.Photo, error) {
+	if strings.EqualFold(id, GonePhotoID) {
+		return nil, views.ErrGone
+	}
 	i, ok := f.d.byID[strings.ToLower(id)]
 	if !ok {
 		return nil, views.ErrNotFound

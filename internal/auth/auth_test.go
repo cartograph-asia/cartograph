@@ -91,6 +91,7 @@ type env struct {
 	store  *memStore
 	mail   *fakeMailer
 	srv    *httptest.Server
+	router chi.Router
 	client *http.Client
 
 	mu      sync.Mutex
@@ -129,6 +130,7 @@ func newEnv(t *testing.T, baseURL string) *env {
 		}
 		_, _ = io.WriteString(w, "home:"+name)
 	})
+	e.router = r
 	e.srv = httptest.NewServer(r)
 	t.Cleanup(e.srv.Close)
 	jar, _ := cookiejar.New(nil)

@@ -7,7 +7,7 @@
 <p class="note">by <a href="/admin/surveyor/{{$p.Surveyor.Name}}">{{$p.Surveyor.Name}}</a>{{with .Email}} ({{.}}){{end}}{{if $p.FirstSurvey}} · first survey of this plot{{end}}</p>
 </header>
 <div class="cols">
-<figure class="photo"><img src="{{img $p.Keys.Thumb}}" width="480" height="360" alt="Photo at {{$p.Plot.Name}} by {{$p.Surveyor.Name}}"></figure>
+<figure class="photo"><img src="{{img $p.Keys.Thumb}}" width="480" height="360" alt="Photo at {{$p.Plot.Name}} by {{$p.Surveyor.Name}}" fetchpriority="high"></figure>
 <div>
 {{if $p.Hidden}}
 <p class="error">Hidden {{stamp $p.HiddenAt}}: {{$p.HiddenReason}}</p>
@@ -20,7 +20,7 @@
 </ul>
 {{end}}
 <dl class="facts">
-<dt>Plot</dt><dd><a href="{{$p.Plot.Path}}">{{$p.Plot.Name}}</a> · <code>{{$p.Plot.Cell}}</code></dd>
+<dt>Plot</dt><dd><a href="{{$p.Plot.Path}}">{{$p.Plot.Name}}</a></dd>
 <dt>First surveyor now</dt><dd>{{or .FirstSurveyor "nobody: the plot is blank"}}{{if .PlotPhotos}} · {{count .PlotPhotos "visible photo" "visible photos"}}{{end}}</dd>
 <dt>Position</dt><dd>{{printf "%.5f, %.5f" .Lat .Lng}} <span class="note">(only shown here)</span></dd>
 <dt>Taken</dt><dd>{{with $p.TakenAt}}{{stamp .}}{{else}}unknown{{end}}</dd>

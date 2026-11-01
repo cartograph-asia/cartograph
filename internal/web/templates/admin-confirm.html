@@ -3,7 +3,7 @@
 <div class="form">
 <p class="kicker">Confirm</p>
 <h1>{{.Heading}}</h1>
-{{with .Photo}}<p><img class="thumb" src="{{img .Keys.Thumb}}" width="480" height="360" alt="Photo at {{.Plot.Name}} by {{.Surveyor.Name}}"></p>
+{{with .Photo}}<p><img class="thumb" src="{{img .Keys.Thumb}}" width="480" height="360" alt="Photo at {{.Plot.Name}} by {{.Surveyor.Name}}" fetchpriority="high"></p>
 <p class="note">{{.Plot.Name}}, by {{.Surveyor.Name}}, uploaded {{stamp .UploadedAt}}</p>{{end}}
 <ul class="consequences">{{range .Consequences}}<li>{{.}}</li>{{end}}</ul>
 {{with .Error}}<p id="reason-error" class="error" role="alert">{{.}}</p>{{end}}

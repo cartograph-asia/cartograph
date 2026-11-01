@@ -30,6 +30,8 @@ export interface PlotDetail {
   claimed_at: string;
   /** User-facing name, "{place} · {province} {number}". */
   name: string;
+  /** Link to the plot page: /plot/{region-slug}/{number}, else /plot/{cell}. */
+  path: string;
   /** Running number in the province; 0 if none yet. */
   number: number;
   /** Nearest place, else the region; empty when unknown. */

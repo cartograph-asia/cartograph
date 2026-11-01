@@ -27,7 +27,7 @@ const css = document.createElement('style');
 css.textContent = maplibreCss;
 document.head.append(css);
 
-type Props = { cell: string; surveyed: number; focus: number; ratio: number };
+type Props = { cell: string; surveyed: number; focus: number; ratio: number; path?: string };
 
 function feature(cell: string, props: Omit<Props, 'cell'>): Feature<Polygon, Props> {
   return { type: 'Feature', properties: { cell, ...props }, geometry: { type: 'Polygon', coordinates: [cellRing(cell)] } };
@@ -81,8 +81,9 @@ function replaceFallback(el: HTMLElement, map: MapLibreMap): void {
 
 function linkPlots(map: MapLibreMap, layer: string): void {
   map.on('click', layer, (e: MapLayerMouseEvent) => {
-    const cell = e.features?.[0]?.properties?.cell;
-    if (typeof cell === 'string') location.href = `/plot/${cell}`;
+    const { cell, path } = e.features?.[0]?.properties ?? {};
+    if (typeof path === 'string' && path) location.href = path;
+    else if (typeof cell === 'string') location.href = `/plot/${cell}`;
   });
   map.on('mouseenter', layer, () => (map.getCanvas().style.cursor = 'pointer'));
   map.on('mouseleave', layer, () => (map.getCanvas().style.cursor = ''));
@@ -93,8 +94,9 @@ function plotsMap(el: HTMLElement): void {
   if (cells.length === 0) return;
   const surveyed = (el.dataset.surveyed ?? '').split(',');
   const focus = el.dataset.focus ?? '';
+  const paths = (el.dataset.paths ?? '').split(',');
   const features = cells.map((cell, i) =>
-    feature(cell, { surveyed: surveyed[i] === '0' ? 0 : 1, focus: cell === focus ? 1 : 0, ratio: 0 }),
+    feature(cell, { surveyed: surveyed[i] === '0' ? 0 : 1, focus: cell === focus ? 1 : 0, ratio: 0, path: paths[i] || undefined }),
   );
   const fc: FeatureCollection<Polygon, Props> = { type: 'FeatureCollection', features };
   const map = createMap(el, boundsOf(features), focus ? 15 : 14);

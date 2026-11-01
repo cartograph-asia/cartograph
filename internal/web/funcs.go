@@ -45,6 +45,16 @@ func (rd *Renderer) funcs() template.FuncMap {
 		"mapHash":   mapHash,
 		"bounds":    boundsAttr,
 		"plotCells": func(p *views.Plot) []string { return neighbourCells(p.Plot.Cell, p.Neighbours) },
+		// pathsFor is the link of each cell for data-paths, parallel to data-cells.
+		"pathsFor": func(cells []string, paths map[string]string) string {
+			out := make([]string, len(cells))
+			for i, c := range cells {
+				if out[i] = paths[c]; out[i] == "" {
+					out[i] = "/plot/" + c
+				}
+			}
+			return strings.Join(out, ",")
+		},
 		"pathEsc":   url.PathEscape,
 		"csrfField": func() string { return views.CSRFField },
 		"bioMax":    func() int { return views.BioMaxLen },

@@ -460,6 +460,9 @@ func (v *Views) Surveyor(ctx context.Context, name string, page int) (*views.Sur
 	if out.PlotCells, err = pgx.CollectRows(rows, pgx.RowTo[string]); err != nil {
 		return nil, fmt.Errorf("db: surveyor cells: %w", err)
 	}
+	if out.PlotPaths, err = v.plotPaths(ctx, out.PlotCells); err != nil {
+		return nil, err
+	}
 	desc := s.profile.Bio
 	if desc == "" {
 		desc = fmt.Sprintf("Photos by %s on Cartograph.", s.profile.Name)
@@ -554,6 +557,9 @@ func (v *Views) Plot(ctx context.Context, cell string) (*views.Plot, error) {
 	for _, c := range ring {
 		out.Neighbours = append(out.Neighbours, views.CellStatus{Cell: c, Surveyed: set[c]})
 	}
+	if out.Paths, err = v.plotPaths(ctx, append([]string{cell}, ring...)); err != nil {
+		return nil, err
+	}
 
 	name := out.Plot.Name()
 	out.Page = v.base(name, "/plot/"+cell, "", "")
@@ -568,6 +574,25 @@ func (v *Views) Plot(ctx context.Context, cell string) (*views.Plot, error) {
 		out.Description = fmt.Sprintf("%s: nobody has surveyed this plot yet.", name)
 	}
 	return out, nil
+}
+
+// plotPaths returns the friendly path of every numbered cell in cells.
+func (v *Views) plotPaths(ctx context.Context, cells []string) (map[string]string, error) {
+	rows, err := v.d.Pool.Query(ctx, `
+		select n.cell, r.slug, n.number from plot_numbers n join regions r on r.id = n.region_id
+		where n.cell = any($1)`, cells)
+	if err != nil {
+		return nil, fmt.Errorf("db: plot paths: %w", err)
+	}
+	out := map[string]string{}
+	for rows.Next() {
+		var p views.PlotRef
+		if err := rows.Scan(&p.Cell, &p.Region.Slug, &p.Number); err != nil {
+			return nil, fmt.Errorf("db: plot paths: %w", err)
+		}
+		out[p.Cell] = p.Path()
+	}
+	return out, rows.Err()
 }
 
 // PlotCell implements views.Source.

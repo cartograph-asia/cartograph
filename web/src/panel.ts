@@ -172,7 +172,7 @@ export class Panel {
     }
     // The plot page, not the cell id: user-facing text never shows a bare cell.
     const link = el('a', '', d ? 'All photos and neighbours' : 'Plot page');
-    link.setAttribute('href', `/plot/${cell}`);
+    link.setAttribute('href', d?.path || `/plot/${cell}`);
     const pageDd = document.createElement('dd');
     pageDd.append(link);
     meta.append(el('dt', '', 'Page'), pageDd);

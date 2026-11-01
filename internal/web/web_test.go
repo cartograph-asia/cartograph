@@ -160,11 +160,11 @@ func TestEveryPageRenders(t *testing.T) {
 		}},
 		{"placeholder", views.PageSurveyor, viewstest.PlaceholderSurveyor(), []string{"<h1>beach-walker</h1>"}},
 		{"plot", views.PagePlot, viewstest.Plot(), []string{
-			"<h1>Pattaya · Chon Buri 2417", "first surveyed by", "H3 index <code>88658bd11dfffff</code>", `href="/plot/chon-buri/2417"`, "beach-walker", `href="/map?cell=88658bd11dfffff"`,
+			"<h1>Pattaya · Chon Buri 2417", "first surveyed by", "H3 index <code>88658bd11dfffff</code>", `data-paths="/plot/chon-buri/2417,/plot/chon-buri/2418,`, "beach-walker", `href="/map?cell=88658bd11dfffff"`,
 			"Survey this plot", `data-focus="88658bd11dfffff"`, `data-surveyed="1,`, `class="s f"`,
 		}},
 		{"blank plot", views.PagePlot, viewstest.BlankPlot(), []string{"Nobody has surveyed this plot yet", `name="robots" content="noindex"`, "Survey this plot"}},
-		{"photo", views.PagePhoto, viewstest.Photo(), []string{">Pattaya · Chon Buri 2417</a></h1>", "CC BY-SA 4.0", `rel="prev"`, `rel="next"`, "Photo 3 of", "Full size"}},
+		{"photo", views.PagePhoto, viewstest.Photo(), []string{`<h1><a href="/plot/chon-buri/2417">Pattaya · Chon Buri 2417</a></h1>`, "CC BY-SA 4.0", `rel="prev"`, `rel="next"`, "Photo 3 of", "Full size"}},
 		{"prototype photo", views.PagePhoto, viewstest.PrototypePhoto(), []string{"first survey of this plot", `width="2000" height="1500"`}},
 		{"region", views.PageRegion, viewstest.Region(), []string{
 			"<h1>Chon Buri", "0.20%", "5,921 plots", `data-minimap="coverage"`, `data-bounds="100.68000,12.50000,101.73000,13.59000"`,

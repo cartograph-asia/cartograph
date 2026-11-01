@@ -296,6 +296,7 @@ func (f *Fake) Surveyor(ctx context.Context, name string, page int) (*views.Surv
 			out.PlotCells = append(out.PlotCells, ph.Plot.Cell)
 		}
 	}
+	out.PlotPaths = paths(out.PlotCells)
 	for _, c := range out.PlotCells {
 		pl := plots[plotIndex(c)]
 		if out.Bounds == nil {
@@ -315,6 +316,17 @@ func plotIndex(cell string) int {
 		}
 	}
 	return -1
+}
+
+// paths maps the fixture cells among cells to their friendly paths.
+func paths(cells []string) map[string]string {
+	out := map[string]string{}
+	for _, c := range cells {
+		if i := plotIndex(c); i >= 0 && plots[i].ref.Number > 0 {
+			out[c] = plots[i].ref.Path()
+		}
+	}
+	return out
 }
 
 // PlotCell implements views.Source.
@@ -361,6 +373,11 @@ func (f *Fake) Plot(ctx context.Context, cell string) (*views.Plot, error) {
 			out.Neighbours = append(out.Neighbours, views.CellStatus{Cell: n.ref.Cell, Surveyed: len(f.d.byPlot[plotIndex(n.ref.Cell)]) > 0})
 		}
 	}
+	cells := []string{pl.ref.Cell}
+	for _, n := range out.Neighbours {
+		cells = append(cells, n.Cell)
+	}
+	out.Paths = paths(cells)
 	return out, nil
 }
 

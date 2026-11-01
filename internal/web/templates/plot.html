@@ -15,11 +15,11 @@
 {{template "grid" (grid .Now .Photos true)}}
 </section>{{end}}
 
-<p class="details">Details: H3 index <code>{{$pl.Cell}}</code>{{if $pl.Number}} · also at <a href="{{$pl.Path}}">{{$pl.Path}}</a>{{end}}</p>
+<p class="details">Details: H3 index <code>{{$pl.Cell}}</code>, also at <a href="/plot/{{$pl.Cell}}">/plot/{{$pl.Cell}}</a></p>
 
 <section class="minimap" aria-labelledby="map-h">
 <h2 id="map-h">Around this plot</h2>
-<div class="mapbox" data-minimap="plots" data-focus="{{$pl.Cell}}" data-cells="{{join (plotCells .) ","}}" data-surveyed="{{statuses .Surveyed .Neighbours}}">{{plotSVG .}}</div>
+<div class="mapbox" data-minimap="plots" data-focus="{{$pl.Cell}}" data-cells="{{join (plotCells .) ","}}" data-paths="{{pathsFor (plotCells .) .Paths}}" data-surveyed="{{statuses .Surveyed .Neighbours}}">{{plotSVG .}}</div>
 <p class="note">Green plots have at least one photo. <a href="/map?cell={{$pl.Cell}}">Open on the map</a>.</p>
 </section>
 {{template "minimap-script"}}

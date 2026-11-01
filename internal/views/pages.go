@@ -70,9 +70,10 @@ type Surveyor struct {
 	Page
 	Profile    SurveyorProfile
 	Stats      SurveyorStats
-	PlotCells  []string    // res-8 cells of every plot with a photo by them, for the lazy map (data, not text)
-	Bounds     *Bounds     // box around PlotCells; nil if they have no photos
-	Photos     []PhotoItem // newest first, paginated
+	PlotCells  []string          // res-8 cells of every plot with a photo by them, for the lazy map (data, not text)
+	PlotPaths  map[string]string // friendly path per cell in PlotCells; cells without a number are missing
+	Bounds     *Bounds           // box around PlotCells; nil if they have no photos
+	Photos     []PhotoItem       // newest first, paginated
 	Pagination Pagination
 }
 
@@ -103,6 +104,9 @@ type Plot struct {
 	Photos        []PhotoItem  // all photos, oldest first (chronological story of the plot)
 	Lat, Lng      float64      // centre of the cell, for the small map
 	Neighbours    []CellStatus // the ring of cells around the plot, for the small map
+	// Paths is the friendly path per cell on the small map (the plot and its
+	// neighbours); cells without a number are missing.
+	Paths map[string]string
 }
 
 // CellStatus is a cell on a small map and whether it is surveyed.

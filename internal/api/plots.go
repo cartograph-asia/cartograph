@@ -43,6 +43,7 @@ type plotDetail struct {
 	FirstSurveyor string      `json:"first_surveyor"`
 	ClaimedAt     time.Time   `json:"claimed_at"`
 	Name          string      `json:"name"`
+	Path          string      `json:"path"`
 	Number        int         `json:"number"`
 	Place         string      `json:"place"`
 	Region        string      `json:"region"`
@@ -138,6 +139,7 @@ func (s *Server) getPlot(w http.ResponseWriter, r *http.Request) {
 		FirstSurveyor: p.FirstSurveyor,
 		ClaimedAt:     p.ClaimedAt.UTC(),
 		Name:          plotRef(p).Name(),
+		Path:          plotRef(p).Path(),
 		Number:        p.Number,
 		Place:         p.Place,
 		Region:        p.Region,

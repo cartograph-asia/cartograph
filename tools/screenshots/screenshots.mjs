@@ -1,13 +1,12 @@
 // Screenshots of the server-rendered pages for design review.
 //
-//   cd web && npm run screenshots -- round-1
-//   cd web && npm run screenshots -- round-2 --types a --out round-2
+//   cd web && npm run screenshots -- round-2
+//   cd web && npm run screenshots -- home,photo --out scratch
 //
-// Takes every page of a set in tools/screenshots/pages.json at 400 px and
-// 1400 px wide, once per typographic direction (?type=, see web.Types), as
-// full-page JPEGs of at most 300 KB (tall pages at a reduced device scale)
-// into docs/design/<out>/ with the names
-// <page>-<type>-<width>.jpg. It runs against cmd/webpreview on
+// Takes every page of a set in tools/screenshots/pages.json (or a comma list
+// of page names) at 400 px and 1400 px wide, as full-page JPEGs of at most
+// 300 KB (tall pages at a reduced device scale) into docs/design/<out>/ with
+// the names <page>-<width>.jpg. It runs against cmd/webpreview on
 // 127.0.0.1:8093 and starts it (go run ./cmd/webpreview) when nothing
 // answers there. It drives the installed Google Chrome through
 // playwright-core (a dev dependency in web/), so no browser is downloaded;
@@ -28,10 +27,9 @@ const MAX_BYTES = 300 * 1024;
 
 function args() {
   const a = process.argv.slice(2);
-  const opt = { set: 'round-1', types: ['a', 'b1', 'b2'], out: null };
+  const opt = { set: 'round-1', out: null };
   for (let i = 0; i < a.length; i++) {
-    if (a[i] === '--types') opt.types = a[++i].split(',');
-    else if (a[i] === '--out') opt.out = a[++i];
+    if (a[i] === '--out') opt.out = a[++i];
     else opt.set = a[i];
   }
   opt.out ??= opt.set;
@@ -123,12 +121,9 @@ const browser = await chromium.launch(
 try {
   for (const width of WIDTHS) {
     for (const n of names) {
-      for (const t of opt.types) {
-        const url = BASE + pages[n] + (pages[n].includes('?') ? '&' : '?') + 'type=' + t;
-        const file = join(outDir, `${n}-${t}-${width}.jpg`);
-        const { scale, q, kb } = await shoot(browser, url, width, file);
-        console.log(`${file.slice(root.length + 1)}  scale ${scale}  q${q}  ${kb} KB`);
-      }
+      const file = join(outDir, `${n}-${width}.jpg`);
+      const { scale, q, kb } = await shoot(browser, BASE + pages[n], width, file);
+      console.log(`${file.slice(root.length + 1)}  scale ${scale}  q${q}  ${kb} KB`);
     }
   }
 } finally {

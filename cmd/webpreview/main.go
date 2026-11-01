@@ -6,8 +6,7 @@
 //	go run ./cmd/webpreview            # http://127.0.0.1:8093
 //	(cd web && npx vite build --base /map/)   # optional: small maps
 //
-// /preview/as?viewer=adrian|new|none switches the signed-in viewer (cookie);
-// ?type=a|b1|b2 on any page picks a typographic direction (web.Types).
+// /preview/as?viewer=adrian|new|none switches the signed-in viewer (cookie).
 // Photos are crops of the JPEGs in -photos (testdata/ by default), so the
 // pages look like pages with photos; without them, calm generated images.
 // The account pages (/signin, /check-email, /signin/link, /signin/name,
@@ -71,11 +70,7 @@ func main() {
 	r := chi.NewRouter()
 	r.Use(viewerFromCookie, func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			ctx := views.WithCSRF(r.Context(), "preview-csrf")
-			if t := r.URL.Query().Get("type"); t != "" {
-				ctx = web.WithType(ctx, t)
-			}
-			next.ServeHTTP(w, r.WithContext(ctx))
+			next.ServeHTTP(w, r.WithContext(views.WithCSRF(r.Context(), "preview-csrf")))
 		})
 	})
 	pages.Routes(r)

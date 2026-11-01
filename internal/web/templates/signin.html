@@ -1,7 +1,7 @@
 {{define "content" -}}
 <div class="form">
 <h1>Sign in</h1>
-<p>Enter your e-mail address and we send you a link to sign in. There is no password.</p>
+<p class="lede">Enter your e-mail address and we send you a link to sign in. There is no password.</p>
 {{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
 <form method="post" action="/signin">
 {{template "csrf" .}}

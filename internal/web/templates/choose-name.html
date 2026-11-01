@@ -1,7 +1,7 @@
 {{define "content" -}}
 <div class="form">
 <h1>Choose your Surveyor name</h1>
-<p>Your name appears on your profile and under every photo you upload. You choose it once; it cannot be changed later.</p>
+<p class="lede">Your name appears on your profile and under every photo you upload. You choose it once; it cannot be changed later.</p>
 {{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
 <form method="post" action="/signin/name">
 {{template "csrf" .}}

@@ -38,6 +38,7 @@ func (rd *Renderer) funcs() template.FuncMap {
 		"pageURL":   pageURL,
 		"dims":      dims,
 		"grid":      grid,
+		"heading":   heading,
 		"join":      strings.Join,
 		"statuses":  statuses,
 		"plotSVG":   plotSVG,
@@ -119,10 +120,30 @@ type gridData struct {
 	Now    time.Time
 	Photos []views.PhotoItem
 	Eager  bool // the first photo is the page's first image: fetchpriority=high
+	// Of names what every photo in the grid shares, so the captions leave it
+	// out: "plot" on a plot page, "surveyor" on a Surveyor's page.
+	Of string
 }
 
-func grid(now time.Time, photos []views.PhotoItem, eager bool) gridData {
-	return gridData{Now: now, Photos: photos, Eager: eager}
+// grid is the "grid" partial's input; an optional fourth argument is Of.
+func grid(now time.Time, photos []views.PhotoItem, eager bool, of ...string) gridData {
+	g := gridData{Now: now, Photos: photos, Eager: eager}
+	if len(of) > 0 {
+		g.Of = of[0]
+	}
+	return g
+}
+
+// heading sets a plot name as a page heading: the space before the dot is
+// kept with the place, so a long name breaks after the dot and the province
+// and number start the next line together ("Pattaya, Bang Lamung ·" /
+// "Chon Buri 2417"). The name itself comes from PlotRef.Name.
+func heading(p views.PlotRef) template.HTML {
+	local, province, ok := strings.Cut(p.Name(), " · ")
+	if !ok {
+		return template.HTML(template.HTMLEscapeString(local))
+	}
+	return template.HTML(template.HTMLEscapeString(local) + `<span class="nb"> ·</span> ` + template.HTMLEscapeString(province))
 }
 
 func toTime(v any) (time.Time, bool) {

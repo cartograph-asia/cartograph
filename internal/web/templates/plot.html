@@ -1,27 +1,27 @@
 {{define "content" -}}
 {{$pl := .Plot}}
 <header class="head">
-<h1>{{$pl.Name}}{{with $pl.PlaceTh}} <span lang="th" class="th">{{.}}</span>{{end}}</h1>
+<p class="kicker">Plot</p>
+<h1>{{heading $pl}}{{with $pl.PlaceTh}} <span lang="th" class="th">{{.}}</span>{{end}}</h1>
 <p class="meta">{{with $pl.Region.Slug}}<a href="/region/{{.}}">{{$pl.Region.NameEn}}</a>{{end}}
 {{- if .Surveyed}} · first surveyed by <a href="/surveyor/{{.FirstSurveyor.Name}}">{{.FirstSurveyor.Name}}</a> on {{date .ClaimedAt}} · {{count .PhotoCount "photo" "photos"}}{{end}}
  · <a href="/about/plots">What is a plot?</a></p>
-{{if .Surveyed}}<p><a class="go" href="/map?cell={{$pl.Cell}}">Survey this plot</a></p>
-{{else}}<p class="blank">Nobody has surveyed this plot yet. Take a photo here and it is yours.</p>
-<p><a class="go" href="/map?cell={{$pl.Cell}}">Survey this plot</a></p>{{end}}
+{{if not .Surveyed}}<p class="blank">Nobody has surveyed this plot yet. Take a photo here and it is yours.</p>{{end}}
+<p class="act"><a class="go" href="/map?cell={{$pl.Cell}}">Survey this plot <span aria-hidden="true">→</span></a></p>
 </header>
 
-{{if .Photos}}<section aria-labelledby="photos-h">
-<h2 id="photos-h">Photos</h2>
-<p class="note">Oldest first: the story of this plot.</p>
-{{template "grid" (grid .Now .Photos true)}}
+{{if .Photos}}<section class="block" aria-labelledby="photos-h">
+<div class="head-row"><h2 id="photos-h">Photos</h2><span class="note">Oldest first: the story of this plot.</span></div>
+{{template "grid" (grid .Now .Photos true "plot")}}
 </section>{{end}}
 
 <p class="details">Details: H3 index <code>{{$pl.Cell}}</code>, also at <a href="/plot/{{$pl.Cell}}">/plot/{{$pl.Cell}}</a></p>
 
-<section class="minimap" aria-labelledby="map-h">
-<h2 id="map-h">Around this plot</h2>
+<section class="block minimap" aria-labelledby="map-h">
+<div class="head-row"><h2 id="map-h">Around this plot</h2><a class="more" href="/map?cell={{$pl.Cell}}">Open on the map <span aria-hidden="true">→</span></a></div>
 <div class="mapbox" data-minimap="plots" data-focus="{{$pl.Cell}}" data-cells="{{join (plotCells .) ","}}" data-paths="{{pathsFor (plotCells .) .Paths}}" data-surveyed="{{statuses .Surveyed .Neighbours}}">{{plotSVG .}}</div>
-<p class="note">Green plots have at least one photo. <a href="/map?cell={{$pl.Cell}}">Open on the map</a>.</p>
+<p class="note">Green plots have at least one photo; the outlined one is this plot.</p>
 </section>
+
 {{template "minimap-script"}}
 {{- end}}

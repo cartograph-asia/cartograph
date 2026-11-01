@@ -1,26 +1,34 @@
 {{define "content" -}}
 {{$r := .Region}}
 <header class="head">
+<p class="kicker">Region</p>
 <h1>{{$r.NameEn}}{{with $r.NameTh}} <span lang="th" class="th">{{.}}</span>{{end}}</h1>
-<div class="cov big">{{template "covbar" .Coverage}}<p><span class="pct">{{pct .Coverage}}</span> <span class="of">{{num .Coverage.Claimed}} of {{num .Coverage.Land}} plots surveyed</span></p></div>
-<p class="counters"><b>{{num .Counters.Plots}}</b> {{if eq .Counters.Plots 1}}plot{{else}}plots{{end}} · <b>{{num .Counters.Photos}}</b> {{if eq .Counters.Photos 1}}photo{{else}}photos{{end}} · <b>{{num .Counters.Surveyors}}</b> {{if eq .Counters.Surveyors 1}}Surveyor{{else}}Surveyors{{end}}</p>
+<ul class="figures small">
+<li><b>{{pct .Coverage}}</b> coverage, {{num .Coverage.Claimed}} of {{num .Coverage.Land}} plots</li>
+<li><b>{{num .Counters.Photos}}</b> {{if eq .Counters.Photos 1}}photo{{else}}photos{{end}}</li>
+<li><b>{{num .Counters.Surveyors}}</b> {{if eq .Counters.Surveyors 1}}Surveyor{{else}}Surveyors{{end}}</li>
+</ul>
+<div class="cov big">{{template "covbar" .Coverage}}</div>
 <p class="note">{{with .LastSurveyedAt}}Last survey {{when $.Now .}} · {{else}}Not surveyed yet · {{end}}<a href="{{.Feed}}">RSS feed</a></p>
 </header>
 
-<section class="minimap" aria-labelledby="map-h">
-<h2 id="map-h">Coverage</h2>
+<section class="block minimap" aria-labelledby="map-h">
+<div class="head-row"><h2 id="map-h">Coverage</h2><a class="more" href="{{mapHash .Bounds}}">Open on the map <span aria-hidden="true">→</span></a></div>
 <div class="mapbox" data-minimap="coverage" data-bounds="{{bounds .Bounds}}"><p class="mapalt"><a href="{{mapHash .Bounds}}">Open {{$r.NameEn}} on the map</a></p></div>
 </section>
 
-<section aria-labelledby="latest-h">
-<h2 id="latest-h">Latest surveys</h2>
+<section class="block" aria-labelledby="latest-h">
+<div class="head-row"><h2 id="latest-h">Latest surveys</h2><span class="note">Newest first.</span></div>
 {{if .Latest}}{{template "grid" (grid .Now .Latest true)}}{{else}}<p>Nobody has surveyed a plot in {{$r.NameEn}} yet. <a href="{{mapHash .Bounds}}">Be the first.</a></p>{{end}}
 {{template "pagination" .}}
 </section>
 
-{{if or .ActiveRecent .ActiveAllTime}}<section class="cols" aria-label="Most active Surveyors">
-<div><h2>Most active, last {{activeDays}} days</h2>{{if .ActiveRecent}}{{template "activity" .ActiveRecent}}{{else}}<p class="note">Nobody in the last {{activeDays}} days.</p>{{end}}</div>
-<div><h2>Most active, all time</h2>{{template "activity" .ActiveAllTime}}</div>
+{{if or .ActiveRecent .ActiveAllTime}}<section class="block" aria-labelledby="active-h">
+<div class="head-row"><h2 id="active-h">Most active Surveyors</h2></div>
+<div class="cols">
+<div><h3 class="kicker">Last {{activeDays}} days</h3>{{if .ActiveRecent}}{{template "activity" .ActiveRecent}}{{else}}<p class="note">Nobody in the last {{activeDays}} days.</p>{{end}}</div>
+<div><h3 class="kicker">All time</h3>{{template "activity" .ActiveAllTime}}</div>
+</div>
 </section>{{end}}
 {{template "minimap-script"}}
 {{- end}}

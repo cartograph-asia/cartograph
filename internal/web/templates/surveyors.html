@@ -1,10 +1,14 @@
 {{define "content" -}}
+<header class="head">
 <h1>Surveyors</h1>
 <p class="note">Everyone who surveys for Cartograph, most recently joined first.</p>
+</header>
 <ul class="people">
 {{- range .Surveyors}}
 <li>{{with .LastPhoto}}<a class="ph" href="/photo/{{.ID}}"><img src="{{img .Keys.Thumb}}" width="480" height="360" alt="Newest photo by {{.Surveyor.Name}}, at {{.Plot.Name}}" loading="lazy" decoding="async"></a>{{else}}<span class="ph empty"></span>{{end}}
-<p><a href="/surveyor/{{.Surveyor.Name}}">{{.Surveyor.Name}}</a><br><span class="quiet">joined {{when $.Now .JoinedAt}}<br>{{if .Photos}}{{count .Photos "photo" "photos"}}, {{count .Plots "plot claimed" "plots claimed"}}{{else}}no photos yet{{end}}</span></p></li>
+<p class="cap"><a class="who" href="/surveyor/{{.Surveyor.Name}}">{{.Surveyor.Name}}</a>
+<span class="line">{{if .Photos}}{{count .Photos "photo" "photos"}}, {{count .Plots "plot claimed" "plots claimed"}}{{else}}no photos yet{{end}}</span>
+<span class="line">joined {{when $.Now .JoinedAt}}</span></p></li>
 {{- end}}
 </ul>
 {{template "pagination" .}}

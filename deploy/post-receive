@@ -81,6 +81,8 @@ for _ in $(seq 1 60); do
 		ok=1
 		break
 	fi
+	# A probe that refused its settings has exited already: no need to wait.
+	[ "$(docker inspect -f '{{.State.Running}}' "$PROBE" 2>/dev/null)" = true ] || break
 	sleep 2
 done
 if [ -z "$ok" ]; then

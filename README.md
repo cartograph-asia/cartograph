@@ -45,7 +45,8 @@ Everything is configured through environment variables, all documented in [deplo
 ## Development
 
 - Backend (Go, `cmd/` and `internal/`): `go test ./...`. Database tests run only when `TEST_DATABASE_URL` points at a Postgres instance.
-- Pages (`internal/web`, `html/template`): `go run ./cmd/webpreview` serves every page from in-memory fixtures on 127.0.0.1:8093.
+- Pages (`internal/web`, `html/template`): `go run ./cmd/webpreview` serves every page from in-memory fixtures on 127.0.0.1:8093, with crops of the photos in `testdata/`; add `?type=a|b1|b2` to compare typographic directions.
+- Design screenshots: `cd web && npm run screenshots -- round-1` takes the pages of a set in `tools/screenshots/pages.json` at 400 and 1400 px into `docs/design/round-1/`, through playwright-core and the installed Chrome (`CHROME_PATH` for another Chromium).
 - Map (`web/`, served under `/map/`): `npm ci && npm run dev:mock` runs against in-memory fixtures; `npm run dev` proxies to the stack on :8080. Open http://localhost:5173/map/.
 - Importers: `regions`, `places` and `seed` in `cmd/`; `go run ./cmd/fixture` regenerates the Pattaya fixture in `testdata/` from `map/data/`.
 - Briefs: [docs/PROTOTYPE_BRIEF.md](docs/PROTOTYPE_BRIEF.md) (map and JSON API) and [docs/HOME_BRIEF.md](docs/HOME_BRIEF.md) (front page, pages, accounts). [docs/PRINCIPLES.md](docs/PRINCIPLES.md) decides feature questions, [docs/GAMIFICATION.md](docs/GAMIFICATION.md) is the design reference the data model leaves room for, and decisions made while building are in [docs/decisions.md](docs/decisions.md).

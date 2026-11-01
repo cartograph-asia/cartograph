@@ -1,6 +1,6 @@
 # Design round 1 – the front page
 
-**Decision (Adrian, 2026-11-01): direction a, the system serif.** The b1 and b2 token sets, their two font files and the switch were removed afterwards; their screenshots stay below for the record. Open points 2 and 3 stay as built until Adrian says otherwise.
+**Decision (Adrian, 2026-11-01): direction a, the system serif.** The b1 and b2 token sets, their two font files and the switch were removed afterwards; their screenshots stay below for the record. On the open points Adrian decided: the intro stays at the top; grid captions use a short plot name (see below).
 
 Brief: [docs/DESIGN_BRIEF.md](../../DESIGN_BRIEF.md). This round changes the stylesheet and the front page's markup; the other pages pick up the new tokens but are not designed yet (round 2).
 
@@ -10,6 +10,7 @@ These were taken with the comparison switch that has since been removed. To take
 
 | Direction | 400 px | 1400 px |
 |---|---|---|
+| **final (a, short names)** | [home-400.jpg](home-400.jpg) | [home-1400.jpg](home-1400.jpg) |
 | a – system serif | [home-a-400.jpg](home-a-400.jpg) | [home-a-1400.jpg](home-a-1400.jpg) |
 | b1 – Fraunces for display | [home-b1-400.jpg](home-b1-400.jpg) | [home-b1-1400.jpg](home-b1-1400.jpg) |
 | b2 – Inter Tight for display | [home-b2-400.jpg](home-b2-400.jpg) | [home-b2-1400.jpg](home-b2-1400.jpg) |
@@ -39,5 +40,5 @@ Front page from the fixture: 22.0 KB HTML + 17.4 KB CSS. That is 39 KB in direct
 
 1. **Direction:** a, b1 or b2.
 2. **Intro at the top.** The brief keeps the content order; the intro was not part of the Home brief's order, so I moved it to the top as the lead. Say if it should go back to the bottom.
-3. **Long plot names on phones.** "Pattaya, Bang Lamung · Chon Buri 2417" is cut with an ellipsis on line 1 of a phone caption, so the number is often not visible there. The full name stays in the link text for screen readers and on the plot page. The alternative is to let the name wrap to a second line, which makes captions three lines.
+3. **Long plot names on phones.** Decided: grids show `PlotRef.ShortName()`, "{place} · {province} {number}" without the district ("Pattaya · Chon Buri 2412"), on every width. In the caption it is rendered from `ShortParts()` so that only the place is cut when the line is too narrow; province and number always show ("Ban Non… · Chon Buri 2417"). The full name is the link's title, the photo's alt text, and the heading on plot and photo pages.
 4. **Featured photo.** It uses `loading="lazy"` like before. On desktop it starts below the first screen, so this is fine there.

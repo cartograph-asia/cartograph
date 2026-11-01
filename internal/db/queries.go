@@ -247,3 +247,22 @@ func (d *DB) Coverage(ctx context.Context, res int, parents []string) (map[strin
 	}
 	return out, nil
 }
+
+// Bounds is a box in degrees.
+type Bounds struct{ West, South, East, North float64 }
+
+// SurveyableBounds returns the box around every imported province (where
+// plots can be claimed); ok is false when no province is imported.
+func (d *DB) SurveyableBounds(ctx context.Context) (Bounds, bool, error) {
+	var w, s, e, n *float64
+	err := d.Pool.QueryRow(ctx, `
+		select min(min_lng), min(min_lat), max(max_lng), max(max_lat) from regions where kind = 'province'`,
+	).Scan(&w, &s, &e, &n)
+	if err != nil {
+		return Bounds{}, false, fmt.Errorf("db: surveyable bounds: %w", err)
+	}
+	if w == nil {
+		return Bounds{}, false, nil
+	}
+	return Bounds{West: *w, South: *s, East: *e, North: *n}, true, nil
+}

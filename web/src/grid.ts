@@ -3,6 +3,7 @@
 import {
   polygonToCells,
   cellToBoundary,
+  cellToLatLng,
   getHexagonAreaAvg,
   UNITS,
 } from 'h3-js';
@@ -30,8 +31,25 @@ export interface BBox {
   north: number;
 }
 
-/** Prototype region. Viewports are clipped to this before computing cells. */
+/**
+ * Where plots can be surveyed when the server does not say (GET /api/config
+ * "surveyable"): Thailand, the first imported country.
+ */
 export const THAILAND_BBOX: BBox = { west: 97.0, south: 5.4, east: 106.0, north: 20.8 };
+
+/**
+ * Blank groups are drawn only from this zoom on (layers.ts fades them in
+ * from here); below it, groups are drawn only where plots can be surveyed,
+ * since a blank group is invisible there anyway and the whole of Asia would
+ * be tens of thousands of cells.
+ */
+export const BLANK_GROUP_MIN_ZOOM = 6.5;
+
+/** Whether the centre of cell lies in b. */
+export function cellIn(cell: string, b: BBox): boolean {
+  const [lat, lng] = cellToLatLng(cell);
+  return lat >= b.south && lat <= b.north && lng >= b.west && lng <= b.east;
+}
 
 export function padBBox(b: BBox, fraction: number): BBox {
   const dx = (b.east - b.west) * fraction;
@@ -84,26 +102,48 @@ export function cellRing(cell: string): number[][] {
   return ring;
 }
 
+/**
+ * cells are drawn; dataCells, the part of them inside the surveyable area,
+ * are the ones to ask the API about. dataCells is empty where no plot can be
+ * surveyed yet.
+ */
 export type ViewPlan =
-  | { mode: 'plots'; res: number; cells: string[] }
-  | { mode: 'coverage'; res: 5 | 6; cells: string[] }
+  | { mode: 'plots'; res: number; cells: string[]; dataCells: string[] }
+  | { mode: 'coverage'; res: 5 | 6; cells: string[]; dataCells: string[] }
   | { mode: 'none' };
 
 /**
- * Decide what to draw for a viewport.
+ * Decide what to draw for a viewport. The grid is drawn everywhere;
+ * surveyable is where plots can be claimed (the imported provinces).
  * Plots: zoom >= PLOT_MIN_ZOOM and at most MAX_VIEW_CELLS res-8 cells in view.
- * Coverage: res 5 below zoom 7, res 6 otherwise; falls back to res 5 if res 6 would be too many.
+ * Coverage: res 5 below zoom 7, res 6 otherwise; falls back to res 5 if res 6
+ * would be too many. Blank groups outside the surveyable area only from
+ * BLANK_GROUP_MIN_ZOOM and when they fit in MAX_VIEW_CELLS.
  */
-export function planView(viewport: BBox, zoom: number, padding = 0.1): ViewPlan {
-  const area = clipBBox(padBBox(viewport, padding), THAILAND_BBOX);
-  if (!area) return { mode: 'none' };
+export function planView(viewport: BBox, zoom: number, surveyable: BBox = THAILAND_BBOX, padding = 0.1): ViewPlan {
+  const area = padBBox(viewport, padding);
+  const data = clipBBox(area, surveyable);
+  // A group near the border can hold surveyable plots while its centre lies
+  // just outside: ask about everything within half a degree.
+  const ask = { west: surveyable.west - 0.5, south: surveyable.south - 0.5, east: surveyable.east + 0.5, north: surveyable.north + 0.5 };
+  const inside = (cells: string[]) => (data ? cells.filter((c) => cellIn(c, ask)) : []);
 
   if (zoom >= PLOT_MIN_ZOOM && estimateCellCount(area, PLOT_RES) <= MAX_VIEW_CELLS) {
     const cells = cellsForBBox(area, PLOT_RES);
-    if (cells.length <= MAX_VIEW_CELLS) return { mode: 'plots', res: PLOT_RES, cells };
+    if (cells.length <= MAX_VIEW_CELLS) return { mode: 'plots', res: PLOT_RES, cells, dataCells: inside(cells) };
   }
 
   let res: 5 | 6 = zoom < 7 ? 5 : 6;
-  if (res === 6 && estimateCellCount(area, 6) > MAX_VIEW_CELLS) res = 5;
-  return { mode: 'coverage', res, cells: cellsForBBox(area, res) };
+  const everywhere = zoom >= BLANK_GROUP_MIN_ZOOM;
+  const drawn = everywhere ? area : data;
+  if (!drawn) return { mode: 'none' };
+  if (res === 6 && estimateCellCount(drawn, 6) > MAX_VIEW_CELLS) res = 5;
+  if (everywhere && estimateCellCount(area, res) > MAX_VIEW_CELLS) {
+    // Too far out to draw blank groups everywhere: only where there is data.
+    if (!data) return { mode: 'none' };
+    const cells = cellsForBBox(data, res);
+    return { mode: 'coverage', res, cells, dataCells: inside(cells) };
+  }
+  const cells = cellsForBBox(drawn, res);
+  return { mode: 'coverage', res, cells, dataCells: inside(cells) };
 }

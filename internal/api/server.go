@@ -23,6 +23,9 @@ type Repo interface {
 	Plots(ctx context.Context, cells []string) ([]db.PlotSummary, error)
 	Plot(ctx context.Context, cell string) (*db.PlotDetail, error)
 	Coverage(ctx context.Context, res int, parents []string) (map[string]int64, error)
+	// SurveyableBounds is the box around every imported province, where
+	// plots can be surveyed; ok is false before any import.
+	SurveyableBounds(ctx context.Context) (b db.Bounds, ok bool, err error)
 }
 
 // Config holds the handler settings.
@@ -113,10 +116,21 @@ func (s *Server) Handler() http.Handler {
 // serves map/ at /tiles/.
 const DefaultTilesURL = "/tiles/asia.pmtiles"
 
-// clientConfig is GET /api/config: what the map needs from the environment.
+// clientConfig is GET /api/config: what the map needs from the environment
+// and the data. "surveyable" is [west, south, east, north] around every
+// imported province: the map draws the plot grid everywhere, but asks for
+// plots and coverage only there, and says outside it that plots cannot be
+// surveyed yet. It is left out before any import.
 func (s *Server) clientConfig(w http.ResponseWriter, r *http.Request) {
+	out := map[string]any{"tiles_url": s.cfg.TilesURL}
+	b, ok, err := s.repo.SurveyableBounds(r.Context())
+	if err != nil {
+		slog.Error("surveyable bounds", "err", err)
+	} else if ok {
+		out["surveyable"] = [4]float64{b.West, b.South, b.East, b.North}
+	}
 	w.Header().Set("Cache-Control", "public, max-age=300")
-	writeJSON(w, http.StatusOK, map[string]string{"tiles_url": s.cfg.TilesURL})
+	writeJSON(w, http.StatusOK, out)
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

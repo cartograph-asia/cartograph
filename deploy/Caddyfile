@@ -42,14 +42,21 @@
 
 	# /map (as linked from the pages, e.g. /map?cell=…) serves the same page
 	# as /map/; rewrite keeps the query string. Assets use absolute /map/ paths.
+	# The page itself is revalidated on every visit, so a deploy reaches
+	# browsers at once; the hashed files under /map/assets/ never change.
 	handle /map {
 		import crawlers
+		header Cache-Control "no-cache"
 		rewrite * /map/
 		reverse_proxy web:80
 	}
 
 	handle /map/* {
 		import crawlers
+		@assets path /map/assets/*
+		header @assets Cache-Control "public, max-age=31536000, immutable"
+		header @page Cache-Control "no-cache"
+		@page not path /map/assets/*
 		encode zstd gzip
 		reverse_proxy web:80
 	}

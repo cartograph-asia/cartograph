@@ -5,7 +5,7 @@ import { Protocol } from 'pmtiles';
 import { cellToBoundary, cellToLatLng, getHexagonAreaAvg, getResolution, isValidCell, latLngToCell, UNITS } from 'h3-js';
 import { loadApi, MOCK, type UploadResult } from './api';
 import { DataStore } from './data';
-import { PLOT_MIN_ZOOM, PLOT_RES, planView, type ViewPlan } from './grid';
+import { PLOT_MIN_ZOOM, PLOT_RES, THAILAND_BBOX, planView, type BBox, type ViewPlan } from './grid';
 import { addLayers, pulse, renderCoverage, renderPlots, setGroupState, setPlotState, showMode } from './layers';
 import { Panel } from './panel';
 import { loadBaseStyle } from './style';
@@ -84,6 +84,13 @@ function setKey(next: ViewPlan): void {
   groupSizeEl.textContent = `${plots} plots, about ${km2.toLocaleString('en')} km²`;
 }
 
+/** Where plots can be surveyed, from the server; Thailand until it says. */
+const surveyable: BBox = config?.surveyable
+  ? { west: config.surveyable[0], south: config.surveyable[1], east: config.surveyable[2], north: config.surveyable[3] }
+  : THAILAND_BBOX;
+
+const NOT_YET = 'Plots here cannot be surveyed yet.';
+
 function viewBBox() {
   const b = map.getBounds();
   return { west: b.getWest(), south: b.getSouth(), east: b.getEast(), north: b.getNorth() };
@@ -92,20 +99,21 @@ function viewBBox() {
 async function refresh(): Promise<void> {
   const gen = ++generation;
   const t0 = performance.now();
-  plan = planView(viewBBox(), map.getZoom());
+  plan = planView(viewBBox(), map.getZoom(), surveyable);
   showMode(map, plan.mode);
   setKey(plan);
 
   if (plan.mode === 'none') {
-    setStatus('Cartograph covers Thailand for now.');
+    setStatus(NOT_YET);
     return;
   }
   if (plan.mode === 'coverage') {
     const p = plan;
     renderCoverage(map, p.res, p.cells, data);
-    setStatus('Zoom in to see individual plots');
+    setStatus(p.dataCells.length ? 'Zoom in to see individual plots' : NOT_YET);
+    if (!p.dataCells.length) return;
     try {
-      await data.ensureCoverage(p.res, p.cells);
+      await data.ensureCoverage(p.res, p.dataCells);
       if (gen !== generation) return;
       renderCoverage(map, p.res, p.cells, data);
     } catch (err) {
@@ -116,11 +124,15 @@ async function refresh(): Promise<void> {
 
   const p = plan;
   renderPlots(map, p.cells, data); // grid immediately, known plots coloured
+  if (!p.dataCells.length) {
+    setStatus(NOT_YET);
+    return;
+  }
   try {
-    const { requests, requested } = await data.ensurePlots(p.cells);
+    const { requests, requested } = await data.ensurePlots(p.dataCells);
     if (gen !== generation) return;
     const surveyed = renderPlots(map, p.cells, data);
-    setStatus(`${surveyed} of ${p.cells.length} plots in view surveyed`);
+    setStatus(`${surveyed} of ${p.dataCells.length} plots in view surveyed`);
     if (import.meta.env.DEV) {
       console.debug(
         `plots: ${p.cells.length} cells in view, ${requested} fetched in ${requests} request(s), ` +
@@ -143,7 +155,7 @@ async function refresh(): Promise<void> {
  */
 function redraw(): void {
   const t0 = performance.now();
-  const next = planView(viewBBox(), map.getZoom());
+  const next = planView(viewBBox(), map.getZoom(), surveyable);
   showMode(map, next.mode);
   setKey(next);
   if (next.mode === 'coverage') renderCoverage(map, next.res, next.cells, data);
@@ -262,7 +274,7 @@ map.on('load', () => {
   void refresh();
 });
 // The key matches the starting zoom before the first tiles are drawn.
-setKey(planView(viewBBox(), map.getZoom()));
+setKey(planView(viewBBox(), map.getZoom(), surveyable));
 
 /**
  * The view that shows HOME whole and centred in the part of the map the

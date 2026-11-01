@@ -7,6 +7,8 @@ const proxy = Object.fromEntries(
 );
 
 export default defineConfig({
+  // The map lives at /map/; every other path is a server-rendered page from the api.
+  base: '/map/',
   server: { port: 5173, proxy },
   preview: { proxy },
   // maplibre-gl alone is ~1 MB minified; one chunk is fine for the prototype.

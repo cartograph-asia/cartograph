@@ -76,6 +76,8 @@ type PlotDetail struct {
 	PhotoCount    int
 	FirstSurveyor string
 	ClaimedAt     time.Time
+	Place         string // nearest place, else the region name; empty outside every region
+	Region        string // region name_en; empty outside every region
 	Photos        []PlotPhoto
 }
 
@@ -162,9 +164,11 @@ func (d *DB) Plots(ctx context.Context, cells []string) ([]PlotSummary, error) {
 func (d *DB) Plot(ctx context.Context, cell string) (*PlotDetail, error) {
 	var p PlotDetail
 	err := d.Pool.QueryRow(ctx, `
-		select cell, photo_count, coalesce(first_surveyor, ''), claimed_at
-		from plots where cell = $1 and photo_count > 0`, cell,
-	).Scan(&p.Cell, &p.PhotoCount, &p.FirstSurveyor, &p.ClaimedAt)
+		select pl.cell, pl.photo_count, coalesce(pl.first_surveyor, ''), pl.claimed_at,
+		       coalesce(pl.place_name, r.name_en, ''), coalesce(r.name_en, '')
+		from plots pl left join regions r on r.id = pl.region_id
+		where pl.cell = $1 and pl.photo_count > 0`, cell,
+	).Scan(&p.Cell, &p.PhotoCount, &p.FirstSurveyor, &p.ClaimedAt, &p.Place, &p.Region)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}

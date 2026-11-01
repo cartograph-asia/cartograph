@@ -147,6 +147,7 @@ export class Panel {
     try {
       const detail = await this.api.getPlot(cell);
       if (token !== this.token) return;
+      if (detail?.place) this.title.textContent = `Near ${detail.place}`;
       this.renderInfo(cell, detail);
     } catch (err) {
       if (token !== this.token) return;
@@ -165,13 +166,17 @@ export class Panel {
     const pill = el('span', d ? 'pill surveyed' : 'pill blank', d ? 'Surveyed' : 'Blank');
     nodes.push(pill);
     if (d) {
+      if (d.region && d.region !== d.place) row('Region', d.region);
       row('First surveyor', d.first_surveyor);
       row('Claimed', fmtDate(d.claimed_at));
       row('Photos', String(d.photo_count));
     }
-    const cellDd = document.createElement('dd');
-    cellDd.append(el('code', '', cell));
-    meta.append(el('dt', '', 'Plot'), cellDd);
+    // The plot page, not the cell id: user-facing text never shows a bare cell.
+    const link = el('a', '', d ? 'All photos and neighbours' : 'Plot page');
+    link.setAttribute('href', `/plot/${cell}`);
+    const pageDd = document.createElement('dd');
+    pageDd.append(link);
+    meta.append(el('dt', '', 'Page'), pageDd);
     nodes.push(meta);
 
     if (d && d.photos.length) {

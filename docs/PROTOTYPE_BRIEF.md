@@ -27,7 +27,7 @@ GET  /api/plots?cells=88a,88b,...      up to 2000 res-8 cells
 
 GET  /api/plots/{cell}
   200 → { "cell": "...", "photo_count": n, "first_surveyor": "...",
-          "claimed_at": "...",
+          "claimed_at": "...", "place": "Pattaya", "region": "Chon Buri",
           "photos": [ { "id", "surveyor", "taken_at", "uploaded_at",
                         "urls": { "large", "thumb" } } ] }
   404 → blank plot

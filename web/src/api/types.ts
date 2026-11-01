@@ -28,6 +28,9 @@ export interface PlotDetail {
   photo_count: number;
   first_surveyor: string;
   claimed_at: string;
+  /** Nearest place, else the region; empty when unknown. */
+  place: string;
+  region: string;
   photos: PhotoInfo[];
 }
 

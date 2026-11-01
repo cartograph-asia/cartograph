@@ -175,6 +175,8 @@ export const mockApi: Api = {
       photo_count: p.photos.length,
       first_surveyor: p.first_surveyor,
       claimed_at: p.claimed_at,
+      place: 'Pattaya',
+      region: 'Chon Buri',
       photos: [...p.photos].reverse(),
     });
   },

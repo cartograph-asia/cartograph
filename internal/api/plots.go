@@ -41,6 +41,8 @@ type plotDetail struct {
 	PhotoCount    int         `json:"photo_count"`
 	FirstSurveyor string      `json:"first_surveyor"`
 	ClaimedAt     time.Time   `json:"claimed_at"`
+	Place         string      `json:"place"`
+	Region        string      `json:"region"`
 	Photos        []plotPhoto `json:"photos"`
 }
 
@@ -132,6 +134,8 @@ func (s *Server) getPlot(w http.ResponseWriter, r *http.Request) {
 		PhotoCount:    p.PhotoCount,
 		FirstSurveyor: p.FirstSurveyor,
 		ClaimedAt:     p.ClaimedAt.UTC(),
+		Place:         p.Place,
+		Region:        p.Region,
 		Photos:        make([]plotPhoto, 0, len(p.Photos)),
 	}
 	for _, ph := range p.Photos {

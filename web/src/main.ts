@@ -96,10 +96,41 @@ async function refresh(): Promise<void> {
   }
 }
 
-let debounce: number | undefined;
-function scheduleRefresh(): void {
-  window.clearTimeout(debounce);
-  debounce = window.setTimeout(() => void refresh(), 200);
+/**
+ * Draw the grid for the current view from what is already loaded, without
+ * requests. Runs every MOVE_REDRAW_MS while the map moves, so that zooming
+ * and panning do not leave an empty margin until the movement ends.
+ */
+function redraw(): void {
+  const t0 = performance.now();
+  const next = planView(viewBBox(), map.getZoom());
+  showMode(map, next.mode);
+  if (next.mode === 'coverage') renderCoverage(map, next.res, next.cells, data);
+  else if (next.mode === 'plots') renderPlots(map, next.cells, data);
+  if (import.meta.env.DEV && next.mode !== 'none') {
+    console.debug(`redraw: ${next.cells.length} cells, ${(performance.now() - t0).toFixed(0)} ms`);
+  }
+}
+
+const MOVE_REDRAW_MS = 150;
+let moveTimer: number | undefined;
+// The plot and coverage layers exist from 'load' on; the map moves before
+// that (the hash, the first resize), and those moves are ignored.
+let layersReady = false;
+function onMove(): void {
+  if (!layersReady || moveTimer !== undefined) return;
+  moveTimer = window.setTimeout(() => {
+    moveTimer = undefined;
+    redraw();
+  }, MOVE_REDRAW_MS);
+}
+
+/** The movement ended: draw at once and fetch what the view lacks. */
+function onMoveEnd(): void {
+  if (!layersReady) return;
+  window.clearTimeout(moveTimer);
+  moveTimer = undefined;
+  void refresh();
 }
 
 function select(cell: string | null): void {
@@ -174,6 +205,7 @@ function linkedCell(): string | null {
 
 map.on('load', () => {
   addLayers(map);
+  layersReady = true;
   const cell = linkedCell();
   if (cell) {
     // Drop the cell so that a reload keeps the user's own view from the hash.
@@ -188,7 +220,8 @@ map.on('load', () => {
   }
   void refresh();
 });
-map.on('moveend', scheduleRefresh);
+map.on('move', onMove);
+map.on('moveend', onMoveEnd);
 
 map.on('mousemove', (e) => {
   if (plan.mode !== 'plots') {

@@ -176,7 +176,7 @@ func TestCreatePhotoClaimsThenAdds(t *testing.T) {
 
 	keys := e.store.Keys()
 	sort.Strings(keys)
-	if len(keys) != 2 {
+	if len(keys) != 3 || keys[1] != "photos/2026/11/"+id+"_medium.jpg" {
 		t.Fatalf("stored keys: %v", keys)
 	}
 	large, _ := e.store.Get("photos/2026/11/" + id + "_large.jpg")

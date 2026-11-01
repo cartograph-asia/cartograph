@@ -126,6 +126,13 @@ func TestProcessDownscalesAndFlattens(t *testing.T) {
 	if v.LargeWidth != LargeSide || (v.LargeHeight < 666 || v.LargeHeight > 667) {
 		t.Errorf("large = %dx%d", v.LargeWidth, v.LargeHeight)
 	}
+	medium, err := jpeg.DecodeConfig(bytes.NewReader(v.Medium))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if medium.Width != MediumSide || medium.Height < 399 || medium.Height > 400 {
+		t.Errorf("medium = %dx%d", medium.Width, medium.Height)
+	}
 	dec, err := jpeg.Decode(bytes.NewReader(v.Large))
 	if err != nil {
 		t.Fatal(err)

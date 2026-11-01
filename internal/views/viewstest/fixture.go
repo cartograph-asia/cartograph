@@ -40,27 +40,27 @@ type plot struct {
 	lat, lng float64
 }
 
-func p(cell, place, placeTh string, r views.RegionRef, number int, lat, lng float64) plot {
-	return plot{views.PlotRef{Cell: cell, Place: place, PlaceTh: placeTh, Region: r, Number: number}, lat, lng}
+func p(cell, place, placeTh, district string, r views.RegionRef, number int, lat, lng float64) plot {
+	return plot{views.PlotRef{Cell: cell, Place: place, PlaceTh: placeTh, District: district, Region: r, Number: number}, lat, lng}
 }
 
 // Plots of the fixture. The first seven are Pattaya Beach and its ring;
 // 88658bd157fffff has no photo and serves as the blank plot.
 var plots = []plot{
-	p("88658bd11dfffff", "Pattaya", "พัทยา", ChonBuri, 2417, 12.93190, 100.88670),
-	p("88658bd10bfffff", "Pattaya", "พัทยา", ChonBuri, 2418, 12.93720, 100.88220),
-	p("88658bd103fffff", "Pattaya", "พัทยา", ChonBuri, 2421, 12.94110, 100.88890),
-	p("88658bd115fffff", "Pattaya", "พัทยา", ChonBuri, 2416, 12.93580, 100.89340),
-	p("88658bd111fffff", "Pattaya", "พัทยา", ChonBuri, 2413, 12.92660, 100.89120),
-	p("88658bd119fffff", "Pattaya", "พัทยา", ChonBuri, 2412, 12.92270, 100.88450),
-	p("88658bd157fffff", "Pattaya", "พัทยา", ChonBuri, 2410, 12.92800, 100.88000),
-	p("88658bd11bfffff", "Pattaya", "พัทยา", ChonBuri, 2405, 12.92535, 100.87212),
-	p("88658bd00dfffff", "Jomtien", "จอมเทียน", ChonBuri, 2280, 12.88587, 100.87317),
-	p("88658bd135fffff", "Na Kluea", "นาเกลือ", ChonBuri, 2533, 12.96314, 100.88956),
-	p("88658bd86bfffff", "Bang Lamung", "บางละมุง", ChonBuri, 3021, 13.04610, 100.92978),
-	p("88658a36a9fffff", "Si Racha", "ศรีราชา", ChonBuri, 3804, 13.17188, 100.93200),
-	p("8865886183fffff", "Sattahip", "สัตหีบ", ChonBuri, 1187, 12.66285, 100.89934),
-	p("8864a4b161fffff", "Bangkok", "กรุงเทพมหานคร", Bangkok, 905, 13.75059, 100.54134),
+	p("88658bd11dfffff", "Pattaya", "พัทยา", "Bang Lamung", ChonBuri, 2417, 12.93190, 100.88670),
+	p("88658bd10bfffff", "Pattaya", "พัทยา", "Bang Lamung", ChonBuri, 2418, 12.93720, 100.88220),
+	p("88658bd103fffff", "Pattaya", "พัทยา", "Bang Lamung", ChonBuri, 2421, 12.94110, 100.88890),
+	p("88658bd115fffff", "Pattaya", "พัทยา", "Bang Lamung", ChonBuri, 2416, 12.93580, 100.89340),
+	p("88658bd111fffff", "Pattaya", "พัทยา", "Bang Lamung", ChonBuri, 2413, 12.92660, 100.89120),
+	p("88658bd119fffff", "Pattaya", "พัทยา", "Bang Lamung", ChonBuri, 2412, 12.92270, 100.88450),
+	p("88658bd157fffff", "Pattaya", "พัทยา", "Bang Lamung", ChonBuri, 2410, 12.92800, 100.88000),
+	p("88658bd11bfffff", "Pattaya", "พัทยา", "Bang Lamung", ChonBuri, 2405, 12.92535, 100.87212),
+	p("88658bd00dfffff", "Jomtien", "จอมเทียน", "Bang Lamung", ChonBuri, 2280, 12.88587, 100.87317),
+	p("88658bd135fffff", "Na Kluea", "นาเกลือ", "Bang Lamung", ChonBuri, 2533, 12.96314, 100.88956),
+	p("88658bd86bfffff", "Bang Lamung", "บางละมุง", "Bang Lamung", ChonBuri, 3021, 13.04610, 100.92978),
+	p("88658a36a9fffff", "Si Racha", "ศรีราชา", "Si Racha", ChonBuri, 3804, 13.17188, 100.93200),
+	p("8865886183fffff", "Sattahip", "สัตหีบ", "Sattahip", ChonBuri, 1187, 12.66285, 100.89934),
+	p("8864a4b161fffff", "Bangkok", "กรุงเทพมหานคร", "Pathum Wan", Bangkok, 905, 13.75059, 100.54134),
 }
 
 // surveyor is a fixture Surveyor.

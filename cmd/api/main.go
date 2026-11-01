@@ -26,6 +26,7 @@ import (
 	"github.com/cartograph-asia/cartograph/internal/admin"
 	"github.com/cartograph-asia/cartograph/internal/api"
 	"github.com/cartograph-asia/cartograph/internal/auth"
+	"github.com/cartograph-asia/cartograph/internal/crawlers"
 	"github.com/cartograph-asia/cartograph/internal/db"
 	"github.com/cartograph-asia/cartograph/internal/storage"
 	"github.com/cartograph-asia/cartograph/internal/web"
@@ -39,6 +40,7 @@ type config struct {
 	s3          storage.S3Config
 	maxUploadMB int
 	tilesURL    string // TILES_URL, see api.Config.TilesURL
+	crawlers    crawlers.Policy
 }
 
 func main() {
@@ -128,9 +130,13 @@ func routes(cfg config, database *db.DB, store storage.Store) (http.Handler, err
 	pages := web.NewHandlers(database.Views(), rd)
 	adminH := admin.New(database.Admin(), a, rd.RenderFunc())
 	slog.Info("accounts", "admins", len(acfg.Admins), "signup", acfg.Signup)
+	slog.Info("crawlers", "policy", cfg.crawlers)
 	apiH := api.New(database, store, api.Config{MaxUploadMB: cfg.maxUploadMB, TilesURL: cfg.tilesURL}).Handler()
 
 	r := chi.NewRouter()
+	// Outermost, so that every response carries the robots header with
+	// CRAWLERS=block, the JSON API and the 404 page included.
+	r.Use(cfg.crawlers.Middleware)
 	r.Use(a.Middleware)
 	// The JSON API keeps its own router, logging and JSON errors; chi
 	// prefers the static /api/me from the auth routes over this wildcard.
@@ -138,6 +144,8 @@ func routes(cfg config, database *db.DB, store storage.Store) (http.Handler, err
 	r.Handle("/healthz", apiH)
 	r.Group(func(r chi.Router) {
 		r.Use(api.Observe)
+		r.Get("/robots.txt", cfg.crawlers.Robots)
+		r.Head("/robots.txt", cfg.crawlers.Robots)
 		a.Routes(r)
 		adminH.Routes(r)
 		pages.Routes(r)
@@ -222,6 +230,9 @@ func loadConfig() (config, error) {
 	}
 	if c.maxUploadMB, err = strconv.Atoi(envOr("MAX_UPLOAD_MB", "25")); err != nil || c.maxUploadMB <= 0 {
 		errs = append(errs, errors.New("MAX_UPLOAD_MB must be a positive integer"))
+	}
+	if c.crawlers, err = crawlers.FromEnv(os.Getenv); err != nil {
+		errs = append(errs, err)
 	}
 	c.tilesURL = envOr("TILES_URL", api.DefaultTilesURL)
 	if !strings.HasPrefix(c.tilesURL, "/") && !strings.HasPrefix(c.tilesURL, "https://") && !strings.HasPrefix(c.tilesURL, "http://") {

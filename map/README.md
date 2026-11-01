@@ -4,10 +4,11 @@ Builds `map/asia.pmtiles`, an OpenMapTiles-schema vector tile archive
 (zoom 0–14) from OpenStreetMap, for the base style in `web/style.json`.
 Caddy serves this directory at `/tiles/` with range requests.
 
-The archive covers the map's whole area (88,-2 – 114,28, the `maxBounds` in
-`web/src/main.ts`) and holds OSM detail for Thailand and its neighbours:
-Myanmar, Laos, Cambodia, Vietnam and Malaysia/Singapore/Brunei, merged into
-one file with osmium. Cartograph's plots, regions and places are still
+The archive covers `BOUNDS` (default 88,-12 – 150,55) and holds OSM detail
+for the extracts in `EXTRACTS` (Southeast and East Asia), merged into one
+file with osmium. The map reads the bounds from the archive's header and
+shows the page's paper beyond them (`web/src/style.ts`), so other BOUNDS
+need no change in the client. Cartograph's plots, regions and places are still
 Thailand's only; `cmd/regions`, `cmd/places` and `cmd/fixture` read
 `thailand-latest.osm.pbf` alone.
 

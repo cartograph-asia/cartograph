@@ -23,7 +23,7 @@
 {{/* One region row: name, coverage, bar, most active Surveyors. */}}
 {{define "region-row" -}}
 <li><h3><a href="/region/{{.Region.Slug}}">{{.Region.NameEn}}</a>{{with .Region.NameTh}} <span lang="th" class="th">{{.}}</span>{{end}}</h3>
-<p class="cov"><span class="pct">{{pct .Coverage}}</span> <span class="bar" role="presentation"><span style="width:{{bar .Coverage}}"></span></span> <span class="of">{{num .Coverage.Claimed}} of {{num .Coverage.Land}} plots</span></p>
+<p class="cov"><span class="pct">{{pct .Coverage}}</span> <span class="bar" role="presentation">{{if .Coverage.Claimed}}<span style="width:{{bar .Coverage}}"></span>{{end}}</span> <span class="of">{{num .Coverage.Claimed}} of {{num .Coverage.Land}} plots</span></p>
 {{if .TopSurveyors}}<p class="who">Most active: {{range $i, $s := .TopSurveyors}}{{if $i}}, {{end}}<a href="/surveyor/{{$s.Surveyor.Name}}">{{$s.Surveyor.Name}}</a>{{end}}</p>{{end}}
 </li>
 {{- end}}

@@ -2,7 +2,7 @@
 {{$r := .Region}}
 <header class="head">
 <h1>{{$r.NameEn}}{{with $r.NameTh}} <span lang="th" class="th">{{.}}</span>{{end}}</h1>
-<p class="cov big"><span class="pct">{{pct .Coverage}}</span> <span class="bar" role="presentation"><span style="width:{{bar .Coverage}}"></span></span> <span class="of">{{num .Coverage.Claimed}} of {{num .Coverage.Land}} plots surveyed</span></p>
+<p class="cov big"><span class="pct">{{pct .Coverage}}</span> <span class="bar" role="presentation">{{if .Coverage.Claimed}}<span style="width:{{bar .Coverage}}"></span>{{end}}</span> <span class="of">{{num .Coverage.Claimed}} of {{num .Coverage.Land}} plots surveyed</span></p>
 <p class="counters"><b>{{num .Counters.Plots}}</b> {{if eq .Counters.Plots 1}}plot{{else}}plots{{end}} · <b>{{num .Counters.Photos}}</b> {{if eq .Counters.Photos 1}}photo{{else}}photos{{end}} · <b>{{num .Counters.Surveyors}}</b> {{if eq .Counters.Surveyors 1}}Surveyor{{else}}Surveyors{{end}}</p>
 <p class="note">{{with .LastSurveyedAt}}Last survey {{when $.Now .}} · {{else}}Not surveyed yet · {{end}}<a href="{{.Feed}}">RSS feed</a></p>
 </header>

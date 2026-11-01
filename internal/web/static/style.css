@@ -44,7 +44,7 @@ b { font-variant-numeric: tabular-nums lining-nums; }
 /* Masthead */
 .mast {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: auto 1fr;
   grid-template-areas: "brand acts" "claim claim";
   align-items: center;
   gap: 0.25rem 1rem;
@@ -52,13 +52,14 @@ b { font-variant-numeric: tabular-nums lining-nums; }
   padding-bottom: 1.5rem;
 }
 .brand { grid-area: brand; display: flex; align-items: center; gap: 0.6rem; color: var(--slate); text-decoration: none; }
-.brand .name { font-size: 1.45rem; font-weight: 700; letter-spacing: -0.01em; }
+.brand img { width: 32px; height: 32px; }
+.brand .name { font-size: 1.3rem; font-weight: 700; letter-spacing: -0.01em; }
 .claim { grid-area: claim; margin: 0; color: var(--muted); font-style: italic; }
-.acts { grid-area: acts; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 0.25rem 1rem; font-size: 0.9375rem; }
+.acts { grid-area: acts; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 0.25rem 0.75rem; font-size: 0.9375rem; }
 .acts form { margin: 0; }
 .go {
   display: inline-block; background: var(--green); color: var(--cream); text-decoration: none;
-  padding: 0.45rem 0.8rem; border-radius: 3px; font-weight: 700; line-height: 1.2;
+  padding: 0.4rem 0.65rem; border-radius: 3px; font-weight: 700; line-height: 1.2;
 }
 .go:hover { background: var(--slate); color: var(--cream); }
 button.link { font: inherit; background: none; border: 0; padding: 0; color: var(--green); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 0.15em; cursor: pointer; }
@@ -172,12 +173,15 @@ textarea { resize: vertical; }
 @media (min-width: 40rem) {
   :root { --gutter: 2rem; }
   h1 { font-size: 2.3rem; }
+  .brand img { width: 36px; height: 36px; }
+  .brand .name { font-size: 1.45rem; }
+  .go { padding: 0.45rem 0.8rem; }
   .mast { grid-template-columns: auto 1fr auto; grid-template-areas: "brand claim acts"; padding-top: 1.5rem; padding-bottom: 2rem; }
   .grid, .people { grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr)); gap: 1.75rem 1.25rem; }
   .newcomers { grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); }
   .regions { grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr)); }
   .cols { grid-template-columns: 1fr 1fr; }
-  .mapbox { aspect-ratio: 2 / 1; }
+  .mapbox { aspect-ratio: auto; height: 22rem; }
 }
 @media (min-width: 64rem) {
   .featured figure { display: grid; grid-template-columns: 3fr 2fr; gap: 2rem; align-items: start; }

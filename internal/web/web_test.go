@@ -104,6 +104,7 @@ var (
 	cellRe    = regexp.MustCompile(`\b8[0-9a-f]{14}\b`)
 	detailsRe = regexp.MustCompile(`(?s)<p class="details">.*?</p>`)
 	wordsBad  = regexp.MustCompile(`(?i)\b(hex|hexagons?|squares?)\b`)
+	badMark   = regexp.MustCompile(`(?i)\bCartograph\s+Asia\b`) // handles like cartograph-asia keep their spelling
 )
 
 // checkHTML runs the structural rules every page must follow.
@@ -137,6 +138,9 @@ func checkHTML(t *testing.T, name, body string) {
 		if m := cellRe.FindString(text); m != "" {
 			t.Errorf("%s: bare cell id %s in visible text", name, m)
 		}
+	}
+	if m := badMark.FindString(text); m != "" {
+		t.Errorf("%s: %q instead of the wordmark Cartograph.asia", name, m)
 	}
 	if strings.Contains(body, "<no value>") || strings.Contains(body, "ZgotmplZ") {
 		t.Errorf("%s: template artefact in output", name)
@@ -204,6 +208,25 @@ func TestAnonymousMasthead(t *testing.T) {
 	// A viewer without a name is asked to choose one.
 	body = render(t, views.PageChooseName, viewstest.ChooseName())
 	must(t, body, `href="/signin/name">Choose your name`)
+}
+
+// TestWordmark checks that the site stands as Cartograph.asia wherever it is
+// the mark: masthead, footer, title, og:site_name and feed titles.
+func TestWordmark(t *testing.T) {
+	const mark = `Cartograph<span class="tld">.asia</span>`
+	body := render(t, views.PageHome, viewstest.Home())
+	must(t, body, `<span class="wordmark">`+mark+`</span>`, `<p class="foot-mark"><a href="/">`+mark+`</a></p>`,
+		"<title>Cartograph.asia: a photo for every plot of land</title>",
+		`<meta property="og:site_name" content="Cartograph.asia">`,
+		`title="Cartograph.asia: latest surveys"`)
+	body = render(t, views.PageSurveyors, viewstest.Surveyors())
+	must(t, body, "<title>Surveyors · Cartograph.asia</title>")
+	h := newServer(t, 0)
+	for _, path := range []string{"/latest.rss", "/region/chon-buri.rss", "/surveyor/adrian.rss"} {
+		if r := get(t, h, path); !strings.Contains(r.body, "<title>Cartograph.asia: ") {
+			t.Errorf("%s: channel title is not Cartograph.asia: …", path)
+		}
+	}
 }
 
 func TestRoutes(t *testing.T) {
@@ -569,7 +592,7 @@ func TestStaticPages(t *testing.T) {
 		t.Errorf("want 8 principles")
 	}
 	body = get(t, h, "/about/plots").body
-	must(t, body, "<title>About the plots · Cartograph</title>", "<h1>About the plots</h1>", `<p class="lede">Cartograph divides`,
+	must(t, body, "<title>About the plots · Cartograph.asia</title>", "<h1>About the plots</h1>", `<p class="lede">Cartograph divides`,
 		`<meta name="description" content="Cartograph divides the map into plots:`, "<h2>Why hexagons</h2>",
 		"<table>", "<th>Cells worldwide</th><td>691,776,122</td>", "<code>88658bd337fffff</code>", `<a href="https://h3geo.org/">H3</a>`,
 		`<link rel="canonical" href="https://cartograph.asia/about/plots">`)

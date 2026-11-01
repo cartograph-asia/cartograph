@@ -97,6 +97,9 @@ abbr[title] { text-decoration: none; }
   font-family: var(--font-display); font-weight: var(--display-weight); letter-spacing: var(--display-tracking);
   font-size: 1.75rem; line-height: 1; align-self: end;
 }
+/* The wordmark's ".asia" suffix, in the masthead and the footer: smaller, on
+   the same baseline, in muted ink. */
+.tld { font-size: 0.6em; letter-spacing: 0; color: var(--ink-muted); }
 .claim { margin: var(--s-xs) 0 0; color: var(--ink-muted); font-size: var(--step-meta); align-self: start; }
 .acts { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s-s) var(--s-m); font-size: var(--step-meta); }
 .acts form { margin: 0; }

@@ -2,6 +2,8 @@
 {{define "csrf"}}<input type="hidden" name="{{csrfField}}" value="{{.CSRF}}">{{end}}
 
 {{/* A grid of photo thumbnails, chronological as given. */}}
+{{define "wordmark"}}Cartograph<span class="tld">.asia</span>{{end}}
+
 {{define "grid" -}}
 <ul class="grid">
 {{- range $i, $p := .Photos}}

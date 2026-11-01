@@ -16,6 +16,10 @@ import (
 	"time"
 )
 
+// Wordmark is the site's mark in plain text: page titles, og:site_name and
+// feed titles. In running text the project is called "Cartograph".
+const Wordmark = "Cartograph.asia"
+
 // Sizes of the lists on the pages. Source implementations use them so that
 // handlers, templates and fixtures agree.
 const (

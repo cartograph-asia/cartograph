@@ -72,6 +72,13 @@ body {
   text-decoration: none;
 }
 
+/* The wordmark's ".asia" suffix: smaller, same baseline, muted. */
+.brand-tld {
+  font-size: 0.6em;
+  letter-spacing: 0;
+  color: var(--muted);
+}
+
 .brand-logo {
   display: block;
   width: 24px;

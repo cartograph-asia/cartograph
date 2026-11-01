@@ -65,20 +65,21 @@ var plots = []plot{
 
 // surveyor is a fixture Surveyor.
 type surveyor struct {
-	name   string
-	joined time.Time
-	bio    string
-	home   *views.RegionRef
-	email  string
+	name    string
+	display string // display name; empty for none
+	joined  time.Time
+	bio     string
+	home    *views.RegionRef
+	email   string
 }
 
 var surveyors = []surveyor{
 	{name: "adrian", joined: Now.Add(-40 * 24 * time.Hour), email: "adrian@example.org", home: &ChonBuri,
 		bio: "Walking Pattaya one plot at a time. Mostly early mornings, before the heat."},
-	{name: "somchai-k", joined: Now.Add(-12 * 24 * time.Hour), email: "somchai@example.org",
+	{name: "somchai-k", display: "Somchai Kittisak", joined: Now.Add(-12 * 24 * time.Hour), email: "somchai@example.org",
 		bio: "Motorbike, old Fujifilm, Sukhumvit Road from Bang Lamung to Sattahip."},
 	{name: "Mali", joined: Now.Add(-5 * 24 * time.Hour), email: "mali@example.org", home: &Bangkok},
-	{name: "ploy88", joined: Now.Add(-26 * time.Hour), email: "ploy@example.org"},
+	{name: "ploy88", display: "พลอย ชลบุรี", joined: Now.Add(-26 * time.Hour), email: "ploy@example.org"},
 	{name: "beach-walker", joined: Now.Add(-90 * 24 * time.Hour)}, // placeholder from the prototype, no e-mail, no bio
 }
 
@@ -137,7 +138,7 @@ func build() *data {
 		item := views.PhotoItem{
 			ID: id, Keys: keys, Width: w, Height: h,
 			Plot:     plots[s.plot].ref,
-			Surveyor: views.SurveyorRef{Name: surveyors[s.surveyor].name},
+			Surveyor: views.SurveyorRef{Name: surveyors[s.surveyor].name, Display: surveyors[s.surveyor].display},
 			TakenAt:  taken, UploadedAt: at,
 			FirstSurvey: !claimed[s.plot],
 		}

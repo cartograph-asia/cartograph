@@ -19,6 +19,7 @@ type rss struct {
 	XMLName xml.Name   `xml:"rss"`
 	Version string     `xml:"version,attr"`
 	Atom    string     `xml:"xmlns:atom,attr"`
+	DC      string     `xml:"xmlns:dc,attr"`
 	Channel rssChannel `xml:"channel"`
 }
 
@@ -43,6 +44,7 @@ type rssItem struct {
 	Link        string  `xml:"link"`
 	GUID        rssGUID `xml:"guid"`
 	PubDate     string  `xml:"pubDate"`
+	Creator     string  `xml:"dc:creator"` // the Surveyor's display name, else their Surveyor name
 	Description string  `xml:"description"`
 }
 
@@ -84,7 +86,7 @@ func (rd *Renderer) writeFeed(w io.Writer, f *views.Feed) error {
 	}
 	for _, p := range f.Items {
 		link := rd.abs("/photo/" + p.ID)
-		title := p.Plot.Name() + " by " + p.Surveyor.Name
+		title := p.Plot.Name() + " by " + p.Surveyor.Label()
 		if p.FirstSurvey {
 			title += " (first survey)"
 		}
@@ -94,10 +96,11 @@ func (rd *Renderer) writeFeed(w io.Writer, f *views.Feed) error {
 			Link:    link,
 			GUID:    rssGUID{IsPermaLink: true, Value: link},
 			PubDate: rfc822(p.UploadedAt),
+			Creator: p.Surveyor.Label(),
 			// HTML in description is entity-escaped by the XML encoder.
 			Description: fmt.Sprintf(`<a href="%s"><img src="%s" width="%d" height="%d" alt="%s"></a>`,
 				html.EscapeString(link), html.EscapeString(rd.absImg(p.Keys.Thumb)), d.W, d.H,
-				html.EscapeString("Photo at "+p.Plot.Name()+" by "+p.Surveyor.Name)),
+				html.EscapeString("Photo at "+p.Plot.Name()+" by "+p.Surveyor.Label())),
 		})
 	}
 	if _, err := io.WriteString(w, xml.Header); err != nil {
@@ -105,7 +108,7 @@ func (rd *Renderer) writeFeed(w io.Writer, f *views.Feed) error {
 	}
 	enc := xml.NewEncoder(w)
 	enc.Indent("", "  ")
-	if err := enc.Encode(rss{Version: "2.0", Atom: "http://www.w3.org/2005/Atom", Channel: ch}); err != nil {
+	if err := enc.Encode(rss{Version: "2.0", Atom: "http://www.w3.org/2005/Atom", DC: "http://purl.org/dc/elements/1.1/", Channel: ch}); err != nil {
 		return err
 	}
 	_, err := io.WriteString(w, "\n")

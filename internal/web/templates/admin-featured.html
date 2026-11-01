@@ -42,10 +42,10 @@
 {{define "featured-row" -}}
 {{$f := .F}}
 <div class="feature-row">
-<a class="ph" href="/admin/photo/{{$f.Photo.ID}}"><img src="{{img $f.Photo.Keys.Thumb}}" width="480" height="360" alt="Photo at {{$f.Photo.Plot.Name}} by {{$f.Photo.Surveyor.Name}}" loading="lazy"></a>
+<a class="ph" href="/admin/photo/{{$f.Photo.ID}}"><img src="{{img $f.Photo.Keys.Thumb}}" width="480" height="360" alt="Photo at {{$f.Photo.Plot.Name}} by {{$f.Photo.Surveyor.Label}}" loading="lazy"></a>
 <div>
 <p class="feature-name"><a href="/admin/photo/{{$f.Photo.ID}}">{{$f.Photo.Plot.Name}}</a></p>
-<p class="by">by {{$f.Photo.Surveyor.Name}} · {{stamp $f.StartsAt}} – {{with $f.EndsAt}}{{stamp .}}{{else}}until replaced{{end}}</p>
+<p class="by">by {{$f.Photo.Surveyor.Label}} · {{stamp $f.StartsAt}} – {{with $f.EndsAt}}{{stamp .}}{{else}}until replaced{{end}}</p>
 {{with $f.Text}}<p>{{.}}</p>{{end}}
 {{if eq .State "current"}}<form method="post" action="/admin/featured/{{$f.ID}}/end">{{template "csrf" .Page}}<button class="link" type="submit">End now</button></form>{{end}}
 {{if eq .State "scheduled"}}<form method="post" action="/admin/featured/{{$f.ID}}/delete">{{template "csrf" .Page}}<button class="link" type="submit">Delete this scheduled entry</button></form>{{end}}

@@ -2,12 +2,15 @@
 <div class="form">
 <h1>Edit profile</h1>
 {{if .Saved}}<p class="saved" role="status">Saved.</p>{{end}}
-{{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
+{{with .Error}}<p id="form-error" class="error" role="alert">{{.}}</p>{{end}}
 <form method="post" action="/settings">
 {{template "csrf" .}}
 <p class="field"><span class="label">Surveyor name</span><a href="/surveyor/{{.Name}}">{{.Name}}</a></p>
+<label for="display_name">Display name</label>
+<input id="display_name" name="display_name" type="text" value="{{.Display}}" maxlength="{{displayMax}}" autocomplete="name" aria-describedby="{{if eq .ErrorField "display"}}form-error {{end}}display-hint"{{if eq .ErrorField "display"}} autofocus aria-invalid="true"{{end}}>
+<p id="display-hint" class="hint">How your name is shown, e.g. your first and last name. Optional; you can change it any time.</p>
 <label for="bio">About you</label>
-<textarea id="bio" name="bio" rows="5" maxlength="{{bioMax}}" aria-describedby="bio-hint">{{.Bio}}</textarea>
+<textarea id="bio" name="bio" rows="5" maxlength="{{bioMax}}" aria-describedby="{{if eq .ErrorField "bio"}}form-error {{end}}bio-hint"{{if eq .ErrorField "bio"}} aria-invalid="true"{{end}}>{{.Bio}}</textarea>
 <p id="bio-hint" class="hint">Plain text, up to {{bioMax}} characters. Shown on your profile.</p>
 <label for="home_region">Home region</label>
 <select id="home_region" name="home_region">

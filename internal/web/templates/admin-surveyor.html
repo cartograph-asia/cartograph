@@ -4,7 +4,7 @@
 <header class="head">
 <p class="kicker">Surveyor{{if $s.BlockedAt}} · blocked{{end}}</p>
 <h1 class="name">{{$s.Name}}</h1>
-<p class="note">{{$s.Email}} · joined {{date $s.JoinedAt}} · <a href="/surveyor/{{$s.Name}}">public profile</a></p>
+<p class="note">{{with $s.Display}}Display name “{{.}}” · {{end}}{{$s.Email}} · joined {{date $s.JoinedAt}} · <a href="/surveyor/{{$s.Name}}">public profile</a></p>
 <ul class="figures small">
 <li><a href="/admin/photos?surveyor={{$s.Name}}"><b>{{num $s.Photos}}</b> photos</a></li>
 <li><b>{{num $s.Hidden}}</b> hidden</li>
@@ -18,6 +18,7 @@
 {{else}}<ul class="ways">
 <li><a class="danger" href="/admin/surveyor/{{$s.Name}}/block">Block {{$s.Name}} <span aria-hidden="true">→</span></a></li>
 {{if .Bio}}<li><a class="danger" href="/admin/surveyor/{{$s.Name}}/clear-bio">Clear the bio <span aria-hidden="true">→</span></a></li>{{end}}
+{{if $s.Display}}<li><a class="danger" href="/admin/surveyor/{{$s.Name}}/clear-display-name">Clear the display name <span aria-hidden="true">→</span></a></li>{{end}}
 <li><form method="post" action="/admin/surveyor/{{$s.Name}}/end-sessions">{{template "csrf" $}}<button class="link" type="submit">Sign out everywhere</button></form></li>
 </ul>{{end}}
 {{with .Bio}}<section class="block"><h2>Bio</h2><p class="bio">{{.}}</p></section>{{end}}

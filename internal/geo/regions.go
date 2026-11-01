@@ -82,7 +82,13 @@ type RegionIndex struct {
 func NewRegionIndex(shapes []RegionShape) *RegionIndex {
 	x := &RegionIndex{shapes: make([]RegionShape, len(shapes))}
 	for i, s := range shapes {
-		s.bound = s.Geometry.Bound()
+		var g orb.MultiPolygon
+		for _, p := range s.Geometry {
+			if len(p) > 0 && len(p[0]) >= 4 {
+				g = append(g, p)
+			}
+		}
+		s.Geometry, s.bound = g, g.Bound()
 		x.shapes[i] = s
 	}
 	return x
@@ -103,7 +109,7 @@ func (x *RegionIndex) Contains(p orb.Point) (int, bool) {
 	}
 	for i := range x.shapes {
 		s := &x.shapes[i]
-		if s.bound.Contains(p) && planar.MultiPolygonContains(s.Geometry, p) {
+		if len(s.Geometry) > 0 && s.bound.Contains(p) && planar.MultiPolygonContains(s.Geometry, p) {
 			return s.ID, true
 		}
 	}
@@ -122,7 +128,7 @@ func (x *RegionIndex) Locate(p orb.Point) (int, bool) {
 	best, bestD := 0, math.Inf(1)
 	for i := range x.shapes {
 		s := &x.shapes[i]
-		if !s.bound.Pad(NearTolerance).Contains(p) {
+		if len(s.Geometry) == 0 || !s.bound.Pad(NearTolerance).Contains(p) {
 			continue
 		}
 		if d := planar.DistanceFrom(s.Geometry, p); d < bestD {

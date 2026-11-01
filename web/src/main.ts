@@ -252,6 +252,13 @@ function groupAt(lat: number, lng: number): string | null {
   return (data.coverageOf(plan.res, cell)?.surveyed ?? 0) > 0 ? cell : null;
 }
 
+/** The plot under a point, if the view shows single plots and it has photos (Adrian: only those are clickable). */
+function surveyedPlotAt(lat: number, lng: number): string | null {
+  if (plan.mode !== 'plots') return null;
+  const cell = latLngToCell(lat, lng, PLOT_RES);
+  return data.plot(cell) ? cell : null;
+}
+
 let hoveredGroup: string | null = null;
 function hoverGroup(cell: string | null): void {
   if (cell === hoveredGroup) return;
@@ -269,12 +276,13 @@ map.on('mousemove', (e) => {
     return;
   }
   hoverGroup(null);
-  const cell = latLngToCell(e.lngLat.lat, e.lngLat.lng, PLOT_RES);
+  // Only plots with photos react; a blank plot is surveyed with "Upload a photo".
+  const cell = surveyedPlotAt(e.lngLat.lat, e.lngLat.lng);
+  map.getCanvas().style.cursor = cell ? 'pointer' : '';
   if (cell === hovered) return;
   if (hovered) setPlotState(map, hovered, { hover: false });
   hovered = cell;
-  setPlotState(map, cell, { hover: true });
-  map.getCanvas().style.cursor = 'pointer';
+  if (cell) setPlotState(map, cell, { hover: true });
 });
 map.getCanvas().addEventListener('mouseleave', () => {
   if (hovered) setPlotState(map, hovered, { hover: false });
@@ -304,8 +312,8 @@ map.on('click', (e) => {
     if (group) zoomToGroup(group);
     return;
   }
-  if (plan.mode !== 'plots') return;
-  const cell = latLngToCell(e.lngLat.lat, e.lngLat.lng, PLOT_RES);
+  const cell = surveyedPlotAt(e.lngLat.lat, e.lngLat.lng);
+  if (!cell) return;
   select(cell);
   void panel.openPlot(cell);
   revealCell(cell);

@@ -28,6 +28,7 @@
 	}
 
 	handle /map/* {
+		encode zstd gzip
 		reverse_proxy web:80
 	}
 
@@ -73,6 +74,8 @@
 		request_body {
 			max_size 1MB
 		}
+		# Pages, feeds and the stylesheet; photos and tiles are not compressed.
+		encode zstd gzip
 		reverse_proxy api:8000
 	}
 }

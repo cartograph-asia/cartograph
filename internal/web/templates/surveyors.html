@@ -8,7 +8,7 @@
 <li>{{with .LastPhoto}}<a class="ph" href="/photo/{{.ID}}"><img src="{{img .Keys.Thumb}}" width="480" height="360" alt="Newest photo by {{.Surveyor.Name}}, at {{.Plot.Name}}" loading="lazy" decoding="async"></a>{{else}}<span class="ph empty"></span>{{end}}
 <p class="cap"><a class="who" href="/surveyor/{{.Surveyor.Name}}">{{.Surveyor.Name}}</a>
 <span class="line">{{if .Surveyed}}{{num .Surveyed}} {{surveyed .Surveyed .Plots}}{{else}}no photos yet{{end}}</span>
-<span class="line">{{with .Photos}}{{count . "photo" "photos"}} · {{end}}joined {{when $.Now .JoinedAt}}</span></p></li>
+<span class="line">{{with .Photos}}{{count . "photo" "photos"}} · {{end}}<span class="nb">joined {{when $.Now .JoinedAt}}</span></span></p></li>
 {{- end}}
 </ul>
 {{template "pagination" .}}

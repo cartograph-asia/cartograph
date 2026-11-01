@@ -265,19 +265,20 @@ func count(n int, one, many string) string {
 
 // surveyed is what follows the number of plots a Surveyor surveyed, with
 // the plots they claimed, in the same words on the profile and the list:
-// "plots surveyed, 5 of them first". No claimed plots, no tail.
-func surveyed(n, first int) string {
+// "plots surveyed, 5 of them first". No claimed plots, no tail. The tail
+// does not break, so a narrow caption wraps after the comma.
+func surveyed(n, first int) template.HTML {
 	s := "plots surveyed"
 	if n == 1 {
 		s = "plot surveyed"
 	}
 	switch {
 	case first == 0:
-		return s
+		return template.HTML(s)
 	case n == 1:
-		return s + ", the first"
+		return template.HTML(s + `, <span class="nb">the first</span>`)
 	}
-	return s + ", " + num(first) + " of them first"
+	return template.HTML(s + `, <span class="nb">` + num(first) + ` of them first</span>`)
 }
 
 // pct formats a coverage share: "0%", "0.22%", "4.5%", "37%".

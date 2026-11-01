@@ -162,11 +162,11 @@ func TestEveryPageRenders(t *testing.T) {
 			`<span lang="th" class="th">ชลบุรี</span>`, `href="/latest">More surveys`, "Welcome",
 		}},
 		{"latest", views.PageLatest, viewstest.Latest(10), []string{"Latest surveys", `rel="next" href="/latest?page=2"`, "Page 1 of 3"}},
-		{"surveyors", views.PageSurveyors, viewstest.Surveyors(), []string{"ploy88", "beach-walker", "8 plots surveyed, 5 of them first", "12 photos · joined"}},
+		{"surveyors", views.PageSurveyors, viewstest.Surveyors(), []string{"ploy88", "beach-walker", `8 plots surveyed, <span class="nb">5 of them first</span>`, `12 photos · <span class="nb">joined`}},
 		{"regions", views.PageRegions, viewstest.Regions(), []string{"Rayong", "Bangkok", "0 of 4,818 plots"}},
 		{"surveyor", views.PageSurveyor, viewstest.Surveyor(), []string{
 			"<h1>adrian</h1>", "Walking Pattaya", "home region", `data-minimap="plots"`, `<svg class="cells"`,
-			`href="/surveyor/adrian.rss"`, "Edit your profile", "<b>8</b> plots surveyed, 5 of them first", "8 plots surveyed by adrian",
+			`href="/surveyor/adrian.rss"`, "Edit your profile", `<b>8</b> plots surveyed, <span class="nb">5 of them first</span>`, "8 plots surveyed by adrian",
 		}},
 		{"placeholder", views.PageSurveyor, viewstest.PlaceholderSurveyor(), []string{"<h1>beach-walker</h1>"}},
 		{"plot", views.PagePlot, viewstest.Plot(), []string{
@@ -703,12 +703,12 @@ func TestSurveyed(t *testing.T) {
 	}{
 		{0, 0, "plots surveyed"},
 		{1, 0, "plot surveyed"},
-		{1, 1, "plot surveyed, the first"},
+		{1, 1, `plot surveyed, <span class="nb">the first</span>`},
 		{8, 0, "plots surveyed"},
-		{8, 5, "plots surveyed, 5 of them first"},
-		{2500, 1200, "plots surveyed, 1,200 of them first"},
+		{8, 5, `plots surveyed, <span class="nb">5 of them first</span>`},
+		{2500, 1200, `plots surveyed, <span class="nb">1,200 of them first</span>`},
 	} {
-		if got := surveyed(c.n, c.first); got != c.want {
+		if got := string(surveyed(c.n, c.first)); got != c.want {
 			t.Errorf("surveyed(%d, %d) = %q, want %q", c.n, c.first, got, c.want)
 		}
 	}

@@ -178,6 +178,9 @@ button.link:hover, button.link:focus-visible { text-decoration: underline; }
    and time before it are cut. */
 .grid .cap .line { display: flex; align-items: baseline; }
 .cap .lt { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* A Surveyor's counts in the list wrap instead of being cut: a person's
+   caption may take more lines than a photo's. */
+.people .cap .line { white-space: normal; }
 .cap .line a { color: var(--ink-muted); }
 /* The first-survey mark: data, so green; a short tag on the second line. */
 .first {

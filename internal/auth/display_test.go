@@ -34,6 +34,16 @@ func TestCleanDisplayName(t *testing.T) {
 		{"@adrian", "", false},
 		{"a/b", "", false},
 		{"<b>Bold</b>", "", false},
+		{"adrian\u034f", "", false}, // combining grapheme joiner
+		{"adri\u034fan", "", false},
+		{"adrian\ufe0f", "", false}, // variation selector
+		{"adrian\U000E0100", "", false},
+		{"adrian\u115f", "", false}, // Hangul choseong filler
+		{"adrian\u3164", "", false}, // Hangul filler
+		{"\u115f\u115f", "", false},
+		{"adrian\u17b4", "", false},
+		{"\u0301adrian", "", false}, // a mark with nothing before it
+		{"Ploy \u0301", "", false},
 		{"Ad\x00rian", "", false},
 		{string([]byte{0xff, 'a'}), "", false},
 	} {

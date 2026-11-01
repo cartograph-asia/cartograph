@@ -282,6 +282,14 @@ func (s *PGStore) ChooseName(ctx context.Context, hash []byte, name, display str
 			if inviteOnly && tag.RowsAffected() == 0 {
 				return ErrNotInvited
 			}
+			// Nobody's display name may be this Surveyor name either.
+			var clash bool
+			if err := tx.QueryRow(ctx, `select exists (select 1 from surveyors where lower(display_name) = lower($1))`, name).Scan(&clash); err != nil {
+				return err
+			}
+			if clash {
+				return ErrNameTaken
+			}
 			if display != "" && !strings.EqualFold(display, name) {
 				taken, err := displayTaken(ctx, tx, display, "")
 				if err != nil {

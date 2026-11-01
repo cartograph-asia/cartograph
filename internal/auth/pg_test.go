@@ -415,3 +415,30 @@ func TestPGStoreInvitations(t *testing.T) {
 		t.Fatalf("nameless session %+v %v", sess, err)
 	}
 }
+
+func TestPGStoreDisplayNameClashes(t *testing.T) {
+	pool := testPool(t)
+	migrate(t, pool, "")
+	s := NewPGStore(pool)
+	ctx := context.Background()
+	now := time.Date(2026, 11, 1, 9, 0, 0, 0, time.UTC)
+	a := hashToken(newToken())
+	if _, err := s.CreateSession(ctx, a, "a@example.org", now, now.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ChooseName(ctx, a, "ada", "somchai-k", now, false); err != nil {
+		t.Fatal(err)
+	}
+	// A new Surveyor name may not equal someone's display name, nor their
+	// display name someone's Surveyor name.
+	b := hashToken(newToken())
+	if _, err := s.CreateSession(ctx, b, "b@example.org", now, now.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ChooseName(ctx, b, "Somchai-K", "", now, false); !errors.Is(err, ErrNameTaken) {
+		t.Fatalf("handle equal to a display name: %v", err)
+	}
+	if _, err := s.ChooseName(ctx, b, "bob", "ADA", now, false); !errors.Is(err, ErrDisplayTaken) {
+		t.Fatalf("display name equal to a handle: %v", err)
+	}
+}

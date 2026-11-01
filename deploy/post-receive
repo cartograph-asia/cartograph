@@ -69,15 +69,12 @@ echo "==> 3/5 probe on 127.0.0.1:${PROBE_PORT}"
 # photo store are started first if they do not run yet (the first deploy);
 # when they run unchanged, this does nothing.
 cp "$RUNTIME/deploy/.env" "$BUILD/deploy/.env"
-compose() {
-	API_TAG=$tag WEB_TAG=$tag docker compose --project-name "$PROJECT" --project-directory "$BUILD/deploy" \
-		-f "$BUILD/deploy/docker-compose.yml" -f "$BUILD/deploy/compose.prod.yaml" "$@"
-}
-if ! limit 300 compose up -d --no-build postgres garage garage-init; then
+export API_TAG=$tag WEB_TAG=$tag CARTOGRAPH_PROJECT=$PROJECT
+if ! limit 300 "$BUILD/deploy/prod.sh" up -d --no-build postgres garage garage-init; then
 	echo "ERROR: the database or the photo store did not start; see: deploy/prod.sh logs garage postgres"
 	exit 1
 fi
-compose run -d --no-deps --name "$PROBE" -p "127.0.0.1:${PROBE_PORT}:8000" api >/dev/null
+"$BUILD/deploy/prod.sh" run -d --no-deps --name "$PROBE" -p "127.0.0.1:${PROBE_PORT}:8000" api >/dev/null
 ok=""
 for _ in $(seq 1 60); do
 	if curl -fsS "http://127.0.0.1:${PROBE_PORT}/healthz" >/dev/null 2>&1; then

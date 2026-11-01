@@ -28,13 +28,25 @@
       <section class="key" aria-label="Map key">
         <div id="key-body" class="key-body">
           <p class="kicker">Map key</p>
-          <ul class="legend">
-            <li><span class="sw blank" aria-hidden="true"></span>Blank plot</li>
-            <li><span class="sw s1" aria-hidden="true"></span>1 photo</li>
-            <li><span class="sw s2" aria-hidden="true"></span>2–3 photos</li>
-            <li><span class="sw s3" aria-hidden="true"></span>4 or more</li>
-          </ul>
-          <p class="about">Each plot is about 0.74 km². The first photo taken inside a plot claims it. <a href="/about/plots">About the plots</a></p>
+          <!-- What the key explains follows the zoom (main.ts sets data-scale):
+               single plots close in, groups of plots further out. -->
+          <div class="key-plots">
+            <ul class="legend">
+              <li><span class="sw blank" aria-hidden="true"></span>Blank plot</li>
+              <li><span class="sw s1" aria-hidden="true"></span>1 photo</li>
+              <li><span class="sw s2" aria-hidden="true"></span>2–3 photos</li>
+              <li><span class="sw s3" aria-hidden="true"></span>4 or more</li>
+            </ul>
+            <p class="about">Each plot is about 0.74 km². The first photo taken inside a plot claims it. <a href="/about/plots">About the plots</a></p>
+          </div>
+          <div class="key-groups">
+            <ul class="legend">
+              <li><span class="sw g1" aria-hidden="true"></span>1 plot surveyed</li>
+              <li><span class="sw g2" aria-hidden="true"></span>About half</li>
+              <li><span class="sw g3" aria-hidden="true"></span>All</li>
+            </ul>
+            <p class="about">Zoomed out, plots are grouped: each shape here holds <span id="group-size">49 plots, about 36 km²</span>, and is shaded by the share of them with a photo. <a href="/about/plots">About the plots</a></p>
+          </div>
         </div>
         <div class="key-line">
           <p id="map-status" class="map-status" role="status" aria-live="polite" hidden></p>

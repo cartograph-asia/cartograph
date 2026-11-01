@@ -3,7 +3,7 @@ import './styles.css';
 import { addProtocol, Map as MapLibreMap, NavigationControl, setWorkerUrl } from 'maplibre-gl';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 import { Protocol } from 'pmtiles';
-import { cellToLatLng, getResolution, isValidCell, latLngToCell } from 'h3-js';
+import { cellToLatLng, getHexagonAreaAvg, getResolution, isValidCell, latLngToCell, UNITS } from 'h3-js';
 import { loadApi, MOCK, type UploadResult } from './api';
 import { DataStore } from './data';
 import { PLOT_RES, planView, type ViewPlan } from './grid';
@@ -45,6 +45,21 @@ function setStatus(text: string, kind: 'info' | 'error' = 'info'): void {
   statusEl.hidden = !text;
 }
 
+const keyEl = document.querySelector<HTMLElement>('.key')!;
+const groupSizeEl = document.getElementById('group-size')!;
+
+/** The key explains what the view shows: single plots, or groups of them at a coarser resolution. */
+function setKey(next: ViewPlan): void {
+  if (next.mode !== 'coverage') {
+    keyEl.dataset.scale = 'plots';
+    return;
+  }
+  keyEl.dataset.scale = 'groups';
+  const plots = 7 ** (PLOT_RES - next.res);
+  const km2 = Math.round(getHexagonAreaAvg(next.res, UNITS.km2));
+  groupSizeEl.textContent = `${plots} plots, about ${km2.toLocaleString('en')} km²`;
+}
+
 function viewBBox() {
   const b = map.getBounds();
   return { west: b.getWest(), south: b.getSouth(), east: b.getEast(), north: b.getNorth() };
@@ -55,6 +70,7 @@ async function refresh(): Promise<void> {
   const t0 = performance.now();
   plan = planView(viewBBox(), map.getZoom());
   showMode(map, plan.mode);
+  setKey(plan);
 
   if (plan.mode === 'none') {
     setStatus('Cartograph covers Thailand for now.');
@@ -105,6 +121,7 @@ function redraw(): void {
   const t0 = performance.now();
   const next = planView(viewBBox(), map.getZoom());
   showMode(map, next.mode);
+  setKey(next);
   if (next.mode === 'coverage') renderCoverage(map, next.res, next.cells, data);
   else if (next.mode === 'plots') renderPlots(map, next.cells, data);
   if (import.meta.env.DEV && next.mode !== 'none') {
@@ -253,7 +270,6 @@ map.on('click', (e) => {
 });
 
 // On phones the key is the status line; its legend opens on a tap.
-const keyEl = document.querySelector<HTMLElement>('.key')!;
 const keyToggle = document.getElementById('key-toggle')!;
 keyToggle.addEventListener('click', () => {
   keyToggle.setAttribute('aria-expanded', String(keyEl.classList.toggle('open')));

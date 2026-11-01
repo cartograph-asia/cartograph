@@ -142,7 +142,10 @@ if [[ ${use_docker} == 0 ]]; then
       "https://github.com/onthegomap/planetiler/releases/download/v${PLANETILER_VERSION}/planetiler.jar"
     mv "${PLANETILER_JAR}.part" "${PLANETILER_JAR}"
   fi
-  root="${SCRIPT_DIR}"
+  # Paths relative to map/: Planetiler reads --output as a URI, and a space
+  # in the checkout's path (e.g. a volume called "1TB T7") breaks it.
+  cd "${SCRIPT_DIR}"
+  root=.
   planetiler=("${java_bin}" "-Xmx${JAVA_XMX}" -jar "${PLANETILER_JAR}")
   echo "build: planetiler ${PLANETILER_VERSION} on the host ($("${java_bin}" -version 2>&1 | head -1)), -Xmx${JAVA_XMX}, bounds ${BOUNDS}"
 else

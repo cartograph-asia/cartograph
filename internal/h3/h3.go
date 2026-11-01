@@ -140,9 +140,49 @@ func Ring(cell string, k int) ([]string, error) {
 	return out, nil
 }
 
+// CellCentre is a cell with its centre.
+type CellCentre struct {
+	Cell     string // 15-char hex index
+	Lng, Lat float64
+}
+
+// PolygonCells returns the cells at res whose centre lies inside the polygon
+// (outer ring and holes as lng, lat pairs), each with its centre.
+func PolygonCells(outer [][2]float64, holes [][][2]float64, res int) ([]CellCentre, error) {
+	cs, err := polygonToCells(outer, holes, res)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]CellCentre, 0, len(cs))
+	for _, c := range cs {
+		ll, err := c.LatLng()
+		if err != nil {
+			return nil, fmt.Errorf("h3: cell to latlng: %w", err)
+		}
+		out = append(out, CellCentre{Cell: c.String(), Lng: ll.Lng, Lat: ll.Lat})
+	}
+	return out, nil
+}
+
 // PolygonCentres returns the centres (lng, lat) of the cells at res whose
 // centre lies inside the polygon. outer and holes are rings of lng, lat pairs.
 func PolygonCentres(outer [][2]float64, holes [][][2]float64, res int) ([][2]float64, error) {
+	cells, err := polygonToCells(outer, holes, res)
+	if err != nil {
+		return nil, err
+	}
+	out := make([][2]float64, 0, len(cells))
+	for _, c := range cells {
+		ll, err := c.LatLng()
+		if err != nil {
+			return nil, fmt.Errorf("h3: cell to latlng: %w", err)
+		}
+		out = append(out, [2]float64{ll.Lng, ll.Lat})
+	}
+	return out, nil
+}
+
+func polygonToCells(outer [][2]float64, holes [][][2]float64, res int) ([]h3go.Cell, error) {
 	loop := func(r [][2]float64) h3go.GeoLoop {
 		l := make(h3go.GeoLoop, len(r))
 		for i, p := range r {
@@ -158,13 +198,5 @@ func PolygonCentres(outer [][2]float64, holes [][][2]float64, res int) ([][2]flo
 	if err != nil {
 		return nil, fmt.Errorf("h3: polygon to cells: %w", err)
 	}
-	out := make([][2]float64, 0, len(cells))
-	for _, c := range cells {
-		ll, err := c.LatLng()
-		if err != nil {
-			return nil, fmt.Errorf("h3: cell to latlng: %w", err)
-		}
-		out = append(out, [2]float64{ll.Lng, ll.Lat})
-	}
-	return out, nil
+	return cells, nil
 }

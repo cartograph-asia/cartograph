@@ -141,22 +141,28 @@ func (x *RegionIndex) Locate(p orb.Point) (int, bool) {
 	return 0, false
 }
 
-// LandCells counts the res-8 cells whose centre lies inside shape (and is
+// LandCell is a res-8 cell that counts as land in a region.
+type LandCell struct {
+	Cell   string
+	Centre orb.Point
+}
+
+// LandCells returns the res-8 cells whose centre lies inside shape (and is
 // located to shape by idx, so overlapping neighbours never count a cell
 // twice), is not in water, and lies inside clip unless clip is empty.
-func LandCells(shape RegionShape, idx *RegionIndex, water *Water, clip orb.Bound) (int, error) {
-	n := 0
+func LandCells(shape RegionShape, idx *RegionIndex, water *Water, clip orb.Bound) ([]LandCell, error) {
+	var out []LandCell
 	for _, poly := range shape.Geometry {
 		holes := make([][][2]float64, 0, len(poly)-1)
 		for _, h := range poly[1:] {
 			holes = append(holes, ringPairs(h))
 		}
-		centres, err := h3.PolygonCentres(ringPairs(poly[0]), holes, h3.PlotRes)
+		cells, err := h3.PolygonCells(ringPairs(poly[0]), holes, h3.PlotRes)
 		if err != nil {
-			return 0, err
+			return nil, err
 		}
-		for _, c := range centres {
-			p := orb.Point{c[0], c[1]}
+		for _, c := range cells {
+			p := orb.Point{c.Lng, c.Lat}
 			if !NoBound(clip) && !clip.Contains(p) {
 				continue
 			}
@@ -166,10 +172,10 @@ func LandCells(shape RegionShape, idx *RegionIndex, water *Water, clip orb.Bound
 			if water.Contains(p) {
 				continue
 			}
-			n++
+			out = append(out, LandCell{Cell: c.Cell, Centre: p})
 		}
 	}
-	return n, nil
+	return out, nil
 }
 
 func ringPairs(r orb.Ring) [][2]float64 {

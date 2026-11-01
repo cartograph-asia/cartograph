@@ -452,11 +452,19 @@ func (v *Views) Surveyor(ctx context.Context, name string, page int) (*views.Sur
 	if out.Photos, err = v.photos(ctx, "where ph.surveyor_id = $1", newestFirst+" limit $2 offset $3", s.id, pg.PerPage, offset(pg)); err != nil {
 		return nil, err
 	}
-	rows, err := v.d.Pool.Query(ctx, `select distinct cell from photos where surveyor_id = $1 order by cell`, s.id)
+	rows, err := v.d.Pool.Query(ctx, `select pl.cell, pl.photo_count from plots pl
+		where pl.cell in (select cell from photos where surveyor_id = $1) order by pl.cell`, s.id)
 	if err != nil {
 		return nil, fmt.Errorf("db: surveyor cells: %w", err)
 	}
-	if out.PlotCells, err = pgx.CollectRows(rows, pgx.RowTo[string]); err != nil {
+	out.PlotPhotos = map[string]int{}
+	var cell string
+	var n int
+	if _, err = pgx.ForEachRow(rows, []any{&cell, &n}, func() error {
+		out.PlotCells = append(out.PlotCells, cell)
+		out.PlotPhotos[cell] = n
+		return nil
+	}); err != nil {
 		return nil, fmt.Errorf("db: surveyor cells: %w", err)
 	}
 	if out.PlotPaths, err = v.plotPaths(ctx, out.PlotCells); err != nil {
@@ -548,20 +556,21 @@ func (v *Views) Plot(ctx context.Context, cell string) (*views.Plot, error) {
 	if err != nil {
 		return nil, err
 	}
-	rows, err := v.d.Pool.Query(ctx, `select cell from plots where cell = any($1) and photo_count > 0`, ring)
+	rows, err := v.d.Pool.Query(ctx, `select cell, photo_count from plots where cell = any($1) and photo_count > 0`, ring)
 	if err != nil {
 		return nil, fmt.Errorf("db: plot neighbours: %w", err)
 	}
-	surveyed, err := pgx.CollectRows(rows, pgx.RowTo[string])
-	if err != nil {
+	photos := map[string]int{}
+	var nc string
+	var nn int
+	if _, err = pgx.ForEachRow(rows, []any{&nc, &nn}, func() error {
+		photos[nc] = nn
+		return nil
+	}); err != nil {
 		return nil, fmt.Errorf("db: plot neighbours: %w", err)
-	}
-	set := map[string]bool{}
-	for _, c := range surveyed {
-		set[c] = true
 	}
 	for _, c := range ring {
-		out.Neighbours = append(out.Neighbours, views.CellStatus{Cell: c, Surveyed: set[c]})
+		out.Neighbours = append(out.Neighbours, views.CellStatus{Cell: c, Surveyed: photos[c] > 0, Photos: photos[c]})
 	}
 	if out.Paths, err = v.plotPaths(ctx, append([]string{cell}, ring...)); err != nil {
 		return nil, err

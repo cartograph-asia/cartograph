@@ -2,6 +2,7 @@
 import {
   ApiError,
   type Api,
+  type ClientConfig,
   type CoverageCell,
   type Me,
   type PlotDetail,
@@ -28,6 +29,10 @@ async function getJson<T>(url: string): Promise<T> {
 }
 
 export const httpApi: Api = {
+  async getConfig(): Promise<ClientConfig> {
+    return getJson<ClientConfig>('/api/config');
+  },
+
   async getPlots(cells: string[]): Promise<PlotSummary[]> {
     if (cells.length === 0) return [];
     const body = await getJson<{ plots: PlotSummary[] | null }>(

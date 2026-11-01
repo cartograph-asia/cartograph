@@ -37,6 +37,7 @@ type config struct {
 	auth        auth.Config
 	s3          storage.S3Config
 	maxUploadMB int
+	tilesURL    string // TILES_URL, see api.Config.TilesURL
 }
 
 func main() {
@@ -124,7 +125,7 @@ func routes(cfg config, database *db.DB, store storage.Store) (http.Handler, err
 	}
 	a := auth.New(acfg, auth.NewPGStore(database.Pool), auth.NewMailer(acfg.SMTP), rd.RenderFunc(), database.Views())
 	pages := web.NewHandlers(database.Views(), rd)
-	apiH := api.New(database, store, api.Config{MaxUploadMB: cfg.maxUploadMB}).Handler()
+	apiH := api.New(database, store, api.Config{MaxUploadMB: cfg.maxUploadMB, TilesURL: cfg.tilesURL}).Handler()
 
 	r := chi.NewRouter()
 	r.Use(a.Middleware)
@@ -217,6 +218,10 @@ func loadConfig() (config, error) {
 	}
 	if c.maxUploadMB, err = strconv.Atoi(envOr("MAX_UPLOAD_MB", "25")); err != nil || c.maxUploadMB <= 0 {
 		errs = append(errs, errors.New("MAX_UPLOAD_MB must be a positive integer"))
+	}
+	c.tilesURL = envOr("TILES_URL", api.DefaultTilesURL)
+	if !strings.HasPrefix(c.tilesURL, "/") && !strings.HasPrefix(c.tilesURL, "https://") && !strings.HasPrefix(c.tilesURL, "http://") {
+		errs = append(errs, fmt.Errorf("TILES_URL must be a path starting with / or an http(s) URL, got %q", c.tilesURL))
 	}
 	if strings.Contains(c.s3.Endpoint, "://") {
 		errs = append(errs, errors.New("S3_ENDPOINT must be host:port without a scheme; use S3_USE_SSL for https"))

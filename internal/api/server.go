@@ -28,6 +28,11 @@ type Repo interface {
 // Config holds the handler settings.
 type Config struct {
 	MaxUploadMB int // reject photo files larger than this
+	// TilesURL is where the base map's PMTiles archive is served (TILES_URL):
+	// a path on this site or a full URL, e.g. on a CDN. GET /api/config hands
+	// it to the map page and the small maps, so moving the archive is a
+	// change in .env, not in the map's build.
+	TilesURL string
 	// MaxConcurrentProcessing bounds how many uploads decode images at once;
 	// a 48 MP photo needs a few hundred MB while being resized.
 	MaxConcurrentProcessing int
@@ -65,6 +70,9 @@ func New(repo Repo, store storage.Store, cfg Config) *Server {
 	if cfg.MaxConcurrentProcessing <= 0 {
 		cfg.MaxConcurrentProcessing = 2
 	}
+	if cfg.TilesURL == "" {
+		cfg.TilesURL = DefaultTilesURL
+	}
 	return &Server{
 		repo:  repo,
 		store: store,
@@ -92,12 +100,23 @@ func (s *Server) Handler() http.Handler {
 		_, _ = w.Write([]byte("ok"))
 	})
 	r.Route("/api", func(r chi.Router) {
+		r.Get("/config", s.clientConfig)
 		r.Post("/photos", s.createPhoto)
 		r.Get("/plots", s.listPlots)
 		r.Get("/plots/{cell}", s.getPlot)
 		r.Get("/coverage", s.coverage)
 	})
 	return r
+}
+
+// DefaultTilesURL is the archive's path when TILES_URL is not set: Caddy
+// serves map/ at /tiles/.
+const DefaultTilesURL = "/tiles/asia.pmtiles"
+
+// clientConfig is GET /api/config: what the map needs from the environment.
+func (s *Server) clientConfig(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "public, max-age=300")
+	writeJSON(w, http.StatusOK, map[string]string{"tiles_url": s.cfg.TilesURL})
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

@@ -15,7 +15,7 @@
 
 {{if .PlotCells}}<section class="block minimap" aria-labelledby="map-h">
 <div class="head-row"><h2 id="map-h">Plots</h2>{{with .Bounds}}<a class="more" href="{{mapHash .}}">Open on the map <span aria-hidden="true">→</span></a>{{end}}</div>
-<div class="mapbox" data-minimap="plots" data-cells="{{join .PlotCells ","}}" data-paths="{{pathsFor .PlotCells .PlotPaths}}">{{cellsSVG .PlotCells (printf "Outline of the plots %s surveyed." $s.Name)}}</div>
+<div class="mapbox" data-minimap="plots" data-cells="{{join .PlotCells ","}}" data-paths="{{pathsFor .PlotCells .PlotPaths}}" data-photos="{{photosFor .PlotCells .PlotPhotos}}">{{cellsSVG .PlotCells .PlotPhotos (printf "Outline of the plots %s surveyed." $s.Name)}}</div>
 <p class="note">{{count (len .PlotCells) "plot" "plots"}} surveyed by {{$s.Name}}.</p>
 </section>{{end}}
 

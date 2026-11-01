@@ -76,6 +76,7 @@ type Surveyor struct {
 	Stats      SurveyorStats
 	PlotCells  []string          // res-8 cells of every plot with a photo by them, for the lazy map (data, not text)
 	PlotPaths  map[string]string // friendly path per cell in PlotCells; cells without a number are missing
+	PlotPhotos map[string]int    // photo count per cell in PlotCells, everyone's, for the small map's three greens
 	Bounds     *Bounds           // box around PlotCells; nil if they have no photos
 	Photos     []PhotoItem       // newest first, paginated
 	Pagination Pagination
@@ -114,10 +115,12 @@ type Plot struct {
 	Paths map[string]string
 }
 
-// CellStatus is a cell on a small map and whether it is surveyed.
+// CellStatus is a cell on a small map, whether it is surveyed and how many
+// photos it has (the small map colours it in three steps like /map).
 type CellStatus struct {
 	Cell     string
 	Surveyed bool
+	Photos   int
 }
 
 // Photo is the photo page (/photo/{id}). Its Page.OG carries the share image.

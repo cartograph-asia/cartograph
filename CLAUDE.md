@@ -53,6 +53,7 @@ Stage names, so everyone means the same: *prototype* (done) → *alpha* (now: Ad
 - Page weight: the front page stays under 100 KB of HTML and CSS; photo grids use the thumb variant only.
 - Tests: a change to templates runs the vocabulary and page tests; a change to imports runs against the Pattaya fixture (`testdata/`).
 - Commit small and often, with messages in the form `area: what changed` (e.g. `api: add plot coverage endpoint`).
+- Security review before every PR: run `/security-review` on the branch before opening or marking a PR ready, fix what it finds or list the open findings in the PR description. A weekly review of the whole repository runs as a scheduled cloud routine; its findings are worked off like any other.
 
 ## Repository layout
 

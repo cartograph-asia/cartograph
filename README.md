@@ -8,11 +8,11 @@ This repository holds the prototype, Thailand only: a server-rendered community 
 
 ## Run it
 
-You need Docker (with at least 5 GB of memory assigned) and about 3 GB of free disk.
+You need Docker (with at least 5 GB of memory assigned) and about 8 GB of free disk. For the base map, Java 21 and osmium on the host are faster than Docker (`brew install openjdk@21 osmium-tool`, see [map/README.md](map/README.md)).
 
 ```sh
 git clone git@github.com:cartograph-asia/cartograph.git && cd cartograph
-map/build.sh                  # first run downloads ~1.7 GB and takes 15–20 min
+map/build.sh                  # first run downloads ~2.7 GB, then builds for ~4 min (Docker: ~8)
 cd deploy && cp .env.example .env
 docker compose up --build
 open http://localhost:8080
@@ -36,7 +36,7 @@ and run `docker compose up regions places` (77 provinces and about 18,000 places
 
 ## Build the map
 
-`map/build.sh` downloads the Geofabrik extract for Thailand and runs Planetiler in Docker to produce `map/thailand.pmtiles` (zoom 0–14, about 400 MB). Caddy serves it at `/tiles/thailand.pmtiles`, and the muted base style is `web/style.json`. Build times, memory needs and how to refresh the data are in [map/README.md](map/README.md).
+`map/build.sh` downloads the Geofabrik extracts for Thailand and its neighbours, merges them and runs osmium and Planetiler (on the host if Java 21 and osmium are installed, else in Docker) to produce `map/asia.pmtiles` (zoom 0–14, about 1.4 GB). Caddy serves it at `/tiles/asia.pmtiles`, and the base style is `web/style.json`. Build times, memory needs and how to refresh the data are in [map/README.md](map/README.md).
 
 ## Configuration
 

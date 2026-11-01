@@ -1,31 +1,36 @@
-import 'maplibre-gl/dist/maplibre-gl.css';
-import './styles.css';
 import { addProtocol, Map as MapLibreMap, NavigationControl, setWorkerUrl } from 'maplibre-gl';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 import { Protocol } from 'pmtiles';
-import { cellToLatLng, getResolution, isValidCell, latLngToCell } from 'h3-js';
+import { cellToBoundary, cellToLatLng, getHexagonAreaAvg, getResolution, isValidCell, latLngToCell, UNITS } from 'h3-js';
 import { loadApi, MOCK, type UploadResult } from './api';
 import { DataStore } from './data';
-import { PLOT_RES, planView, type ViewPlan } from './grid';
-import { addLayers, pulse, renderCoverage, renderPlots, setPlotState, showMode } from './layers';
+import { PLOT_MIN_ZOOM, PLOT_RES, planView, type ViewPlan } from './grid';
+import { addLayers, pulse, renderCoverage, renderPlots, setGroupState, setPlotState, showMode } from './layers';
 import { Panel } from './panel';
 import { baseStyle } from './style';
 
 setWorkerUrl(workerUrl);
+
 addProtocol('pmtiles', new Protocol().tile);
 
 const api = await loadApi();
+// Where the base map lives (TILES_URL); without an answer, style.json's default.
+const config = await api.getConfig().catch((err: unknown) => {
+  console.warn('config:', err);
+  return null;
+});
 const data = new DataStore(api);
 const statusEl = document.getElementById('map-status')!;
 
 const map = new MapLibreMap({
   container: 'map',
-  style: baseStyle(),
+  style: baseStyle(config?.tiles_url),
   center: [100.9, 13.2],
   zoom: 6,
   minZoom: 4.5,
   maxZoom: 18,
-  maxBounds: [[88, -2], [114, 28]],
+  // Southeast and East Asia, as far as the base map reaches (map/build.sh BOUNDS).
+  maxBounds: [[88, -12], [150, 55]],
   hash: true,
   attributionControl: { compact: true },
 });
@@ -44,6 +49,21 @@ function setStatus(text: string, kind: 'info' | 'error' = 'info'): void {
   statusEl.hidden = !text;
 }
 
+const keyEl = document.querySelector<HTMLElement>('.key')!;
+const groupSizeEl = document.getElementById('group-size')!;
+
+/** The key explains what the view shows: single plots, or groups of them at a coarser resolution. */
+function setKey(next: ViewPlan): void {
+  if (next.mode !== 'coverage') {
+    keyEl.dataset.scale = 'plots';
+    return;
+  }
+  keyEl.dataset.scale = 'groups';
+  const plots = 7 ** (PLOT_RES - next.res);
+  const km2 = Math.round(getHexagonAreaAvg(next.res, UNITS.km2));
+  groupSizeEl.textContent = `${plots} plots, about ${km2.toLocaleString('en')} km²`;
+}
+
 function viewBBox() {
   const b = map.getBounds();
   return { west: b.getWest(), south: b.getSouth(), east: b.getEast(), north: b.getNorth() };
@@ -54,6 +74,7 @@ async function refresh(): Promise<void> {
   const t0 = performance.now();
   plan = planView(viewBBox(), map.getZoom());
   showMode(map, plan.mode);
+  setKey(plan);
 
   if (plan.mode === 'none') {
     setStatus('Cartograph covers Thailand for now.');
@@ -95,10 +116,42 @@ async function refresh(): Promise<void> {
   }
 }
 
-let debounce: number | undefined;
-function scheduleRefresh(): void {
-  window.clearTimeout(debounce);
-  debounce = window.setTimeout(() => void refresh(), 200);
+/**
+ * Draw the grid for the current view from what is already loaded, without
+ * requests. Runs every MOVE_REDRAW_MS while the map moves, so that zooming
+ * and panning do not leave an empty margin until the movement ends.
+ */
+function redraw(): void {
+  const t0 = performance.now();
+  const next = planView(viewBBox(), map.getZoom());
+  showMode(map, next.mode);
+  setKey(next);
+  if (next.mode === 'coverage') renderCoverage(map, next.res, next.cells, data);
+  else if (next.mode === 'plots') renderPlots(map, next.cells, data);
+  if (import.meta.env.DEV && next.mode !== 'none') {
+    console.debug(`redraw: ${next.cells.length} cells, ${(performance.now() - t0).toFixed(0)} ms`);
+  }
+}
+
+const MOVE_REDRAW_MS = 150;
+let moveTimer: number | undefined;
+// The plot and coverage layers exist from 'load' on; the map moves before
+// that (the hash, the first resize), and those moves are ignored.
+let layersReady = false;
+function onMove(): void {
+  if (!layersReady || moveTimer !== undefined) return;
+  moveTimer = window.setTimeout(() => {
+    moveTimer = undefined;
+    redraw();
+  }, MOVE_REDRAW_MS);
+}
+
+/** The movement ended: draw at once and fetch what the view lacks. */
+function onMoveEnd(): void {
+  if (!layersReady) return;
+  window.clearTimeout(moveTimer);
+  moveTimer = undefined;
+  void refresh();
 }
 
 function select(cell: string | null): void {
@@ -114,9 +167,26 @@ const panel = new Panel(api, {
 
 const panelEl = document.getElementById('panel')!;
 
+/**
+ * How much of the map the open panel covers: a width along the right edge,
+ * or a height along the bottom (the sheet on phones). Layout positions
+ * ignore the panel's slide transform, so this is right while it is still
+ * moving in.
+ */
+function panelCover(): { x: number; y: number } {
+  const m = map.getContainer().getBoundingClientRect();
+  const left = panelEl.offsetLeft;
+  const top = panelEl.offsetTop;
+  const w = Math.max(0, Math.min(m.right, left + panelEl.offsetWidth) - Math.max(m.left, left));
+  const h = Math.max(0, Math.min(m.bottom, top + panelEl.offsetHeight) - Math.max(m.top, top));
+  if (!w || !h) return { x: 0, y: 0 };
+  return w >= m.width - 1 ? { x: 0, y: h } : { x: w, y: 0 };
+}
+
 /** Offset that centres a point in the part of the map the open panel does not cover. */
 function panelOffset(): [number, number] {
-  return innerWidth >= 768 ? [-panelEl.offsetWidth / 2, 0] : [0, -panelEl.offsetHeight / 2];
+  const c = panelCover();
+  return [-c.x / 2, -c.y / 2];
 }
 
 /** Move the map only if the cell would end up under the panel or off-screen. */
@@ -124,9 +194,10 @@ function revealCell(cell: string): void {
   const [lat, lng] = cellToLatLng(cell);
   const pt = map.project([lng, lat]);
   const margin = 48;
-  const wide = innerWidth >= 768;
-  const freeW = wide ? innerWidth - panelEl.offsetWidth : innerWidth;
-  const freeH = wide ? innerHeight : innerHeight - panelEl.offsetHeight;
+  const c = panelCover();
+  const box = map.getContainer();
+  const freeW = box.clientWidth - c.x;
+  const freeH = box.clientHeight - c.y;
   if (pt.x < margin || pt.y < margin || pt.x > freeW - margin || pt.y > freeH - margin) {
     map.easeTo({ center: [lng, lat], offset: panelOffset() });
   }
@@ -155,10 +226,13 @@ function linkedCell(): string | null {
 
 map.on('load', () => {
   addLayers(map);
+  layersReady = true;
   const cell = linkedCell();
   if (cell) {
-    // Drop the query so that a reload keeps the user's own view from the hash.
-    history.replaceState(null, '', location.pathname + location.hash);
+    // Drop the cell so that a reload keeps the user's own view from the hash.
+    const q = new URLSearchParams(location.search);
+    q.delete('cell');
+    history.replaceState(null, '', location.pathname + (q.size ? `?${q}` : '') + location.hash);
     const [lat, lng] = cellToLatLng(cell);
     select(cell);
     void panel.openPlot(cell);
@@ -167,35 +241,94 @@ map.on('load', () => {
   }
   void refresh();
 });
-map.on('moveend', scheduleRefresh);
+// The key matches the starting zoom before the first tiles are drawn.
+setKey(planView(viewBBox(), map.getZoom()));
+
+map.on('move', onMove);
+map.on('moveend', onMoveEnd);
+
+/**
+ * The group of plots (coverage cell) under a point, if the view shows groups
+ * and that group has photos. Blank groups are not clickable: zooming into
+ * them shows nothing new (Adrian).
+ */
+function groupAt(lat: number, lng: number): string | null {
+  if (plan.mode !== 'coverage') return null;
+  const cell = latLngToCell(lat, lng, plan.res);
+  return (data.coverageOf(plan.res, cell)?.surveyed ?? 0) > 0 ? cell : null;
+}
+
+/** The plot under a point, if the view shows single plots and it has photos (Adrian: only those are clickable). */
+function surveyedPlotAt(lat: number, lng: number): string | null {
+  if (plan.mode !== 'plots') return null;
+  const cell = latLngToCell(lat, lng, PLOT_RES);
+  return data.plot(cell) ? cell : null;
+}
+
+let hoveredGroup: string | null = null;
+function hoverGroup(cell: string | null): void {
+  if (cell === hoveredGroup) return;
+  if (hoveredGroup) setGroupState(map, hoveredGroup, { hover: false });
+  hoveredGroup = cell;
+  if (cell) setGroupState(map, cell, { hover: true });
+}
 
 map.on('mousemove', (e) => {
   if (plan.mode !== 'plots') {
-    map.getCanvas().style.cursor = plan.mode === 'coverage' ? 'zoom-in' : '';
+    // Groups: outline the one under the mouse; a click zooms to it.
+    const group = groupAt(e.lngLat.lat, e.lngLat.lng);
+    hoverGroup(group);
+    map.getCanvas().style.cursor = group ? 'pointer' : '';
     return;
   }
-  const cell = latLngToCell(e.lngLat.lat, e.lngLat.lng, PLOT_RES);
+  hoverGroup(null);
+  // Only plots with photos react; a blank plot is surveyed with "Upload a photo".
+  const cell = surveyedPlotAt(e.lngLat.lat, e.lngLat.lng);
+  map.getCanvas().style.cursor = cell ? 'pointer' : '';
   if (cell === hovered) return;
   if (hovered) setPlotState(map, hovered, { hover: false });
   hovered = cell;
-  setPlotState(map, cell, { hover: true });
-  map.getCanvas().style.cursor = 'pointer';
+  if (cell) setPlotState(map, cell, { hover: true });
 });
 map.getCanvas().addEventListener('mouseleave', () => {
   if (hovered) setPlotState(map, hovered, { hover: false });
   hovered = null;
+  hoverGroup(null);
 });
+
+/** Zoom so that a group of plots fills the view, clear of the labels at the edges, and at least to single plots. */
+function zoomToGroup(cell: string): void {
+  let w = 180, s = 90, e = -180, n = -90;
+  for (const [lat, lng] of cellToBoundary(cell)) {
+    w = Math.min(w, lng); e = Math.max(e, lng);
+    s = Math.min(s, lat); n = Math.max(n, lat);
+  }
+  hoverGroup(null);
+  const pad = Math.round(Math.min(innerWidth, innerHeight) * 0.08);
+  const cam = map.cameraForBounds([[w, s], [e, n]], { padding: pad });
+  if (!cam) return;
+  // Always land on single plots: on a phone a large group (343 plots) fits
+  // only at about zoom 9, where the map would still show groups.
+  map.easeTo({ ...cam, zoom: Math.max(cam.zoom ?? 0, PLOT_MIN_ZOOM), duration: 700 });
+}
 
 map.on('click', (e) => {
   if (plan.mode === 'coverage') {
-    map.easeTo({ center: e.lngLat, zoom: Math.max(map.getZoom() + 3, 12) });
+    const group = groupAt(e.lngLat.lat, e.lngLat.lng);
+    if (group) zoomToGroup(group);
     return;
   }
-  if (plan.mode !== 'plots') return;
-  const cell = latLngToCell(e.lngLat.lat, e.lngLat.lng, PLOT_RES);
+  const cell = surveyedPlotAt(e.lngLat.lat, e.lngLat.lng);
+  if (!cell) return;
   select(cell);
   void panel.openPlot(cell);
   revealCell(cell);
+});
+
+// On phones the key is the status line; its legend opens on a tap.
+const keyToggle = document.getElementById('key-toggle')!;
+keyToggle.addEventListener('click', () => {
+  keyToggle.setAttribute('aria-expanded', String(keyEl.classList.toggle('open')));
 });
 
 document.getElementById('open-upload')!.addEventListener('click', () => {

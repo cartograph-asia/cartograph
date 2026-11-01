@@ -171,7 +171,7 @@ func TestEveryPageRenders(t *testing.T) {
 		{"placeholder", views.PageSurveyor, viewstest.PlaceholderSurveyor(), []string{"<h1>beach-walker</h1>"}},
 		{"plot", views.PagePlot, viewstest.Plot(), []string{
 			"<h1 class=\"name\">Pattaya, Bang <span class=\"nb\">Lamung ·</span> <span class=\"pv\">Chon Buri 2417</span>", "first surveyed by", "H3 index <code>88658bd11dfffff</code>", `href="/about/plots">What is a plot?`, `data-paths="/plot/chon-buri/2417,/plot/chon-buri/2418,`, "beach-walker", `href="/map?cell=88658bd11dfffff"`,
-			"Survey this plot", `data-focus="88658bd11dfffff"`, `data-surveyed="1,`, `class="s f"`,
+			"Survey this plot", `data-focus="88658bd11dfffff"`, `data-photos="6,`, `class="s s3 f"`,
 		}},
 		{"blank plot", views.PagePlot, viewstest.BlankPlot(), []string{"Nobody has surveyed this plot yet", `name="robots" content="noindex"`, "Survey this plot"}},
 		{"photo", views.PagePhoto, viewstest.Photo(), []string{`<h1><a href="/plot/chon-buri/2417">Pattaya, Bang <span class="nb">Lamung ·</span> <span class="pv">Chon Buri 2417</span></a></h1>`, "CC BY-SA 4.0", `rel="prev"`, `rel="next"`, "Photo 3 of", "Full size"}},

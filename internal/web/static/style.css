@@ -276,7 +276,10 @@ h1.name { font-size: var(--step-head); }
 .mapbox > svg { width: 100%; height: 100%; }
 .mapbox .minimap-canvas { position: absolute; inset: 0; }
 .cells path { stroke-linejoin: round; vector-effect: non-scaling-stroke; }
-.cells .s { fill: var(--data-mid); fill-opacity: 0.75; stroke: var(--data); stroke-width: 1.5; }
+/* Surveyed plots in the three greens of /map: 1 photo, 2–3, 4 or more. */
+.cells .s { fill: var(--data-light); fill-opacity: 0.85; stroke: var(--data); stroke-width: 1.5; }
+.cells .s2 { fill: var(--data-mid); }
+.cells .s3 { fill: var(--data); }
 .cells .b { fill: none; stroke: var(--ink-line); stroke-width: 1; }
 .cells .f { stroke: var(--ink); stroke-width: 3; }
 .mapalt { margin: 0; padding: var(--s-m); text-align: center; }

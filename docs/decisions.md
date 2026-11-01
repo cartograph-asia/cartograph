@@ -97,3 +97,17 @@ Decisions made while building Cartograph that are not in `CLAUDE.md` or a brief.
 - 2026-11-01 – A placeholder account is claimed by setting its e-mail in SQL; after that the normal magic link works.
 - 2026-11-01 – Prototype surveyor names that do not fit 3–30 characters of letters, digits and hyphens are slugified, with a numeric suffix on collision.
 - 2026-11-01 – Before the prototype stack was reset, its database (`pg_dump -Fc`) and Garage volumes (tar) were saved to the git-ignored `backup/`.
+- 2026-11-01 – `internal/views` carries photos as object keys (`ImageKeys{Thumb, Medium, Large}`, `Best()` = medium else large) and IDs as strings, so it imports only the standard library.
+- 2026-11-01 – Every page struct embeds `views.Page` (Viewer, CSRF, Now, Title, Canonical, Description, Feed, NoIndex, OG); `Page.Base()` lets one render helper set Viewer/CSRF/Now on any page. `Now` is carried so relative times are deterministic in fixtures.
+- 2026-11-01 – Two list pages beyond the brief, `/surveyors` and `/regions`, give the front-page counters a target; "plots surveyed" and "photos" link to `/latest`.
+- 2026-11-01 – `views.Source` methods treat page < 1 as 1 and return `ErrNotFound` for a page past the last one; name and slug lookups are case-insensitive and return the canonical spelling for a redirect.
+- 2026-11-01 – `/plot/{cell}` renders a blank plot (noindex) for a valid res-8 cell inside a region with no photo; other cells are 404.
+- 2026-11-01 – "New Surveyors" lists only Surveyors with at least one photo; the Surveyors counter counts all accounts, placeholders included.
+- 2026-11-01 – The fixture (`internal/views/viewstest`) is a fixed 30-photo, 5-surveyor slice of Pattaya with real res-8 cells and `viewstest.Fake`, an in-memory `views.Source`, for task 3.
+- 2026-11-01 – `regions` has an identity `id`, `osm_id`, `admin_level`, `country` and `parent_id` so countries can join later; the boundary is simplified GeoJSON text with a bbox for prefiltering; `land_cells`, `claimed_cells` and `last_surveyed_at` are stored and updated on claim.
+- 2026-11-01 – A plot's place and region names are copied into `plots.place_name` / `place_name_th` on first claim (plus `region_id`), so `places` can be re-imported without renaming plots.
+- 2026-11-01 – Surveyor name uniqueness is a unique index on `lower(name)`, e-mail uniqueness on `lower(email)` (nulls allowed, for placeholders); the backend stores e-mails lower-cased.
+- 2026-11-01 – Magic-link tokens and sessions store SHA-256 hashes (`bytea`, 32 bytes); a session row exists before a name is chosen (`surveyor_id` null, `email` set), so no nameless surveyor rows are needed.
+- 2026-11-01 – `photos` gains `width`/`height` of the large variant (for `<img>` sizes and og:image) and `licence` (default `CC BY-SA 4.0`); both are null/default for prototype photos.
+- 2026-11-01 – `featured` uses `starts_at`/`ends_at` (null = until replaced) and `body` for the text; the current entry is the latest started, not ended one.
+- 2026-11-01 – No comment hook in the schema: comments need their own table, which the brief puts out of scope.

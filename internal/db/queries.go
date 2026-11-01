@@ -109,6 +109,11 @@ func (d *DB) ClaimPhoto(ctx context.Context, p NewPhoto) (claimed bool, err erro
 		if err != nil {
 			return fmt.Errorf("upsert plot: %w", err)
 		}
+		if claimed {
+			if err := numberPlot(ctx, tx, loc.RegionID, p.Cell); err != nil {
+				return fmt.Errorf("number plot: %w", err)
+			}
+		}
 		_, err = tx.Exec(ctx, `
 			insert into photos (id, cell, surveyor, surveyor_id, key_large, key_medium, key_thumb,
 			                    width, height, lat, lng, taken_at, taken_at_local, taken_utc_offset, uploaded_at)

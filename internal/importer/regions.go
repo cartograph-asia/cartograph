@@ -46,6 +46,7 @@ type RegionOptions struct {
 type RegionStats struct {
 	Regions         int
 	LandCells       int
+	PlotsNumbered   int // surveyed plots numbered after the land cells (outside them, or before the import)
 	PlotsBackfilled int
 	PlotsOutside    int
 }
@@ -137,6 +138,7 @@ func Regions(ctx context.Context, d *db.DB, o RegionOptions) (*RegionStats, erro
 	idx := geo.NewRegionIndex(shapes)
 	var wg sync.WaitGroup
 	errs := make([]error, len(rows))
+	cells := make([][]geo.LandCell, len(rows))
 	sem := make(chan struct{}, runtime.GOMAXPROCS(0))
 	for i := range rows {
 		wg.Add(1)
@@ -144,7 +146,11 @@ func Regions(ctx context.Context, d *db.DB, o RegionOptions) (*RegionStats, erro
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
-			rows[i].LandCells, errs[i] = geo.LandCells(shapes[i], idx, w, clip)
+			cells[i], errs[i] = geo.LandCells(shapes[i], idx, w, clip)
+			rows[i].LandCells = len(cells[i])
+			// Number along a curve over the whole province (not the clip), so
+			// the order does not depend on what was imported first.
+			geo.HilbertSort(cells[i], rows[i].Boundary.Bound())
 		}()
 	}
 	wg.Wait()
@@ -157,14 +163,33 @@ func Regions(ctx context.Context, d *db.DB, o RegionOptions) (*RegionStats, erro
 	}
 	slog.Info("counted land cells", "regions", len(rows), "cells", land, "took", time.Since(t).Round(time.Millisecond))
 
-	if _, err := d.UpsertRegions(ctx, rows); err != nil {
+	ids, err := d.UpsertRegions(ctx, rows)
+	if err != nil {
 		return nil, err
 	}
+	t = time.Now()
+	numbered := 0
+	for i, id := range ids {
+		list := make([]string, len(cells[i]))
+		for j, c := range cells[i] {
+			list[j] = c.Cell
+		}
+		n, err := d.AssignPlotNumbers(ctx, id, list)
+		if err != nil {
+			return nil, fmt.Errorf("plot numbers of %s: %w", rows[i].Slug, err)
+		}
+		numbered += n
+	}
+	cells = nil
+	slog.Info("numbered plots", "added", numbered, "took", time.Since(t).Round(time.Millisecond))
 	if err := d.ReloadRegions(ctx); err != nil {
 		return nil, err
 	}
 	st := &RegionStats{Regions: len(rows), LandCells: land}
 	if st.PlotsBackfilled, st.PlotsOutside, err = d.BackfillPlots(ctx); err != nil {
+		return nil, err
+	}
+	if st.PlotsNumbered, err = d.NumberPlots(ctx); err != nil {
 		return nil, err
 	}
 	if err := d.RefreshRegionCounts(ctx); err != nil {

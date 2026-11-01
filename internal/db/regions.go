@@ -68,6 +68,92 @@ func (d *DB) UpsertRegions(ctx context.Context, rs []Region) ([]int, error) {
 	return ids, nil
 }
 
+// plotNumberLock is the first key of the transaction-level advisory lock
+// that serialises number assignment within a region (the second key is the
+// region id), shared by the import and by claims.
+const plotNumberLock = 0x706c6f74 // "plot"
+
+// AssignPlotNumbers gives each cell in cells that has no number yet the next
+// free number in region, in the order given (the importer passes them
+// sorted along a Hilbert curve). Existing numbers are never changed, so a
+// re-import only appends. It returns how many numbers were added.
+func (d *DB) AssignPlotNumbers(ctx context.Context, regionID int, cells []string) (int, error) {
+	var added int64
+	err := pgx.BeginFunc(ctx, d.Pool, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `select pg_advisory_xact_lock($1, $2)`, plotNumberLock, regionID); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `create temp table new_cells (cell text, ord int) on commit drop`); err != nil {
+			return err
+		}
+		if _, err := tx.CopyFrom(ctx, pgx.Identifier{"new_cells"}, []string{"cell", "ord"},
+			pgx.CopyFromSlice(len(cells), func(i int) ([]any, error) { return []any{cells[i], i}, nil })); err != nil {
+			return err
+		}
+		tag, err := tx.Exec(ctx, `
+			insert into plot_numbers (cell, region_id, number)
+			select n.cell, $1, m.top + row_number() over (order by n.ord)
+			from (select cell, ord from new_cells c
+			      where not exists (select 1 from plot_numbers p where p.cell = c.cell)) n,
+			     (select coalesce(max(number), 0) as top from plot_numbers where region_id = $1) m`, regionID)
+		added = tag.RowsAffected()
+		return err
+	})
+	if err != nil {
+		return 0, fmt.Errorf("db: assign plot numbers: %w", err)
+	}
+	return int(added), nil
+}
+
+// numberPlot gives cell the next free number in region unless it has one;
+// called inside the claim transaction for plots outside the numbered land
+// cells (e.g. a beach cut off by the coastline).
+func numberPlot(ctx context.Context, tx pgx.Tx, regionID int, cell string) error {
+	var has bool
+	if err := tx.QueryRow(ctx, `select exists (select 1 from plot_numbers where cell = $1)`, cell).Scan(&has); err != nil || has {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `select pg_advisory_xact_lock($1, $2)`, plotNumberLock, regionID); err != nil {
+		return err
+	}
+	_, err := tx.Exec(ctx, `
+		insert into plot_numbers (cell, region_id, number)
+		select $2, $1, coalesce(max(number), 0) + 1 from plot_numbers where region_id = $1
+		on conflict (cell) do nothing`, regionID, cell)
+	return err
+}
+
+// NumberPlots gives every surveyed plot with a region but no number the next
+// free number in its region, oldest claim first (plots claimed before the
+// import, or outside the land cells). It returns how many were numbered.
+func (d *DB) NumberPlots(ctx context.Context) (int, error) {
+	rows, err := d.Pool.Query(ctx, `
+		select pl.cell, pl.region_id from plots pl
+		where pl.region_id is not null and not exists (select 1 from plot_numbers n where n.cell = pl.cell)
+		order by pl.claimed_at, pl.cell`)
+	if err != nil {
+		return 0, fmt.Errorf("db: number plots: %w", err)
+	}
+	type todo struct {
+		cell   string
+		region int
+	}
+	list, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (todo, error) {
+		var t todo
+		return t, r.Scan(&t.cell, &t.region)
+	})
+	if err != nil {
+		return 0, fmt.Errorf("db: number plots: %w", err)
+	}
+	for _, t := range list {
+		err := pgx.BeginFunc(ctx, d.Pool, func(tx pgx.Tx) error { return numberPlot(ctx, tx, t.region, t.cell) })
+		if err != nil {
+			return 0, fmt.Errorf("db: number plot %s: %w", t.cell, err)
+		}
+	}
+	return len(list), nil
+}
+
 // RegionShapes returns every province's id and boundary, ordered by id.
 // Plots belong to provinces, so countries and cities are not in the index.
 func (d *DB) RegionShapes(ctx context.Context) ([]geo.RegionShape, error) {

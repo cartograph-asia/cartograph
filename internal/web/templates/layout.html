@@ -4,17 +4,17 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{{if .Title}}{{.Title}} · Cartograph.asia{{else}}Cartograph.asia: a photo for every plot of land{{end}}</title>
+<title>{{if .Title}}{{.Title}} · cartograph.asia{{else}}cartograph.asia: a photo for every plot of land{{end}}</title>
 {{with .Description}}<meta name="description" content="{{.}}">
 {{end}}{{if .NoIndex}}<meta name="robots" content="noindex">
 {{end}}{{with .Canonical}}<link rel="canonical" href="{{abs .}}">
-{{end}}{{with .Feed}}<link rel="alternate" type="application/rss+xml" title="{{if $.Title}}Cartograph.asia: {{$.Title}}{{else}}Cartograph.asia: latest surveys{{end}}" href="{{abs .}}">
+{{end}}{{with .Feed}}<link rel="alternate" type="application/rss+xml" title="{{if $.Title}}cartograph.asia: {{$.Title}}{{else}}cartograph.asia: latest surveys{{end}}" href="{{abs .}}">
 {{end}}<link rel="stylesheet" href="{{asset "style.css"}}">
 <link rel="icon" type="image/svg+xml" href="{{asset "logo.svg"}}">
 <link rel="apple-touch-icon" href="{{asset "apple-touch-icon.png"}}">
 <meta name="theme-color" content="#F6F2EA">
-<meta property="og:site_name" content="Cartograph.asia">
-<meta property="og:title" content="{{if .Title}}{{.Title}}{{else}}Cartograph.asia{{end}}">
+<meta property="og:site_name" content="cartograph.asia">
+<meta property="og:title" content="{{if .Title}}{{.Title}}{{else}}cartograph.asia{{end}}">
 {{with .Description}}<meta property="og:description" content="{{.}}">
 {{end}}{{with .Canonical}}<meta property="og:url" content="{{abs .}}">
 {{end}}<meta property="og:type" content="{{or .OG.Type "website"}}">

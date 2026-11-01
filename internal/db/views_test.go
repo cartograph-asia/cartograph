@@ -91,7 +91,7 @@ func newWorld(t *testing.T) *world {
 	w.surveyor(t, "adrian", t0.Add(-40*24*time.Hour))
 	w.surveyor(t, "Somchai-K", t0.Add(-10*24*time.Hour))
 	w.surveyor(t, "no-photos", t0.Add(-time.Hour))
-	w.claim(t, "adrian", beach[0], beach[1], t0.Add(-35*24*time.Hour))   // 0 claims beach, outside 30 days
+	w.claim(t, "adrian", beach[0], beach[1], t0.Add(-35*24*time.Hour))    // 0 claims beach, outside 30 days
 	w.claim(t, "adrian", walking[0], walking[1], t0.Add(-5*24*time.Hour)) // 1 claims walking street
 	w.claim(t, "Somchai-K", beach[0], beach[1], t0.Add(-3*24*time.Hour))  // 2
 	w.claim(t, "Somchai-K", nongPru[0], nongPru[1], t0.Add(-2*time.Hour)) // 3 claims nong prue

@@ -4,6 +4,8 @@ Cartograph (cartograph.asia) is a community game: a photo for every plot of land
 
 This file is the standing context for every agent working in this repository. Read it before doing anything.
 
+**Principles:** [docs/PRINCIPLES.md](docs/PRINCIPLES.md) decides feature questions; when a proposal conflicts with a principle, the principle wins unless Adrian says otherwise.
+
 ## Vocabulary (use these words in code, UI and docs)
 
 - **Plot** – one H3 cell at resolution 8 (~0.74 km²). Never "square", never "hex" in user-facing text.

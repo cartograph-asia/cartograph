@@ -162,27 +162,28 @@ func TestEveryPageRenders(t *testing.T) {
 			`<span lang="th" class="th">ชลบุรี</span>`, `href="/latest">More surveys`, "Welcome",
 		}},
 		{"latest", views.PageLatest, viewstest.Latest(10), []string{"Latest surveys", `rel="next" href="/latest?page=2"`, "Page 1 of 3"}},
-		{"surveyors", views.PageSurveyors, viewstest.Surveyors(), []string{"ploy88", "beach-walker", "plots claimed"}},
+		{"surveyors", views.PageSurveyors, viewstest.Surveyors(), []string{"ploy88", "beach-walker", `8 plots surveyed, <span class="nb">5 of them first</span>`, `12 photos · <span class="nb">joined`}},
 		{"regions", views.PageRegions, viewstest.Regions(), []string{"Rayong", "Bangkok", "0 of 4,818 plots"}},
 		{"surveyor", views.PageSurveyor, viewstest.Surveyor(), []string{
 			"<h1>adrian</h1>", "Walking Pattaya", "home region", `data-minimap="plots"`, `<svg class="cells"`,
-			`href="/surveyor/adrian.rss"`, "Edit your profile", "plots claimed",
+			`href="/surveyor/adrian.rss"`, "Edit your profile", `<b>8</b> plots surveyed, <span class="nb">5 of them first</span>`, "8 plots surveyed by adrian",
 		}},
 		{"placeholder", views.PageSurveyor, viewstest.PlaceholderSurveyor(), []string{"<h1>beach-walker</h1>"}},
 		{"plot", views.PagePlot, viewstest.Plot(), []string{
-			"<h1>Pattaya, Bang Lamung · Chon Buri 2417", "first surveyed by", "H3 index <code>88658bd11dfffff</code>", `href="/about/plots">What is a plot?`, `data-paths="/plot/chon-buri/2417,/plot/chon-buri/2418,`, "beach-walker", `href="/map?cell=88658bd11dfffff"`,
+			"<h1 class=\"name\">Pattaya, Bang <span class=\"nb\">Lamung ·</span> <span class=\"pv\">Chon Buri 2417</span>", "first surveyed by", "H3 index <code>88658bd11dfffff</code>", `href="/about/plots">What is a plot?`, `data-paths="/plot/chon-buri/2417,/plot/chon-buri/2418,`, "beach-walker", `href="/map?cell=88658bd11dfffff"`,
 			"Survey this plot", `data-focus="88658bd11dfffff"`, `data-surveyed="1,`, `class="s f"`,
 		}},
 		{"blank plot", views.PagePlot, viewstest.BlankPlot(), []string{"Nobody has surveyed this plot yet", `name="robots" content="noindex"`, "Survey this plot"}},
-		{"photo", views.PagePhoto, viewstest.Photo(), []string{`<h1><a href="/plot/chon-buri/2417">Pattaya, Bang Lamung · Chon Buri 2417</a></h1>`, "CC BY-SA 4.0", `rel="prev"`, `rel="next"`, "Photo 3 of", "Full size"}},
+		{"photo", views.PagePhoto, viewstest.Photo(), []string{`<h1><a href="/plot/chon-buri/2417">Pattaya, Bang <span class="nb">Lamung ·</span> <span class="pv">Chon Buri 2417</span></a></h1>`, "CC BY-SA 4.0", `rel="prev"`, `rel="next"`, "Photo 3 of", "Full size"}},
 		{"prototype photo", views.PagePhoto, viewstest.PrototypePhoto(), []string{"first survey of this plot", `width="2000" height="1500"`}},
 		{"region", views.PageRegion, viewstest.Region(), []string{
 			"<h1>Chon Buri", "0.20%", "5,921 plots", `data-minimap="coverage"`, `data-bounds="100.68000,12.50000,101.73000,13.59000"`,
-			"Most active, last 30 days", "Most active, all time", `href="/region/chon-buri.rss"`, "Open Chon Buri on the map",
+			`<p class="kicker">Province</p>`, "Most active Surveyors", "Last 30 days", "All time", "coverage, 12 of 5,921 plots", `href="/region/chon-buri.rss"`, "Open Chon Buri on the map",
 		}},
-		{"signin", views.PageSignIn, viewstest.SignIn(), []string{`action="/signin"`, `name="csrf" value="tok-123"`, `name="next" value="/map"`, `type="email"`, `value="adrian@example"`, "That does not look"}},
+		{"signin", views.PageSignIn, viewstest.SignIn(), []string{`action="/signin"`, `name="csrf" value="tok-123"`, `name="next" value="/map"`, `type="email"`, `value="adrian@example"`, "That does not look", `aria-invalid="true" aria-describedby="email-error"`}},
 		{"check-email", views.PageCheckEmail, viewstest.CheckEmail(), []string{"adrian@example.org"}},
-		{"choose-name", views.PageChooseName, viewstest.ChooseName(), []string{`action="/signin/name"`, `pattern="[A-Za-z0-9\-]{3,30}"`, `maxlength="30"`, "That name is taken"}},
+		{"choose-name", views.PageChooseName, viewstest.ChooseName(), []string{`action="/signin/name"`, `pattern="[A-Za-z0-9\-]{3,30}"`, `maxlength="30"`, "That name is taken",
+			`<p id="name-error" class="error" role="alert">`, `aria-describedby="name-error name-hint" autofocus aria-invalid="true"`}},
 		{"edit-profile", views.PageEditProfile, viewstest.EditProfile(), []string{`action="/settings"`, "Saved.", `<option value="chon-buri" selected>`, `maxlength="500"`, "Walking Pattaya"}},
 		{"confirm-signin", views.PageConfirmSignIn, &views.ConfirmSignIn{Page: views.Page{Title: "Sign in", NoIndex: true}, Token: "abc&def"},
 			[]string{`action="/signin/link"`, `name="token" value="abc&amp;def"`, `name="csrf" value="tok-123"`, ">Sign in</button>"}},
@@ -194,6 +195,7 @@ func TestEveryPageRenders(t *testing.T) {
 			checkHTML(t, p.name, body)
 			must(t, body, p.wants...)
 			must(t, body, `href="/map">Start surveying`, `href="/surveyor/adrian">adrian</a>`, `action="/signout"`,
+				`<nav class="site" aria-label="Sections"><a href="/latest">Latest</a>`, `<a href="/regions">Regions</a>`, `<a href="/surveyors">Surveyors</a>`, `<a href="/map">Map</a></nav>`,
 				`href="/principles"`, `href="/about/plots">About the plots`, "hello@cartograph.asia", "@cartographasia", "@cartograph.asia", "ODbL")
 		})
 	}
@@ -662,7 +664,7 @@ func TestPlotByNumber(t *testing.T) {
 		t.Fatalf("status %d", r.status)
 	}
 	// Same page as /plot/{cell}, which stays the canonical link.
-	must(t, r.body, "<h1>Pattaya, Bang Lamung · Chon Buri 2417", `<link rel="canonical" href="https://cartograph.asia/plot/88658bd11dfffff">`)
+	must(t, r.body, "<h1 class=\"name\">Pattaya, Bang <span class=\"nb\">Lamung ·</span> <span class=\"pv\">Chon Buri 2417</span>", `<link rel="canonical" href="https://cartograph.asia/plot/88658bd11dfffff">`)
 	if r := get(t, h, "/plot/CHON-BURI/2417"); r.status != http.StatusOK {
 		t.Errorf("slug case: status %d", r.status)
 	}
@@ -670,5 +672,54 @@ func TestPlotByNumber(t *testing.T) {
 		if r := get(t, h, path); r.status != http.StatusNotFound {
 			t.Errorf("%s: status %d, want 404", path, r.status)
 		}
+	}
+}
+
+// TestCaptionsLeaveOutWhatIsShared checks that a plot page's grid names the
+// Surveyor instead of the plot, and a Surveyor's page leaves out the name.
+func TestCaptionsLeaveOutWhatIsShared(t *testing.T) {
+	body := render(t, views.PagePlot, viewstest.Plot())
+	must(t, body, `<p class="cap"><a class="who" href="/surveyor/beach-walker">beach-walker</a>`)
+	mustNot(t, body, `<p class="cap"><a class="plot"`)
+	body = render(t, views.PageSurveyor, viewstest.Surveyor())
+	must(t, body, `<p class="cap"><a class="plot"`)
+	mustNot(t, body, `<span class="lt"><a href="/surveyor/adrian">`)
+	body = render(t, views.PageLatest, viewstest.Latest(10))
+	must(t, body, `<span class="line"><span class="lt"><a href="/surveyor/`)
+}
+
+// TestFirstTagOutsideTheCut checks that the "first" tag follows the part of
+// the caption line that may be cut, so it always shows.
+func TestFirstTagOutsideTheCut(t *testing.T) {
+	body := render(t, views.PageHome, viewstest.Home())
+	must(t, body, `</time></span> <abbr class="first" title="First survey of this plot">first</abbr></span>`)
+	mustNot(t, body, `</time> <abbr class="first"`)
+}
+
+func TestSurveyed(t *testing.T) {
+	for _, c := range []struct {
+		n, first int
+		want     string
+	}{
+		{0, 0, "plots surveyed"},
+		{1, 0, "plot surveyed"},
+		{1, 1, `plot surveyed, <span class="nb">the first</span>`},
+		{8, 0, "plots surveyed"},
+		{8, 5, `plots surveyed, <span class="nb">5 of them first</span>`},
+		{2500, 1200, `plots surveyed, <span class="nb">1,200 of them first</span>`},
+	} {
+		if got := string(surveyed(c.n, c.first)); got != c.want {
+			t.Errorf("surveyed(%d, %d) = %q, want %q", c.n, c.first, got, c.want)
+		}
+	}
+}
+
+func TestHeading(t *testing.T) {
+	p := views.PlotRef{Place: "A & B", District: "C", Region: views.RegionRef{NameEn: "D", Slug: "d"}, Number: 7}
+	if got, want := string(heading(p)), `A &amp; B, <span class="nb">C ·</span> <span class="pv">D 7</span>`; got != want {
+		t.Errorf("heading = %q, want %q", got, want)
+	}
+	if got := string(heading(views.PlotRef{Region: views.RegionRef{NameEn: "D"}, Number: 7})); got != "D 7" {
+		t.Errorf("heading without a place = %q", got)
 	}
 }

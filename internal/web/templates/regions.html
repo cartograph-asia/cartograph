@@ -1,5 +1,7 @@
 {{define "content" -}}
+<header class="head">
 <h1>Regions</h1>
 <p class="note">Thailand's provinces, newest activity first. Coverage is the share of a region's plots with at least one photo; the names under it are the most active Surveyors of the last {{activeDays}} days.</p>
+</header>
 <ul class="regions">{{range .Regions}}{{template "region-row" .}}{{end}}</ul>
 {{- end}}

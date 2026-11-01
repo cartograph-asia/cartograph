@@ -1,7 +1,12 @@
 {{define "content" -}}
 <div class="form">
+<p class="kicker">Error {{.Status}}</p>
 <h1>{{.Title}}</h1>
-<p>{{.Message}}</p>
-<p><a href="/">Back to the front page</a> · <a href="/latest">Latest surveys</a> · <a href="/map">Map</a></p>
+<p class="lede">{{.Message}}</p>
+<ul class="ways">
+<li><a href="/">Front page <span aria-hidden="true">→</span></a></li>
+<li><a href="/latest">Latest surveys <span aria-hidden="true">→</span></a></li>
+<li><a href="/map">Map <span aria-hidden="true">→</span></a></li>
+</ul>
 </div>
 {{- end}}

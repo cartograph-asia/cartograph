@@ -123,3 +123,11 @@ func TestPlotRefShortName(t *testing.T) {
 		}
 	}
 }
+
+func TestRegionKindName(t *testing.T) {
+	for kind, want := range map[string]string{"province": "Province", "country": "Country", "": "Region"} {
+		if got := (Region{Kind: kind}).KindName(); got != want {
+			t.Errorf("KindName(%q) = %q, want %q", kind, got, want)
+		}
+	}
+}

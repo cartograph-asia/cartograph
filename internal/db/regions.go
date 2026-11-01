@@ -307,7 +307,7 @@ func (d *DB) RefreshRegionCounts(ctx context.Context) error {
 	_, err := d.Pool.Exec(ctx, `
 		update regions r set
 		  claimed_cells    = coalesce((select count(*) from plots p where p.region_id = r.id and p.photo_count > 0), 0),
-		  last_surveyed_at = (select max(ph.uploaded_at) from photos ph join plots p on p.cell = ph.cell where p.region_id = r.id)`)
+		  last_surveyed_at = (select max(ph.uploaded_at) from visible_photos ph join plots p on p.cell = ph.cell where p.region_id = r.id)`)
 	if err != nil {
 		return fmt.Errorf("db: refresh region counts: %w", err)
 	}
@@ -388,6 +388,20 @@ func (d *DB) locatePlot(ctx context.Context, q querier, cell string) (*PlotLocat
 		if c.nameTh != "" {
 			th := c.nameTh
 			loc.PlaceTh = &th
+		}
+		// An admin's place_overrides row with action 'replace' renames the
+		// place for plots named from now on; the Thai name is dropped, since
+		// it would name the old place.
+		var repl string
+		err := q.QueryRow(ctx, `
+			select replacement from place_overrides
+			where country = $1 and name = $2 and action = 'replace' and coalesce(replacement, '') <> ''`,
+			country, c.nameEn).Scan(&repl)
+		switch {
+		case err == nil:
+			loc.PlaceEn, loc.PlaceTh = repl, nil
+		case !errors.Is(err, pgx.ErrNoRows):
+			return nil, fmt.Errorf("db: place override: %w", err)
 		}
 	}
 	return loc, nil

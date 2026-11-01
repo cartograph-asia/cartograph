@@ -44,7 +44,7 @@ const photoCols = `ph.id, ph.key_thumb, coalesce(ph.key_medium, ''), ph.key_larg
 	coalesce(s.name, ph.surveyor), ph.taken_at, ph.uploaded_at, pl.first_photo is not distinct from ph.id,
 	coalesce(pn.number, 0), coalesce(dr.name_en, '')`
 
-const photoFrom = ` from photos ph
+const photoFrom = ` from visible_photos ph
 	join plots pl on pl.cell = ph.cell
 	left join plot_numbers pn on pn.cell = ph.cell
 	left join regions r on r.id = pl.region_id
@@ -57,16 +57,25 @@ const surveyorKey = `coalesce(s.name, ph.surveyor)`
 func scanPhoto(row pgx.CollectableRow) (views.PhotoItem, error) {
 	var p views.PhotoItem
 	var id uuid.UUID
-	err := row.Scan(&id, &p.Keys.Thumb, &p.Keys.Medium, &p.Keys.Large, &p.Width, &p.Height, &p.Plot.Cell,
+	err := row.Scan(photoDest(&p, &id)...)
+	finishPhoto(&p, id)
+	return p, err
+}
+
+// photoDest returns the scan destinations of photoCols.
+func photoDest(p *views.PhotoItem, id *uuid.UUID) []any {
+	return []any{id, &p.Keys.Thumb, &p.Keys.Medium, &p.Keys.Large, &p.Width, &p.Height, &p.Plot.Cell,
 		&p.Plot.Place, &p.Plot.PlaceTh, &p.Plot.Region.Slug, &p.Plot.Region.NameEn, &p.Plot.Region.NameTh,
-		&p.Surveyor.Name, &p.TakenAt, &p.UploadedAt, &p.FirstSurvey, &p.Plot.Number, &p.Plot.District)
+		&p.Surveyor.Name, &p.TakenAt, &p.UploadedAt, &p.FirstSurvey, &p.Plot.Number, &p.Plot.District}
+}
+
+func finishPhoto(p *views.PhotoItem, id uuid.UUID) {
 	p.ID = id.String()
 	p.UploadedAt = p.UploadedAt.UTC()
 	if p.TakenAt != nil {
 		t := p.TakenAt.UTC()
 		p.TakenAt = &t
 	}
-	return p, err
 }
 
 func (v *Views) photos(ctx context.Context, where, order string, args ...any) ([]views.PhotoItem, error) {
@@ -122,7 +131,7 @@ func (v *Views) Home(ctx context.Context) (*views.Home, error) {
 	h := &views.Home{Page: v.base("", "/", "A photo for every plot of land in Asia, surveyed by its people.", "/latest.rss")}
 	err := v.d.Pool.QueryRow(ctx, `select
 		(select count(*) from plots where photo_count > 0),
-		(select count(*) from photos),
+		(select count(*) from visible_photos),
 		(select count(*) from surveyors),
 		(select count(*) from regions where kind = 'province' and claimed_cells > 0)`,
 	).Scan(&h.Counters.Plots, &h.Counters.Photos, &h.Counters.Surveyors, &h.Counters.Regions)
@@ -173,7 +182,7 @@ func (v *Views) featured(ctx context.Context) (*views.Featured, error) {
 func (v *Views) newSurveyors(ctx context.Context) ([]views.NewSurveyor, error) {
 	rows, err := v.d.Pool.Query(ctx, `
 		select s.name, s.joined_at, f.id from surveyors s
-		join lateral (select id from photos where surveyor_id = s.id order by uploaded_at, id limit 1) f on true
+		join lateral (select id from visible_photos where surveyor_id = s.id order by uploaded_at, id limit 1) f on true
 		order by s.joined_at desc, s.id limit $1`, views.HomeNewSurveyors)
 	if err != nil {
 		return nil, fmt.Errorf("db: new surveyors: %w", err)
@@ -307,7 +316,7 @@ func (v *Views) activity(ctx context.Context, regionSlug string, since time.Time
 
 // Latest implements views.Source.
 func (v *Views) Latest(ctx context.Context, page int) (*views.Latest, error) {
-	total, err := v.count(ctx, `select count(*) from photos`)
+	total, err := v.count(ctx, `select count(*) from visible_photos`)
 	if err != nil {
 		return nil, err
 	}
@@ -337,10 +346,10 @@ func (v *Views) Surveyors(ctx context.Context, page int) (*views.SurveyorList, e
 	}
 	rows, err := v.d.Pool.Query(ctx, `
 		select s.name, s.joined_at,
-		  (select count(distinct cell) from photos where surveyor_id = s.id),
+		  (select count(distinct cell) from visible_photos where surveyor_id = s.id),
 		  (select count(*) from plots where first_surveyor_id = s.id),
-		  (select count(*) from photos where surveyor_id = s.id),
-		  (select id from photos where surveyor_id = s.id order by uploaded_at desc, id desc limit 1)
+		  (select count(*) from visible_photos where surveyor_id = s.id),
+		  (select id from visible_photos where surveyor_id = s.id order by uploaded_at desc, id desc limit 1)
 		from surveyors s order by s.joined_at desc, s.id limit $1 offset $2`, pg.PerPage, offset(pg))
 	if err != nil {
 		return nil, fmt.Errorf("db: surveyors: %w", err)
@@ -439,7 +448,7 @@ func (v *Views) Surveyor(ctx context.Context, name string, page int) (*views.Sur
 		select
 		  count(distinct ph.cell), (select count(*) from plots where first_surveyor_id = $1),
 		  count(*), count(distinct pl.region_id)
-		from photos ph join plots pl on pl.cell = ph.cell where ph.surveyor_id = $1`, s.id,
+		from visible_photos ph join plots pl on pl.cell = ph.cell where ph.surveyor_id = $1`, s.id,
 	).Scan(&out.Stats.Surveyed, &out.Stats.Plots, &out.Stats.Photos, &out.Stats.Regions)
 	if err != nil {
 		return nil, fmt.Errorf("db: surveyor stats: %w", err)
@@ -453,7 +462,7 @@ func (v *Views) Surveyor(ctx context.Context, name string, page int) (*views.Sur
 		return nil, err
 	}
 	rows, err := v.d.Pool.Query(ctx, `select pl.cell, pl.photo_count from plots pl
-		where pl.cell in (select cell from photos where surveyor_id = $1) order by pl.cell`, s.id)
+		where pl.cell in (select cell from visible_photos where surveyor_id = $1) order by pl.cell`, s.id)
 	if err != nil {
 		return nil, fmt.Errorf("db: surveyor cells: %w", err)
 	}
@@ -674,18 +683,26 @@ func (v *Views) Photo(ctx context.Context, id string) (*views.Photo, error) {
 		return nil, err
 	}
 	if len(ps) == 0 {
+		var hidden bool
+		err := v.d.Pool.QueryRow(ctx, `select hidden_at is not null from photos where id = $1`, uid).Scan(&hidden)
+		if err == nil && hidden {
+			return nil, views.ErrGone
+		}
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("db: photo: %w", err)
+		}
 		return nil, views.ErrNotFound
 	}
 	ph := ps[0]
 	var licence string
-	if err := v.d.Pool.QueryRow(ctx, `select licence from photos where id = $1`, uid).Scan(&licence); err != nil {
+	if err := v.d.Pool.QueryRow(ctx, `select licence from visible_photos where id = $1`, uid).Scan(&licence); err != nil {
 		return nil, fmt.Errorf("db: photo licence: %w", err)
 	}
 	out := &views.Photo{Photo: ph, Licence: views.Licence{Name: licence}}
 	if licence == views.CCBYSA4.Name {
 		out.Licence = views.CCBYSA4
 	}
-	rows, err := v.d.Pool.Query(ctx, `select id from photos where cell = $1 order by uploaded_at, id`, ph.Plot.Cell)
+	rows, err := v.d.Pool.Query(ctx, `select id from visible_photos where cell = $1 order by uploaded_at, id`, ph.Plot.Cell)
 	if err != nil {
 		return nil, fmt.Errorf("db: photo siblings: %w", err)
 	}

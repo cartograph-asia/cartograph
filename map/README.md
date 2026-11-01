@@ -13,7 +13,18 @@ Thailand's only; `cmd/regions`, `cmd/places` and `cmd/fixture` read
 
 ## Build
 
-Requires Docker and `curl`. No local Java needed.
+Requires `curl`, and either Java 21+ and osmium on the host or Docker:
+
+```sh
+brew install openjdk@21 osmium-tool   # host build (preferred on a Mac)
+```
+
+With both installed, `build.sh` runs osmium and Planetiler on the host and
+fetches Planetiler's jar (pinned, `PLANETILER_VERSION`) into `map/data/`.
+Otherwise it runs both in Docker (`USE_DOCKER=1` forces that). On a Mac
+the host build is the better choice for large sets: it may use all of the
+machine's memory, while Docker Desktop gives it a fixed VM and slow access
+to `map/`.
 
 ```sh
 map/download.sh   # Geofabrik extracts -> map/data/<name>-latest.osm.pbf (each skipped if present)
@@ -24,9 +35,8 @@ Both scripts work from any directory. `EXTRACTS` (space-separated Geofabrik
 `asia/` names) changes the set; `map/download.sh thailand` fetches one. To
 refresh the OSM data, delete the extracts in `map/data/` and run `build.sh`
 again; the merged `map/data/region-latest.osm.pbf` is rebuilt whenever an
-extract is newer. The merge runs osmium from Debian's package in a
-throwaway `debian:bookworm-slim` container, so nothing is installed on the
-host.
+extract is newer. In Docker the merge runs osmium from Debian's package in
+a throwaway `debian:bookworm-slim` container.
 
 On the first build Planetiler also downloads its auxiliary sources into
 `map/data/sources/` (water polygons ~930 MB, Natural Earth ~430 MB, lake
@@ -40,12 +50,12 @@ Everything under `map/data/` and the `.pmtiles` output is git-ignored.
 |---|---|---|
 | OSM extracts | 330 MB | 1.3 GB merged (six extracts) |
 | Merge | – | ~1 min, including installing osmium |
-| Build time | ~95 s | ~7 min (sources already downloaded) |
-| JVM heap peak | ~2.1 GB | ~3.8 GB of 5 GB (`-Xmx5g`, the default) |
+| Build time | ~95 s (Docker) | ~3½ min on the host incl. merge; ~7 min in Docker (sources already downloaded) |
+| JVM heap peak | ~2.1 GB | 2–4 GB of 5 GB (`-Xmx5g`, the default); 6.2 GB resident on the host incl. memory-mapped files |
 | Disk | ~1.7 GB in `map/data/` | ~3.8 GB in `map/data/` |
 | Output | ~400 MB | `asia.pmtiles`, ~1.4 GB |
 
-Docker Desktop needs at least ~6 GB memory assigned for the default set.
+In Docker, Docker Desktop needs at least ~6 GB memory assigned for the default set.
 Override the heap with `JAVA_XMX=4g map/build.sh`, the set with
 `EXTRACTS=thailand map/build.sh` and the image with `PLANETILER_IMAGE=...`.
 

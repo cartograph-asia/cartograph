@@ -120,7 +120,7 @@ func (v *Views) Home(ctx context.Context) (*views.Home, error) {
 		(select count(*) from plots where photo_count > 0),
 		(select count(*) from photos),
 		(select count(*) from surveyors),
-		(select count(*) from regions where claimed_cells > 0)`,
+		(select count(*) from regions where kind = 'province' and claimed_cells > 0)`,
 	).Scan(&h.Counters.Plots, &h.Counters.Photos, &h.Counters.Surveyors, &h.Counters.Regions)
 	if err != nil {
 		return nil, fmt.Errorf("db: home counters: %w", err)
@@ -239,12 +239,12 @@ func scanRegion(r pgx.CollectableRow) (regionRow, error) {
 	return x, err
 }
 
-// regionSummaries returns regions (only those with a surveyed plot if
+// regionSummaries returns provinces (only those with a surveyed plot if
 // activeOnly) by most recent activity, then name, with their top surveyors.
 func (v *Views) regionSummaries(ctx context.Context, activeOnly bool) ([]views.RegionSummary, error) {
-	where := ""
+	where := "where kind = 'province'"
 	if activeOnly {
-		where = "where claimed_cells > 0"
+		where += " and claimed_cells > 0"
 	}
 	rows, err := v.d.Pool.Query(ctx, `select `+regionCols+` from regions `+where+`
 		order by last_surveyed_at desc nulls last, name_en`)
@@ -726,7 +726,7 @@ func (v *Views) Region(ctx context.Context, slug string, page int) (*views.Regio
 
 // RegionRefs implements views.Source.
 func (v *Views) RegionRefs(ctx context.Context) ([]views.RegionRef, error) {
-	rows, err := v.d.Pool.Query(ctx, `select slug, name_en, coalesce(name_th, '') from regions order by name_en`)
+	rows, err := v.d.Pool.Query(ctx, `select slug, name_en, coalesce(name_th, '') from regions where kind = 'province' order by name_en`)
 	if err != nil {
 		return nil, fmt.Errorf("db: region refs: %w", err)
 	}

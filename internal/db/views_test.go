@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/paulmach/orb"
 
 	"github.com/cartograph-asia/cartograph/internal/db"
 	"github.com/cartograph-asia/cartograph/internal/h3"
@@ -232,9 +233,20 @@ func TestViews(t *testing.T) {
 		t.Fatalf("surveyors %+v %v", sl, err)
 	}
 
+	// A country row is reachable by slug but never listed as a province.
+	if _, err := w.d.UpsertRegions(ctx, []db.Region{{OSMID: 2067731, Kind: "country", AdminLevel: 2, Country: "th", Slug: "thailand",
+		NameEn: "Thailand", Boundary: orb.MultiPolygon{{{{97, 5}, {106, 5}, {106, 21}, {97, 21}, {97, 5}}}}}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.d.ReloadRegions(ctx); err != nil {
+		t.Fatal(err)
+	}
 	rl, err := v.Regions(ctx)
-	if err != nil || len(rl.Regions) != 1 {
+	if err != nil || len(rl.Regions) != 1 || rl.Regions[0].Region.Slug != "chon-buri" {
 		t.Fatalf("regions %+v %v", rl, err)
+	}
+	if c, err := v.Region(ctx, "thailand", 1); err != nil || c.Region.NameEn != "Thailand" {
+		t.Fatalf("country page %+v %v", c, err)
 	}
 
 	s, err := v.Surveyor(ctx, "ADRIAN", 1)

@@ -102,7 +102,7 @@ func Regions(ctx context.Context, d *db.DB, o RegionOptions) (*RegionStats, erro
 			return nil, fmt.Errorf("relation %d: slug %q is empty or also used by relation %d", b.OSMID, slug, other)
 		}
 		slugs[slug] = b.OSMID
-		rows = append(rows, db.Region{OSMID: b.OSMID, AdminLevel: 4, Country: country, Slug: slug, NameEn: en, NameTh: th, Boundary: simple})
+		rows = append(rows, db.Region{OSMID: b.OSMID, Kind: "province", AdminLevel: 4, Country: country, Slug: slug, NameEn: en, NameTh: th, Boundary: simple})
 		shapes = append(shapes, geo.RegionShape{ID: len(shapes), Geometry: simple})
 		if all.IsEmpty() {
 			all = simple.Bound()

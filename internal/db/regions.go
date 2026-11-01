@@ -17,6 +17,7 @@ import (
 // Region is one row for UpsertRegions.
 type Region struct {
 	OSMID      int64
+	Kind       string // "country", "province" or "city"
 	AdminLevel int
 	Country    string // ISO 3166-1 alpha-2, lower case
 	Slug       string
@@ -44,16 +45,16 @@ func (d *DB) UpsertRegions(ctx context.Context, rs []Region) ([]int, error) {
 			}
 			err = tx.QueryRow(ctx, `
 				insert into regions (osm_id, admin_level, country, slug, name_en, name_th, boundary,
-				                     min_lat, min_lng, max_lat, max_lng, land_cells)
-				values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+				                     min_lat, min_lng, max_lat, max_lng, land_cells, kind)
+				values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 				on conflict (osm_id) do update set
-				  admin_level = excluded.admin_level, country = excluded.country, slug = excluded.slug,
+				  kind = excluded.kind, admin_level = excluded.admin_level, country = excluded.country, slug = excluded.slug,
 				  name_en = excluded.name_en, name_th = excluded.name_th, boundary = excluded.boundary,
 				  min_lat = excluded.min_lat, min_lng = excluded.min_lng,
 				  max_lat = excluded.max_lat, max_lng = excluded.max_lng, land_cells = excluded.land_cells
 				returning id`,
 				r.OSMID, r.AdminLevel, r.Country, r.Slug, r.NameEn, th, text,
-				b.Min[1], b.Min[0], b.Max[1], b.Max[0], r.LandCells,
+				b.Min[1], b.Min[0], b.Max[1], b.Max[0], r.LandCells, r.Kind,
 			).Scan(&ids[i])
 			if err != nil {
 				return fmt.Errorf("upsert region %d (%s): %w", r.OSMID, r.Slug, err)
@@ -67,9 +68,10 @@ func (d *DB) UpsertRegions(ctx context.Context, rs []Region) ([]int, error) {
 	return ids, nil
 }
 
-// RegionShapes returns every region's id and boundary, ordered by id.
+// RegionShapes returns every province's id and boundary, ordered by id.
+// Plots belong to provinces, so countries and cities are not in the index.
 func (d *DB) RegionShapes(ctx context.Context) ([]geo.RegionShape, error) {
-	rows, err := d.Pool.Query(ctx, `select id, boundary from regions order by id`)
+	rows, err := d.Pool.Query(ctx, `select id, boundary from regions where kind = 'province' order by id`)
 	if err != nil {
 		return nil, fmt.Errorf("db: region shapes: %w", err)
 	}

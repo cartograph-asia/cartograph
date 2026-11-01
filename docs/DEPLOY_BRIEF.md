@@ -62,12 +62,14 @@ The archive is built on the Mac only (decisions.md, Map) and copied with `rsync 
 
 A bare repository on the host with `deploy/post-receive` versioned in this repository: on a push to `main` it builds the api and web images tagged with the commit, starts a probe of the api on a test port (`/healthz` must answer and `/` must render against the real database), switches the compose stack only then, and keeps the last three images. Migrations run at api start; they are never destructive (CLAUDE.md), so a rollback is a push of the previous commit. `docs/DEPLOY.md` lists the steps for a release, a base-map update and a rollback, without host-specific paths (those are in `deploy/host.local.md`).
 
-### 7. Backups, off the host
+### 7. Backups, pulled to Adrian's Mac
 
-"Data is kept" (CLAUDE.md) needs backups that survive the host, before the first invited Surveyor uploads.
+"Data is kept" (CLAUDE.md) needs backups that survive the host, before the first invited Surveyor uploads. **Decided (Adrian): the backups go from the VPS to Adrian's Mac**, and the Mac fetches them: the server holds no credentials for the Mac, so a compromised server cannot reach or delete the backups.
 
-- `deploy/backup.sh` from a crontab: a nightly `pg_dump -Fc` of the whole database, encrypted with `age` to a public key whose private half is not on the server, kept 14 daily, 8 weekly, 12 monthly, and **copied off the host** (open question 3).
-- Photos: versioning on the Object Storage bucket, plus a weekly `rclone sync` to the same off-host place.
+- **On the server**, `deploy/backup.sh` from a crontab writes a nightly `pg_dump -Fc` of the whole database into one directory, encrypted with `age` to a public key whose private half stays on the Mac, and keeps only the last 3 nights there.
+- **On the Mac**, `deploy/pull-backups.sh` run by a launchd job (`deploy/asia.cartograph.backup.plist`, daily, and again when the Mac wakes) pulls the new dumps with `rsync` over SSH into a backup directory on the external SSD (path in `.env.local`, not in git), keeps 14 daily, 8 weekly and 12 monthly, and logs to `~/Library/Logs/`.
+- **Photos**: versioning on the Object Storage bucket, plus `rclone sync` of the bucket to the same SSD from the same launchd job (a read-only key for the bucket, kept in the Mac's keychain).
+- **When the Mac is off** for days, nothing is lost on the server side for 3 nights; the pull reports in its log and with a macOS notification when the newest dump on the Mac is older than 2 days.
 - **Restore test**: the brief is done only after last night's dump and the photos were restored into a fresh stack on the Mac and the site came up with the same plots and photos. `docs/RESTORE.md` holds the steps.
 
 ### 8. DNS and mail
@@ -92,7 +94,7 @@ A CDN, a registry and CI-built images, metrics, a second server, the forum, plot
 
 1. **Cartograph as one more site behind the host Caddy, on a local port, deployed by a push to a bare repository with a probing hook?** *Recommendation: yes*, the same way as the other sites on the host (port proposal in `deploy/host.local.md`).
 2. **Photos in Hetzner Object Storage, not Garage on the host?** *Recommendation: Object Storage.* The host's memory and disk are tight for another storage service, and photos off the host make backups simpler.
-3. **Where do backups go off the host?** *Recommendation: a Hetzner Storage Box* for the encrypted dumps, and while it is there, for the other projects' backups too (see `deploy/host.local.md`); plus a copy at home on the SSD weekly.
+3. ~~Where do backups go off the host?~~ **Decided (Adrian): to the Mac**, pulled by the Mac (section 7). The other projects on the host could use the same pull job later.
 4. **GitHub stays the main remote, the host gets a second remote for deploys?** *Recommendation: yes.*
 5. **Impressum and Datenschutzerklärung before the domain goes live?** Adrian runs the site from Germany, and even an invitation-only site is publicly reachable. *Recommendation: yes, two static pages (`/impressum`, `/privacy`)* linked from the footer; the privacy page names what is stored (e-mail, sessions, photos with position, hashed sign-in refusals, access logs with IPs for 14 days) and how to ask for deletion. Text by Adrian; Claude can draft.
 6. **How long are access logs kept?** *Recommendation: 14 days*, then deleted; they hold IP addresses.

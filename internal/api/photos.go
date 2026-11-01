@@ -60,6 +60,25 @@ func (s *Server) createPhoto(w http.ResponseWriter, r *http.Request) {
 	}
 	surveyor := viewer.Name
 
+	// Each upload holds the whole file in memory and then a decoded image
+	// several times its size, so the semaphore is taken before the body is
+	// read: at most MaxConcurrentProcessing photos are in memory at once.
+	// Waiting requests have read nothing yet; a slow client is cut off by
+	// the server's ReadTimeout.
+	select {
+	case s.sem <- struct{}{}:
+	case <-r.Context().Done():
+		return
+	}
+	held := true
+	release := func() {
+		if held {
+			held = false
+			<-s.sem
+		}
+	}
+	defer release()
+
 	maxBytes := int64(s.cfg.MaxUploadMB) << 20
 	tooLarge := fmt.Sprintf("file is larger than %d MB", s.cfg.MaxUploadMB)
 
@@ -115,15 +134,9 @@ func (s *Server) createPhoto(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Decoding a large photo is memory hungry; bound concurrency.
-	select {
-	case s.sem <- struct{}{}:
-	case <-r.Context().Done():
-		return
-	}
 	variants, err := photos.Process(form.photo)
-	<-s.sem
 	form.photo = nil
+	release() // the variants are small; storing them needs no slot
 	if err != nil {
 		if errors.Is(err, photos.ErrInvalidImage) || errors.Is(err, photos.ErrUnsupported) || errors.Is(err, photos.ErrHEIC) {
 			writeError(w, http.StatusBadRequest, err.Error())

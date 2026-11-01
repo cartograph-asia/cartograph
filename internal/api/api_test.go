@@ -95,6 +95,7 @@ func (f *fakeRepo) Coverage(_ context.Context, res int, parents []string) (map[s
 type testEnv struct {
 	t     *testing.T
 	srv   *httptest.Server
+	s     *Server
 	store *storage.Memory
 	repo  *fakeRepo
 	as    atomic.Pointer[views.Viewer] // the signed-in viewer internal/auth would set; nil = signed out
@@ -105,7 +106,7 @@ func newEnv(t *testing.T, maxMB int) *testEnv {
 	store := storage.NewMemory("http://img.test/img")
 	s := New(repo, store, Config{MaxUploadMB: maxMB})
 	s.now = func() time.Time { return time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC) }
-	e := &testEnv{t: t, store: store, repo: repo}
+	e := &testEnv{t: t, s: s, store: store, repo: repo}
 	e.signIn("Ada")
 	h := s.Handler()
 	e.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -297,6 +298,44 @@ func TestCreatePhotoRejects(t *testing.T) {
 	}
 	if status, _ := decode(t, resp); status != http.StatusBadRequest {
 		t.Errorf("non-multipart: %d", status)
+	}
+}
+
+// An upload waits for a processing slot before it reads its body, so that
+// parallel uploads cannot each hold a file in memory.
+func TestCreatePhotoWaitsBeforeReading(t *testing.T) {
+	e := newEnv(t, 25)
+	post := func(timeout time.Duration) (int, error) {
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+		req, _ := http.NewRequestWithContext(ctx, http.MethodPost, e.srv.URL+"/api/photos", strings.NewReader("{}"))
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return 0, err
+		}
+		resp.Body.Close()
+		return resp.StatusCode, nil
+	}
+	for range cap(e.s.sem) {
+		e.s.sem <- struct{}{}
+	}
+	if status, err := post(300 * time.Millisecond); err == nil {
+		t.Fatalf("with every slot taken the body was read: %d", status)
+	}
+	for range cap(e.s.sem) {
+		<-e.s.sem
+	}
+	if status, err := post(5 * time.Second); err != nil || status != http.StatusBadRequest {
+		t.Fatalf("with a free slot: %d %v", status, err)
+	}
+	// The handler releases its slot as it returns, maybe just after the
+	// response is out.
+	for i := 0; len(e.s.sem) != 0; i++ {
+		if i == 100 {
+			t.Fatalf("slot not released: %d held", len(e.s.sem))
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 

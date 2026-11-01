@@ -15,6 +15,13 @@
 # If a step fails, the running version stays as it was.
 set -euo pipefail
 
+# Host-specific settings (CARTOGRAPH_RUNTIME, CARTOGRAPH_PROBE_PORT, …) can
+# live next to the bare repository, outside this public repository.
+if [ -f "$(pwd)/cartograph-deploy.env" ]; then
+	# shellcheck disable=SC1091
+	. "$(pwd)/cartograph-deploy.env"
+fi
+
 RUNTIME=${CARTOGRAPH_RUNTIME:-/srv/cartograph}
 PROJECT=${CARTOGRAPH_PROJECT:-cartograph}
 PROBE=cartograph-probe

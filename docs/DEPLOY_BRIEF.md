@@ -1,6 +1,6 @@
 # Brief: Deployment – the alpha on cartograph.asia
 
-**Status: draft by Claude for Adrian, 2026-11-01.** The open questions at the end decide parts of it; each has a recommendation. When they are answered, this note goes and the brief is final.
+**Status: decided by Adrian, 2026-11-01** (the decisions are at the end); ready to implement.
 
 Read `CLAUDE.md`, the Infrastructure, Security, Map and Admin entries in `docs/decisions.md` and `deploy/` first. This brief takes the stack that runs today with `docker compose up` on a laptop and runs it on Adrian's Hetzner VPS under `https://cartograph.asia`, for the alpha: Adrian and a few invited Surveyors, data kept from the first upload on.
 
@@ -25,10 +25,10 @@ The concrete facts about the host (ports in use, paths, users, other sites, the 
 
 The host's Caddy does TLS and the public headers; Cartograph keeps its own small Caddy container for its internal routing (`/map`, `/tiles`, `/img`, the rest to the api), bound to `127.0.0.1:${HTTP_PORT}` (a free port, set in `.env`). That keeps `deploy/Caddyfile` the one place where Cartograph's routes live, in development and production alike.
 
-- `deploy/cartograph.asia.caddy`, a site file for the host Caddy:
+- `deploy/cartograph.asia.caddy`, a site file for the host Caddy (decided, decision 1):
   - `cartograph.asia { reverse_proxy 127.0.0.1:{port} }`; `www.cartograph.asia` redirects permanently.
   - No `encode` for `/tiles/*` (the archive is read in byte ranges); `encode zstd gzip` for the rest.
-  - The security headers (section 2) and the access log (rolled daily, kept 14 days, open question 6) live here, because the host Caddy is what the browser talks to.
+  - The security headers (section 2) and the access log live here, because the host Caddy is what the browser talks to. The log is JSON, rolled daily and **kept 7 days** (decision 6), readable by the user that runs the Matomo import (section 9).
   - The magic-link token filter moves here too: the host Caddy's log is the one that sees `?token=`.
 - `deploy/Caddyfile` keeps `auto_https off` and `:80`; in production it is reached only from the host Caddy.
 
@@ -47,16 +47,21 @@ On every response of `cartograph.asia`, in the host site file:
 - Every secret and URL is required, `${VAR:?message}`, never a default: `POSTGRES_PASSWORD`/`DATABASE_URL`, the S3 keys, `BASE_URL`, `IMG_BASE_URL`, `TILES_URL`, `SMTP_*`, `MAIL_FROM`, `ADMIN_EMAILS`, `HTTP_PORT`.
 - `seed`, `regions`, `places` and `fixture` get `profiles: ["tools"]`: a plain `up` never seeds or imports; the Thailand import runs once by hand with `--profile tools`.
 - Only Cartograph's Caddy publishes a port, on 127.0.0.1. No other service has `ports:`.
-- **Memory** for a shared host: api 1 GB with `GOMEMLIMIT` 768 MiB and one image processed at a time (open question 8), Postgres 512 MB, Caddy 128 MB, web 64 MB; no Garage (photos go to Object Storage, section 4).
+- **Memory** for a shared host: api 1 GB with `GOMEMLIMIT` 768 MiB and **one image processed at a time** (decision 8), Postgres 512 MB, Garage 384 MB, Caddy 128 MB, web 64 MB.
+- Garage keeps its data in a named volume; its admin API and RPC stay inside the compose network.
 - Images are pinned by digest.
 
-### 4. Photos in Hetzner Object Storage
+### 4. Photos in Garage on the host
 
-Photos leave the host (open question 2): one bucket, a key that may only use this bucket (read and write, which covers the admin's file removal), no admin or root keys on the server. Public read only for `photos/*` (`s3:GetObject`), no listing, no public write; `IMG_BASE_URL` is the bucket's https URL. Objects keep `Cache-Control: public, max-age=31536000, immutable`. The `X-Robots-Tag` of the crawler block cannot come from Caddy for these files; the implementation checks whether the bucket can send it and documents the result (decisions.md, Security). This also keeps the host's disk for the database and the base map.
+**Decided (Adrian): photos stay in Garage, on the VPS**, as in development. Cartograph's Caddy keeps serving them at `/img/photos/*` from Garage's website endpoint (read-only, only `photos/`), so `IMG_BASE_URL` is `https://cartograph.asia/img`, and the crawler block's header and the security headers apply to them as to everything else.
+
+- Fresh secrets for Garage (`GARAGE_RPC_SECRET`, `GARAGE_ADMIN_TOKEN`) and a fresh key for the bucket, required in `.env`, never the development values.
+- Objects keep `Cache-Control: public, max-age=31536000, immutable`; removing a hidden photo's files deletes them from Garage.
+- Photos and database share the host's disk, so the off-host backup (section 7) must include the photos.
 
 ### 5. The base map on the server
 
-The archive is built on the Mac only (decisions.md, Map) and copied with `rsync --partial` into the project's `map/` directory under a dated name (`asia-2026-11-01.pmtiles`), so that browsers never mix ranges of two builds; switching is one line, `TILES_URL=/tiles/asia-2026-11-01.pmtiles`, and an api restart. A script `map/publish.sh` does the copy and prints that line. The world archive is 10.1 GB; a switch needs the old and the new file side by side for a moment (open question 9).
+The archive is built on the Mac only (decisions.md, Map) and copied with `rsync --partial` into the project's `map/` directory under a dated name (`asia-2026-11-01.pmtiles`), so that browsers never mix ranges of two builds; switching is one line, `TILES_URL=/tiles/asia-2026-11-01.pmtiles`, and an api restart. A script `map/publish.sh` does the copy and prints that line. The world archive is 10.1 GB; a switch needs the old and the new file side by side for a moment; the old one is deleted right after (decision 9).
 
 ### 6. Deploy like the other sites
 
@@ -68,7 +73,7 @@ A bare repository on the host with `deploy/post-receive` versioned in this repos
 
 - **On the server**, `deploy/backup.sh` from a crontab writes a nightly `pg_dump -Fc` of the whole database into one directory, encrypted with `age` to a public key whose private half stays on the Mac, and keeps only the last 3 nights there.
 - **On the Mac**, `deploy/pull-backups.sh` run by a launchd job (`deploy/asia.cartograph.backup.plist`, daily, and again when the Mac wakes) pulls the new dumps with `rsync` over SSH into a backup directory on the external SSD (path in `.env.local`, not in git), keeps 14 daily, 8 weekly and 12 monthly, and logs to `~/Library/Logs/`.
-- **Photos**: versioning on the Object Storage bucket, plus `rclone sync` of the bucket to the same SSD from the same launchd job (a read-only key for the bucket, kept in the Mac's keychain).
+- **Photos**: the same launchd job mirrors the bucket to the SSD with `rclone` against Garage's S3 endpoint through an SSH tunnel (Garage's S3 port is never published), with a read-only key for the bucket kept in the Mac's keychain; deleted objects are kept on the Mac (`--backup-dir`), so a removal on the server is not a removal in the backup.
 - **When the Mac is off** for days, nothing is lost on the server side for 3 nights; the pull reports in its log and with a macOS notification when the newest dump on the Mac is older than 2 days.
 - **Restore test**: the brief is done only after last night's dump and the photos were restored into a fresh stack on the Mac and the site came up with the same plots and photos. `docs/RESTORE.md` holds the steps.
 
@@ -80,24 +85,26 @@ A bare repository on the host with `deploy/post-receive` versioned in this repos
 
 ### 9. Watching it
 
-An external uptime check of `https://cartograph.asia/healthz` mailing Adrian, `docker compose logs` on the host, and the admin overview. Whether page views go to a web analytics tool is open question 7.
+An external uptime check of `https://cartograph.asia/healthz` mailing Adrian, `docker compose logs` on the host, and the admin overview.
+
+**Matomo, like the other site that uses it (decision 7):** an hourly import of the access log into the Matomo on the host, no JavaScript and no cookies on the pages. The import skips `/admin`, `/api`, `/signin*`, `/settings`, assets and tiles, and drops the `?token=` query (already redacted in the log). The privacy page says so.
 
 ## Out of scope
 
-A CDN, a registry and CI-built images, metrics, a second server, the forum, plots beyond Thailand.
+A CDN, a registry and CI-built images, metrics, a second server, the forum, plots beyond Thailand, Object Storage.
 
 ## Done means
 
-`https://cartograph.asia` answers through the host's Caddy with a valid certificate and the headers above (checked with `curl -I` and a header scanner); an invited test account signs in with a real mail and uploads a photo that appears with an https URL from Object Storage; `/robots.txt` blocks; a push to the host's repository deploys through the probe, and a broken commit leaves the running version untouched; a restore of last night's dump and the photos into a fresh stack on the Mac shows the same site; `docker compose … up` without an `.env` fails with a clear message; the other sites on the host are unaffected; `/security-review` on the branch; `docs/DEPLOY.md` and `docs/RESTORE.md` exist; no host-specific detail is committed.
+`https://cartograph.asia` answers through the host's Caddy with a valid certificate and the headers above (checked with `curl -I` and a header scanner); an invited test account signs in with a real mail and uploads a photo that appears under `https://cartograph.asia/img/photos/…`; `/robots.txt` blocks; a push to the host's repository deploys through the probe, and a broken commit leaves the running version untouched; the Mac's launchd job has pulled a dump and the photos, and a restore of both into a fresh stack on the Mac shows the same site; `docker compose … up` without an `.env` fails with a clear message; the other sites on the host are unaffected; `/security-review` on the branch; `docs/DEPLOY.md` and `docs/RESTORE.md` exist; no host-specific detail is committed.
 
-## Open questions for Adrian
+## Decisions (Adrian, 2026-11-01)
 
-1. **Cartograph as one more site behind the host Caddy, on a local port, deployed by a push to a bare repository with a probing hook?** *Recommendation: yes*, the same way as the other sites on the host (port proposal in `deploy/host.local.md`).
-2. **Photos in Hetzner Object Storage, not Garage on the host?** *Recommendation: Object Storage.* The host's memory and disk are tight for another storage service, and photos off the host make backups simpler.
-3. ~~Where do backups go off the host?~~ **Decided (Adrian): to the Mac**, pulled by the Mac (section 7). The other projects on the host could use the same pull job later.
-4. **GitHub stays the main remote, the host gets a second remote for deploys?** *Recommendation: yes.*
-5. **Impressum and Datenschutzerklärung before the domain goes live?** Adrian runs the site from Germany, and even an invitation-only site is publicly reachable. *Recommendation: yes, two static pages (`/impressum`, `/privacy`)* linked from the footer; the privacy page names what is stored (e-mail, sessions, photos with position, hashed sign-in refusals, access logs with IPs for 14 days) and how to ask for deletion. Text by Adrian; Claude can draft.
-6. **How long are access logs kept?** *Recommendation: 14 days*, then deleted; they hold IP addresses.
-7. **Web analytics for Cartograph?** *Recommendation: none in alpha*; with a handful of invited Surveyors it says little, and the privacy page stays shorter. Reconsider for the beta.
-8. **One photo processed at a time?** On a shared host, *recommendation: one at a time and an api limit of 1 GB in alpha*; a second upload waits a few seconds instead of risking memory for the other sites.
-9. **Disk for the base map?** The world archive takes 10 GB, about 20 GB while switching. *Recommendation: fine for alpha*, with old archives deleted right after a switch; if the disk gets tight, the archive moves to Object Storage or a CDN (`TILES_URL` makes that one line).
+1. **One more site on the host**, behind the host Caddy on a local port (proposal in `deploy/host.local.md`), deployed by a push to a bare repository with a probing hook, like the other sites.
+2. **Photos in Garage on the host**, not Object Storage (section 4).
+3. **Backups go to Adrian's Mac**, pulled by the Mac (section 7).
+4. **Two remotes**: GitHub and the bare repository on the host; a push to the host deploys.
+5. **Impressum and privacy page before the domain goes live**: `/impressum` and `/privacy`, static Markdown pages like `/about`, linked from the footer. The privacy page names what is stored (e-mail, sessions, photos with position, hashed sign-in refusals, access logs with IPs for 7 days, the Matomo import) and how to ask for deletion. Text by Adrian; Claude drafts.
+6. **Access logs are kept 7 days.**
+7. **Page views go to the host's Matomo** through the log import, like the other site that uses it (section 9).
+8. **One photo is processed at a time; the api gets at most 1 GB.**
+9. **The base map stays on the host**; the old archive is deleted right after a switch. If the disk gets tight, it moves to a CDN later (`TILES_URL`).

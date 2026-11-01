@@ -72,15 +72,17 @@ type RegionShape struct {
 	bound    orb.Bound
 }
 
-// RegionIndex finds the region containing a point. It holds a few dozen
-// polygons and is safe for concurrent reads.
+// RegionIndex finds the region containing a point. It holds the provinces
+// or the districts of a country (up to about a thousand polygons, scanned
+// with a bounding-box prefilter) and is safe for concurrent reads.
 type RegionIndex struct {
 	shapes []RegionShape
+	byID   map[int]int // region id -> index in shapes
 }
 
 // NewRegionIndex builds an index; on overlaps the earlier shape wins.
 func NewRegionIndex(shapes []RegionShape) *RegionIndex {
-	x := &RegionIndex{shapes: make([]RegionShape, len(shapes))}
+	x := &RegionIndex{shapes: make([]RegionShape, len(shapes)), byID: make(map[int]int, len(shapes))}
 	for i, s := range shapes {
 		var g orb.MultiPolygon
 		for _, p := range s.Geometry {
@@ -90,8 +92,22 @@ func NewRegionIndex(shapes []RegionShape) *RegionIndex {
 		}
 		s.Geometry, s.bound = g, g.Bound()
 		x.shapes[i] = s
+		x.byID[s.ID] = i
 	}
 	return x
+}
+
+// In reports whether p lies inside the boundary of region id.
+func (x *RegionIndex) In(id int, p orb.Point) bool {
+	if x == nil {
+		return false
+	}
+	i, ok := x.byID[id]
+	if !ok {
+		return false
+	}
+	s := &x.shapes[i]
+	return s.bound.Contains(p) && planar.MultiPolygonContains(s.Geometry, p)
 }
 
 // Len returns the number of regions.

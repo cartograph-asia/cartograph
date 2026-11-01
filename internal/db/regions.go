@@ -257,6 +257,14 @@ func (d *DB) MarkUrbanDistricts(ctx context.Context) error {
 	return nil
 }
 
+// inDistrict reports whether (lat, lng) lies in district id.
+func (d *DB) inDistrict(id int, lat, lng float64) bool {
+	d.regions.mu.Lock()
+	idx := d.regions.districts
+	d.regions.mu.Unlock()
+	return idx.In(id, orb.Point{lng, lat})
+}
+
 // locateDistrict returns the district containing (lat, lng) from the index
 // loaded with the provinces, and whether it is urban; ok is false outside
 // every imported district.
@@ -371,7 +379,10 @@ func (d *DB) locatePlot(ctx context.Context, q querier, cell string) (*PlotLocat
 	if err != nil {
 		return nil, err
 	}
-	if c := rules.choose(cands, urban); c != nil {
+	sameDistrict := func(plat, plng float64) bool {
+		return inDistrict && d.inDistrict(district, plat, plng)
+	}
+	if c := rules.choose(cands, urban, sameDistrict); c != nil {
 		loc.PlaceEn, loc.Near = c.nameEn, true
 		loc.PlaceTh = nil
 		if c.nameTh != "" {

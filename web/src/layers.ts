@@ -8,7 +8,7 @@ import type { DataStore } from './data';
 const GREEN_LIGHT = '#A8CDB3';
 const GREEN_MID = '#5FA57A';
 const GREEN = '#2E7D4F';
-const GRID = 'rgba(55, 65, 75, 0.32)';
+const GRID = 'rgba(47, 58, 63, 0.32)'; // the pages' --ink-line
 
 export const PLOT_FILL = 'plots-fill';
 const PLOT_LINE = 'plots-line';
@@ -53,7 +53,13 @@ export function addLayers(map: MapLibreMap): void {
     source: 'coverage',
     paint: {
       'line-color': ['case', ['>', ['get', 'surveyed'], 0], GREEN, GRID],
-      'line-opacity': ['case', ['>', ['get', 'surveyed'], 0], 0.75, 0.5],
+      // Blank parent cells only from zoom 8: further out their outlines
+      // tile the whole view, sea included, and read as a pattern, not data.
+      'line-opacity': [
+        'interpolate', ['linear'], ['zoom'],
+        6.5, ['case', ['>', ['get', 'surveyed'], 0], 0.75, 0],
+        8, ['case', ['>', ['get', 'surveyed'], 0], 0.75, 0.45],
+      ],
       'line-width': ['case', ['>', ['get', 'surveyed'], 0], 1.2, 0.5],
     },
   });
@@ -84,7 +90,7 @@ export function addLayers(map: MapLibreMap): void {
       'line-color': [
         'case',
         ['boolean', ['feature-state', 'selected'], false], '#1d5e3a',
-        ['boolean', ['feature-state', 'hover'], false], '#2b3540',
+        ['boolean', ['feature-state', 'hover'], false], '#2f3a3f',
         ['==', ['get', 'surveyed'], 1], GREEN,
         GRID,
       ],

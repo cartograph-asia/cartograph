@@ -17,8 +17,10 @@ import (
 // Region is one row for UpsertRegions.
 type Region struct {
 	OSMID      int64
-	Kind       string // "country", "province" or "city"
+	Kind       string // "country", "province", "district" or "city"
 	AdminLevel int
+	ParentID   *int   // the province of a district
+	Urban      bool   // a district that is part of a city (khet)
 	Country    string // ISO 3166-1 alpha-2, lower case
 	Slug       string
 	NameEn     string
@@ -45,16 +47,17 @@ func (d *DB) UpsertRegions(ctx context.Context, rs []Region) ([]int, error) {
 			}
 			err = tx.QueryRow(ctx, `
 				insert into regions (osm_id, admin_level, country, slug, name_en, name_th, boundary,
-				                     min_lat, min_lng, max_lat, max_lng, land_cells, kind)
-				values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+				                     min_lat, min_lng, max_lat, max_lng, land_cells, kind, parent_id, urban)
+				values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 				on conflict (osm_id) do update set
 				  kind = excluded.kind, admin_level = excluded.admin_level, country = excluded.country, slug = excluded.slug,
+				  parent_id = excluded.parent_id, urban = excluded.urban,
 				  name_en = excluded.name_en, name_th = excluded.name_th, boundary = excluded.boundary,
 				  min_lat = excluded.min_lat, min_lng = excluded.min_lng,
 				  max_lat = excluded.max_lat, max_lng = excluded.max_lng, land_cells = excluded.land_cells
 				returning id`,
 				r.OSMID, r.AdminLevel, r.Country, r.Slug, r.NameEn, th, text,
-				b.Min[1], b.Min[0], b.Max[1], b.Max[0], r.LandCells, r.Kind,
+				b.Min[1], b.Min[0], b.Max[1], b.Max[0], r.LandCells, r.Kind, r.ParentID, r.Urban,
 			).Scan(&ids[i])
 			if err != nil {
 				return fmt.Errorf("upsert region %d (%s): %w", r.OSMID, r.Slug, err)
@@ -157,7 +160,12 @@ func (d *DB) NumberPlots(ctx context.Context) (int, error) {
 // RegionShapes returns every province's id and boundary, ordered by id.
 // Plots belong to provinces, so countries and cities are not in the index.
 func (d *DB) RegionShapes(ctx context.Context) ([]geo.RegionShape, error) {
-	rows, err := d.Pool.Query(ctx, `select id, boundary from regions where kind = 'province' order by id`)
+	return d.shapes(ctx, "province")
+}
+
+// shapes returns the id and boundary of every region of kind, ordered by id.
+func (d *DB) shapes(ctx context.Context, kind string) ([]geo.RegionShape, error) {
+	rows, err := d.Pool.Query(ctx, `select id, boundary from regions where kind = $1 order by id`, kind)
 	if err != nil {
 		return nil, fmt.Errorf("db: region shapes: %w", err)
 	}
@@ -185,9 +193,11 @@ func (d *DB) RegionShapes(ctx context.Context) ([]geo.RegionShape, error) {
 
 // regionCache holds the in-memory point-in-region index.
 type regionCache struct {
-	mu       sync.Mutex
-	idx      *geo.RegionIndex
-	loadedAt time.Time
+	mu        sync.Mutex
+	idx       *geo.RegionIndex // provinces
+	districts *geo.RegionIndex
+	urban     map[int]bool // district ids that are khet
+	loadedAt  time.Time
 }
 
 // regionRetry is how long after a load an empty or failed lookup may
@@ -203,11 +213,40 @@ func (d *DB) ReloadRegions(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	idx := geo.NewRegionIndex(shapes)
+	ds, err := d.shapes(ctx, "district")
+	if err != nil {
+		return err
+	}
+	rows, err := d.Pool.Query(ctx, `select id from regions where kind = 'district' and urban`)
+	if err != nil {
+		return fmt.Errorf("db: urban districts: %w", err)
+	}
+	ids, err := pgx.CollectRows(rows, pgx.RowTo[int])
+	if err != nil {
+		return fmt.Errorf("db: urban districts: %w", err)
+	}
+	urban := make(map[int]bool, len(ids))
+	for _, id := range ids {
+		urban[id] = true
+	}
+	idx, didx := geo.NewRegionIndex(shapes), geo.NewRegionIndex(ds)
 	d.regions.mu.Lock()
-	d.regions.idx, d.regions.loadedAt = idx, time.Now()
+	d.regions.idx, d.regions.districts, d.regions.urban, d.regions.loadedAt = idx, didx, urban, time.Now()
 	d.regions.mu.Unlock()
 	return nil
+}
+
+// locateDistrict returns the district containing (lat, lng) from the index
+// loaded with the provinces, and whether it is urban; ok is false outside
+// every imported district.
+func (d *DB) locateDistrict(lat, lng float64) (id int, urban, ok bool) {
+	d.regions.mu.Lock()
+	idx, u := d.regions.districts, d.regions.urban
+	d.regions.mu.Unlock()
+	if id, ok = idx.Contains(orb.Point{lng, lat}); ok {
+		return id, u[id], true
+	}
+	return 0, false, false
 }
 
 // LocateRegion returns the region of a point (lat, lng), or ok false when it
@@ -262,7 +301,11 @@ type PlotLocation struct {
 	PlaceEn  string  // nearest place within PlaceRadiusKm, else the region's name
 	PlaceTh  *string // Thai name of the same; nil if unknown
 	Near     bool    // PlaceEn is an OSM place, not the region fallback
-	Lat, Lng float64 // cell centre
+	// DistrictID is the district (admin_level 6) containing the centre; nil
+	// where none is imported. District is its name_en.
+	DistrictID *int
+	District   string
+	Lat, Lng   float64 // cell centre
 }
 
 // LocatePlot finds the region containing the centre of cell (in memory) and
@@ -284,13 +327,17 @@ func (d *DB) locatePlot(ctx context.Context, q querier, cell string) (*PlotLocat
 		return nil, ErrOutsideRegions
 	}
 	loc := &PlotLocation{RegionID: id, Lat: lat, Lng: lng}
+	district, urban, inDistrict := d.locateDistrict(lat, lng)
+	if inDistrict {
+		loc.DistrictID = &district
+	}
 	err = q.QueryRow(ctx, `
 		select r.name_en, coalesce(pl.name_en, r.name_en),
 		       case when pl.name_en is null then r.name_th else pl.name_th end,
-		       pl.name_en is not null
-		from regions r left join lateral (`+nearestPlaceSQL("$2::float8", "$3::float8")+`) pl on true
-		where r.id = $1`, id, lat, lng,
-	).Scan(&loc.Region, &loc.PlaceEn, &loc.PlaceTh, &loc.Near)
+		       pl.name_en is not null, coalesce((select name_en from regions where id = $5), '')
+		from regions r left join lateral (`+nearestPlaceSQL("$2::float8", "$3::float8", "$4::boolean")+`) pl on true
+		where r.id = $1`, id, lat, lng, urban, loc.DistrictID,
+	).Scan(&loc.Region, &loc.PlaceEn, &loc.PlaceTh, &loc.Near, &loc.District)
 	if errors.Is(err, pgx.ErrNoRows) {
 		// The index is newer or older than the table; treat as outside.
 		return nil, ErrOutsideRegions
@@ -301,14 +348,14 @@ func (d *DB) locatePlot(ctx context.Context, q querier, cell string) (*PlotLocat
 	return loc, nil
 }
 
-// BackfillPlots sets region_id, place_name and place_name_th on plots that
+// BackfillPlots sets region_id, district_id, place_name and place_name_th on plots that
 // lack them (claimed before the import, or before places were imported;
 // place names are only filled, never replaced). Only a real nearby place is
 // written: the region fallback would otherwise stick before cmd/places has
 // run, and the pages fall back to the region name anyway. Plots outside
 // every region are left alone and counted in outside.
 func (d *DB) BackfillPlots(ctx context.Context) (updated, outside int, err error) {
-	rows, err := d.Pool.Query(ctx, `select cell from plots where region_id is null or place_name is null order by cell`)
+	rows, err := d.Pool.Query(ctx, `select cell from plots where region_id is null or place_name is null or district_id is null order by cell`)
 	if err != nil {
 		return 0, 0, fmt.Errorf("db: backfill plots: %w", err)
 	}
@@ -335,8 +382,9 @@ func (d *DB) BackfillPlots(ctx context.Context) (updated, outside int, err error
 		_, err = d.Pool.Exec(ctx, `
 			update plots set region_id = coalesce(region_id, $2),
 			  place_name_th = case when place_name is null then $4 else place_name_th end,
-			  place_name = coalesce(place_name, $3)
-			where cell = $1`, cell, loc.RegionID, placeEn, placeTh)
+			  place_name = coalesce(place_name, $3),
+			  district_id = coalesce(district_id, $5)
+			where cell = $1`, cell, loc.RegionID, placeEn, placeTh, loc.DistrictID)
 		if err != nil {
 			return updated, outside, fmt.Errorf("db: backfill plot %s: %w", cell, err)
 		}
@@ -346,36 +394,44 @@ func (d *DB) BackfillPlots(ctx context.Context) (updated, outside int, err error
 }
 
 // PlaceRadiusKm is the distance within which a village, town or city names
-// a plot; FinePlaceRadiusKm the one for neighbourhoods, quarters and suburbs.
+// a plot; FinePlaceRadiusKm the one for suburbs, quarters and neighbourhoods,
+// which only count inside a city.
 const (
 	PlaceRadiusKm     = 5.0
-	FinePlaceRadiusKm = 2.0
+	FinePlaceRadiusKm = 3.0
 )
 
 // nearestPlaceSQL returns a subquery selecting name_en, name_th of the place
-// that names a plot at (lat, lng): the nearest neighbourhood within
-// FinePlaceRadiusKm, else the nearest quarter, else suburb (finest first);
-// else the nearest village or town within PlaceRadiusKm; else the nearest
-// city within PlaceRadiusKm. It uses the (lat, lng) index for a box
-// prefilter and an equirectangular distance.
-func nearestPlaceSQL(lat, lng string) string {
+// that names a plot at (lat, lng). Inside a city (urban: the plot's district
+// is a khet, or a place=city lies within PlaceRadiusKm) the nearest suburb
+// within FinePlaceRadiusKm comes first, then quarter, then neighbourhood
+// (in Thailand mostly housing estates, so last). Then, as outside cities,
+// the nearest village or town within PlaceRadiusKm, then the nearest city.
+// It uses the (lat, lng) index for a box prefilter and an equirectangular
+// distance.
+func nearestPlaceSQL(lat, lng, urban string) string {
 	const kmPerDeg = 111.195
 	r := PlaceRadiusKm / kmPerDeg
 	fine := FinePlaceRadiusKm / kmPerDeg
 	return fmt.Sprintf(`
-		select name_en, name_th from (
+		with near as (
 			select name_en, name_th, id, kind,
 			       (lat - %[1]s)^2 + ((lng - %[2]s) * cos(radians(%[1]s)))^2 as d2
 			from places
-			where lat between %[1]s - %[3]g and %[1]s + %[3]g
-			  and lng between %[2]s - %[3]g / cos(radians(%[1]s)) and %[2]s + %[3]g / cos(radians(%[1]s))
-		) p
-		where (kind in ('neighbourhood', 'quarter', 'suburb') and d2 <= %[5]g)
-		   or (kind in ('village', 'town', 'city') and d2 <= %[4]g)
-		order by case kind when 'neighbourhood' then 1 when 'quarter' then 2 when 'suburb' then 3
+			where lat between %[1]s - %[4]g and %[1]s + %[4]g
+			  and lng between %[2]s - %[4]g / cos(radians(%[1]s)) and %[2]s + %[4]g / cos(radians(%[1]s))
+		), within as (
+			select * from near where d2 <= %[5]g
+		), city as (
+			select %[3]s or exists (select 1 from within where kind = 'city') as inside
+		)
+		select name_en, name_th from within, city
+		where kind in ('village', 'town', 'city')
+		   or (inside and kind in ('suburb', 'quarter', 'neighbourhood') and d2 <= %[6]g)
+		order by case kind when 'suburb' then 1 when 'quarter' then 2 when 'neighbourhood' then 3
 		                   when 'village' then 4 when 'town' then 4 else 5 end,
 		         d2, id
-		limit 1`, lat, lng, r, r*r, fine*fine)
+		limit 1`, lat, lng, urban, r, r*r, fine*fine)
 }
 
 // Place is one row for ReplacePlaces.

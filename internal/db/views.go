@@ -41,12 +41,13 @@ const photoCols = `ph.id, ph.key_thumb, coalesce(ph.key_medium, ''), ph.key_larg
 	coalesce(pl.place_name, r.name_en, ''), coalesce(pl.place_name_th, ''),
 	coalesce(r.slug, ''), coalesce(r.name_en, ''), coalesce(r.name_th, ''),
 	coalesce(s.name, ph.surveyor), ph.taken_at, ph.uploaded_at, pl.first_photo is not distinct from ph.id,
-	coalesce(pn.number, 0)`
+	coalesce(pn.number, 0), coalesce(dr.name_en, '')`
 
 const photoFrom = ` from photos ph
 	join plots pl on pl.cell = ph.cell
 	left join plot_numbers pn on pn.cell = ph.cell
 	left join regions r on r.id = pl.region_id
+	left join regions dr on dr.id = pl.district_id
 	left join surveyors s on s.id = ph.surveyor_id `
 
 // surveyorKey groups photos by account, else by the free-text name.
@@ -57,7 +58,7 @@ func scanPhoto(row pgx.CollectableRow) (views.PhotoItem, error) {
 	var id uuid.UUID
 	err := row.Scan(&id, &p.Keys.Thumb, &p.Keys.Medium, &p.Keys.Large, &p.Width, &p.Height, &p.Plot.Cell,
 		&p.Plot.Place, &p.Plot.PlaceTh, &p.Plot.Region.Slug, &p.Plot.Region.NameEn, &p.Plot.Region.NameTh,
-		&p.Surveyor.Name, &p.TakenAt, &p.UploadedAt, &p.FirstSurvey, &p.Plot.Number)
+		&p.Surveyor.Name, &p.TakenAt, &p.UploadedAt, &p.FirstSurvey, &p.Plot.Number, &p.Plot.District)
 	p.ID = id.String()
 	p.UploadedAt = p.UploadedAt.UTC()
 	if p.TakenAt != nil {
@@ -479,16 +480,17 @@ func (v *Views) Plot(ctx context.Context, cell string) (*views.Plot, error) {
 		return nil, views.ErrNotFound
 	}
 	out := &views.Plot{Plot: views.PlotRef{Cell: cell}}
-	var place, placeTh, firstName, slug, en, th *string
+	var place, placeTh, firstName, slug, en, th, district *string
 	var claimedAt *time.Time
 	err = v.d.Pool.QueryRow(ctx, `
 		select pl.photo_count, pl.claimed_at, pl.place_name, pl.place_name_th,
-		       coalesce(s.name, pl.first_surveyor), r.slug, r.name_en, r.name_th
+		       coalesce(s.name, pl.first_surveyor), r.slug, r.name_en, r.name_th, dr.name_en
 		from plots pl
 		left join surveyors s on s.id = pl.first_surveyor_id
 		left join regions r on r.id = pl.region_id
+		left join regions dr on dr.id = pl.district_id
 		where pl.cell = $1 and pl.photo_count > 0`, cell,
-	).Scan(&out.PhotoCount, &claimedAt, &place, &placeTh, &firstName, &slug, &en, &th)
+	).Scan(&out.PhotoCount, &claimedAt, &place, &placeTh, &firstName, &slug, &en, &th, &district)
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
 	case err != nil:
@@ -503,9 +505,9 @@ func (v *Views) Plot(ctx context.Context, cell string) (*views.Plot, error) {
 		if slug != nil {
 			out.Plot.Region = views.RegionRef{Slug: *slug, NameEn: *en, NameTh: deref(th)}
 		}
-		out.Plot.Place, out.Plot.PlaceTh = deref(place), deref(placeTh)
+		out.Plot.Place, out.Plot.PlaceTh, out.Plot.District = deref(place), deref(placeTh), deref(district)
 	}
-	if out.Plot.Place == "" || out.Plot.Region.Slug == "" {
+	if out.Plot.Place == "" || out.Plot.Region.Slug == "" || out.Plot.District == "" {
 		// Blank plot, or a surveyed plot not yet backfilled: locate it now.
 		loc, err := v.d.LocatePlot(ctx, cell)
 		if errors.Is(err, ErrOutsideRegions) && !out.Surveyed {
@@ -523,6 +525,9 @@ func (v *Views) Plot(ctx context.Context, cell string) (*views.Plot, error) {
 			}
 			if out.Plot.Place == "" {
 				out.Plot.Place, out.Plot.PlaceTh = loc.PlaceEn, deref(loc.PlaceTh)
+			}
+			if out.Plot.District == "" {
+				out.Plot.District = loc.District
 			}
 		}
 	}
@@ -709,8 +714,10 @@ func scaleTo(w, h, side int) (int, int) {
 	return max(1, int(float64(w)*float64(side)/float64(h)+0.5)), side
 }
 
+// region looks up a region page by slug. Districts have no counts of their
+// own yet, so they have no page.
 func (v *Views) region(ctx context.Context, slug string) (*regionRow, error) {
-	rows, err := v.d.Pool.Query(ctx, `select `+regionCols+` from regions where slug = lower($1)`, slug)
+	rows, err := v.d.Pool.Query(ctx, `select `+regionCols+` from regions where slug = lower($1) and kind <> 'district'`, slug)
 	if err != nil {
 		return nil, fmt.Errorf("db: region: %w", err)
 	}

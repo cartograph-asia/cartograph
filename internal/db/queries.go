@@ -79,7 +79,8 @@ type PlotDetail struct {
 	Place         string // nearest place, else the region name; empty outside every region
 	Region        string // region name_en; empty outside every region
 	RegionSlug    string
-	Number        int // running number in the region; 0 if none
+	District      string // district name_en; empty where none is imported
+	Number        int    // running number in the region; 0 if none
 	Photos        []PlotPhoto
 }
 
@@ -101,12 +102,12 @@ func (d *DB) ClaimPhoto(ctx context.Context, p NewPhoto) (claimed bool, err erro
 	err = pgx.BeginFunc(ctx, d.Pool, func(tx pgx.Tx) error {
 		err := tx.QueryRow(ctx, `
 			insert into plots (cell, first_photo, first_surveyor, first_surveyor_id, claimed_at, photo_count,
-			                   parent5, parent6, region_id, place_name, place_name_th)
-			values ($1, $2, $3, $4, $5, 1, $6, $7, $8, $9, $10)
+			                   parent5, parent6, region_id, place_name, place_name_th, district_id)
+			values ($1, $2, $3, $4, $5, 1, $6, $7, $8, $9, $10, $11)
 			on conflict (cell) do update set photo_count = plots.photo_count + 1
 			returning (xmax = 0)`,
 			p.Cell, p.ID, p.Surveyor, nullUUID(p.SurveyorID), p.UploadedAt, p.Parent5, p.Parent6,
-			loc.RegionID, loc.PlaceEn, loc.PlaceTh,
+			loc.RegionID, loc.PlaceEn, loc.PlaceTh, loc.DistrictID,
 		).Scan(&claimed)
 		if err != nil {
 			return fmt.Errorf("upsert plot: %w", err)
@@ -172,11 +173,13 @@ func (d *DB) Plot(ctx context.Context, cell string) (*PlotDetail, error) {
 	var p PlotDetail
 	err := d.Pool.QueryRow(ctx, `
 		select pl.cell, pl.photo_count, coalesce(pl.first_surveyor, ''), pl.claimed_at,
-		       coalesce(pl.place_name, r.name_en, ''), coalesce(r.name_en, ''), coalesce(r.slug, ''), coalesce(n.number, 0)
+		       coalesce(pl.place_name, r.name_en, ''), coalesce(r.name_en, ''), coalesce(r.slug, ''), coalesce(n.number, 0),
+		       coalesce(dr.name_en, '')
 		from plots pl left join regions r on r.id = pl.region_id
+		left join regions dr on dr.id = pl.district_id
 		left join plot_numbers n on n.cell = pl.cell
 		where pl.cell = $1 and pl.photo_count > 0`, cell,
-	).Scan(&p.Cell, &p.PhotoCount, &p.FirstSurveyor, &p.ClaimedAt, &p.Place, &p.Region, &p.RegionSlug, &p.Number)
+	).Scan(&p.Cell, &p.PhotoCount, &p.FirstSurveyor, &p.ClaimedAt, &p.Place, &p.Region, &p.RegionSlug, &p.Number, &p.District)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}

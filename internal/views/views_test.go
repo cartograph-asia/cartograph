@@ -87,6 +87,9 @@ func TestPlotRefName(t *testing.T) {
 		{PlotRef{Cell: "88658bd11dfffff", Place: "Pattaya", Region: cb}, "Pattaya · Chon Buri", "/plot/88658bd11dfffff"},
 		{PlotRef{Cell: "88658bd11dfffff", Place: "Pattaya"}, "Pattaya", "/plot/88658bd11dfffff"},
 		{PlotRef{Cell: "88658bd11dfffff"}, "A plot", "/plot/88658bd11dfffff"},
+		{PlotRef{Cell: "88658bd11dfffff", Place: "Hua Mak", District: "Bang Kapi", Region: RegionRef{Slug: "bangkok", NameEn: "Bangkok"}, Number: 1000}, "Hua Mak, Bang Kapi · Bangkok 1000", "/plot/bangkok/1000"},
+		{PlotRef{Cell: "88658bd11dfffff", Place: "Bang Kapi", District: "Bang Kapi", Region: RegionRef{Slug: "bangkok", NameEn: "Bangkok"}, Number: 7}, "Bang Kapi · Bangkok 7", "/plot/bangkok/7"},
+		{PlotRef{Cell: "88658bd11dfffff", Place: "Chon Buri", District: "Bang Lamung", Region: cb, Number: 17}, "Bang Lamung · Chon Buri 17", "/plot/chon-buri/17"},
 	} {
 		if got := c.p.Name(); got != c.name {
 			t.Errorf("Name(%+v) = %q, want %q", c.p, got, c.name)

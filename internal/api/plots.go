@@ -164,7 +164,7 @@ func (s *Server) getPlot(w http.ResponseWriter, r *http.Request) {
 
 // plotRef is p as the pages name it ("Pattaya · Chon Buri 17").
 func plotRef(p *db.PlotDetail) views.PlotRef {
-	return views.PlotRef{Cell: p.Cell, Place: p.Place, Number: p.Number,
+	return views.PlotRef{Cell: p.Cell, Place: p.Place, Number: p.Number, District: p.District,
 		Region: views.RegionRef{Slug: p.RegionSlug, NameEn: p.Region}}
 }
 

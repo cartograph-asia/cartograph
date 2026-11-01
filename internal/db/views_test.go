@@ -131,8 +131,17 @@ func TestClaimSetsLocation(t *testing.T) {
 	if _, err := importer.Regions(ctx, w.d, importer.RegionOptions{PBF: osmPath, Water: waterPath, BBox: importer.FixtureBBox}); err != nil {
 		t.Fatal(err)
 	}
-	if err := w.d.Pool.QueryRow(ctx, `select count(*), sum(claimed_cells) from regions`).Scan(&region, &claimed); err != nil || region != 1 || claimed != 4 {
+	if err := w.d.Pool.QueryRow(ctx, `select count(*), sum(claimed_cells) from regions where kind = 'province'`).Scan(&region, &claimed); err != nil || region != 1 || claimed != 4 {
 		t.Fatalf("after re-import: %d regions, %d claimed, %v", region, claimed, err)
+	}
+	// The fixture's districts sit below Chon Buri, and the claimed plot has one.
+	var districts int
+	var district string
+	if err := w.d.Pool.QueryRow(ctx, `select count(*) from regions where kind = 'district' and parent_id = $1`, region0(t, w)).Scan(&districts); err != nil || districts != 3 {
+		t.Fatalf("districts: %d %v", districts, err)
+	}
+	if err := w.d.Pool.QueryRow(ctx, `select r.name_en from plots p join regions r on r.id = p.district_id where p.cell = $1`, cell).Scan(&district); err != nil || district != "Bang Lamung" {
+		t.Fatalf("plot district %q %v", district, err)
 	}
 }
 
@@ -270,7 +279,7 @@ func TestViews(t *testing.T) {
 		p.FirstSurveyor.Name != "adrian" || p.Plot.Place != "Pattaya" || len(p.Neighbours) != 6 || p.Lat == 0 || p.NoIndex {
 		t.Fatalf("plot %+v", p)
 	}
-	if p.Title != fmt.Sprintf("Pattaya · Chon Buri %d", p.Plot.Number) || p.Plot.Number == 0 || strings.Contains(p.Description, beachCell) {
+	if p.Title != fmt.Sprintf("Pattaya, Bang Lamung · Chon Buri %d", p.Plot.Number) || p.Plot.Number == 0 || strings.Contains(p.Description, beachCell) {
 		t.Fatalf("plot meta %q %q", p.Title, p.Description)
 	}
 	blank, err := v.Plot(ctx, p.Neighbours[0].Cell)
@@ -422,7 +431,7 @@ func TestPlotNumbers(t *testing.T) {
 		t.Fatalf("unknown number: %v", err)
 	}
 	p, err := w.d.Views().Plot(ctx, beachCell)
-	if err != nil || p.Plot.Number != n+1 || p.Plot.Name() != fmt.Sprintf("Pattaya · Chon Buri %d", n+1) {
+	if err != nil || p.Plot.Number != n+1 || p.Plot.Name() != fmt.Sprintf("Pattaya, Bang Lamung · Chon Buri %d", n+1) {
 		t.Fatalf("plot page: %+v %v", p, err)
 	}
 }
@@ -441,9 +450,10 @@ func TestPlaceTiers(t *testing.T) {
 	if _, err := importer.Regions(ctx, d, importer.RegionOptions{PBF: osmPath, Water: waterPath, BBox: importer.FixtureBBox}); err != nil {
 		t.Fatal(err)
 	}
-	cell, _ := h3.CellFromLatLng(beach[0], beach[1], h3.PlotRes)
+	// A plot in the countryside of the fixture: no place nearby yet, and its
+	// district (an amphoe) is not urban.
+	cell, _ := h3.CellFromLatLng(12.99, 100.95, h3.PlotRes)
 	lat, lng, _ := h3.Centre(cell)
-	// Offsets north of the plot centre in km.
 	at := func(km float64) (float64, float64) { return lat + km/111.195, lng }
 	place := func(id int64, kind, name string, km float64) {
 		la, ln := at(km)
@@ -457,6 +467,9 @@ func TestPlaceTiers(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		if loc.District == "" {
+			t.Fatal("no district for the plot")
+		}
 		return loc.PlaceEn
 	}
 	steps := []struct {
@@ -465,14 +478,13 @@ func TestPlaceTiers(t *testing.T) {
 		km         float64
 		want       string
 	}{
-		{1, "city", "Far City", 4.5, "Far City"},           // only a city within 5 km
-		{2, "city", "Too Far", 0.1, "Too Far"},             // nearer city wins among cities
-		{3, "town", "Some Town", 4.8, "Some Town"},         // village/town beat any city
-		{4, "village", "Ban Near", 3, "Ban Near"},          // nearest of village/town
-		{5, "suburb", "Outer Suburb", 2.5, "Ban Near"},     // suburbs count within 2 km only
-		{6, "suburb", "Inner Suburb", 1.9, "Inner Suburb"}, // a suburb within 2 km beats villages
-		{7, "quarter", "The Quarter", 1.95, "The Quarter"}, // a quarter beats a nearer suburb
-		{8, "neighbourhood", "Soi 7", 1.99, "Soi 7"},       // the finest type wins
+		{1, "neighbourhood", "Estate", 0.2, "Chon Buri"},    // outside a city: no suburbs, quarters or estates
+		{2, "town", "Some Town", 4.8, "Some Town"},          // town within 5 km
+		{3, "village", "Ban Near", 3, "Ban Near"},           // nearest of village/town
+		{4, "city", "Big City", 4.9, "Estate"},              // a city within 5 km: urban, an estate when nothing finer
+		{5, "quarter", "Old Quarter", 2.9, "Old Quarter"},   // a quarter beats a neighbourhood
+		{6, "suburb", "Far Suburb", 3.2, "Old Quarter"},     // suburbs count within 3 km only
+		{7, "suburb", "Khwaeng Near", 2.95, "Khwaeng Near"}, // a suburb beats a nearer quarter
 	}
 	for _, s := range steps {
 		place(s.id, s.kind, s.name, s.km)
@@ -480,4 +492,14 @@ func TestPlaceTiers(t *testing.T) {
 			t.Fatalf("after adding %s %q at %.2f km: name %q, want %q", s.kind, s.name, s.km, got, s.want)
 		}
 	}
+}
+
+// region0 is the id of the fixture's only province.
+func region0(t *testing.T, w *world) int {
+	t.Helper()
+	var id int
+	if err := w.d.Pool.QueryRow(context.Background(), `select id from regions where kind = 'province'`).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	return id
 }

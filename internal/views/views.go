@@ -118,26 +118,41 @@ type PlotRef struct {
 	PlaceTh string    // Thai name of the place; may be empty
 	Region  RegionRef // region containing the plot's centre; zero value outside every region
 	Number  int       // running number within the region (/plot/{slug}/{number}); 0 if none yet
+	// District is the district (khet/amphoe) containing the centre, without
+	// the word "district"; empty where none is imported.
+	District string
 }
 
-// Name is the plot's user-facing name, "{place} · {province} {number}",
-// e.g. "Pattaya · Chon Buri 17". Without a nearby place (the place is the
-// province itself) it is "Chon Buri 17"; parts that are unknown are left out.
+// Name is the plot's user-facing name, "{place}, {district} · {province}
+// {number}", e.g. "Hua Mak, Bang Kapi · Bangkok 1000". Without a nearby
+// place (the place is the province itself) it is "Bang Kapi · Bangkok 1000";
+// a place named like its district is not repeated, and parts that are
+// unknown are left out.
 func (p PlotRef) Name() string {
 	province := p.Region.NameEn
 	if p.Number > 0 && province != "" {
 		province += " " + strconv.Itoa(p.Number)
 	}
+	place := p.Place
+	if place == p.Region.NameEn {
+		place = ""
+	}
+	local := place
 	switch {
-	case p.Place == "" || p.Place == p.Region.NameEn:
-		if province == "" {
-			return "A plot"
-		}
+	case place == "":
+		local = p.District
+	case p.District != "" && p.District != place:
+		local = place + ", " + p.District
+	}
+	switch {
+	case local == "" && province == "":
+		return "A plot"
+	case local == "":
 		return province
 	case province == "":
-		return p.Place
+		return local
 	}
-	return p.Place + " · " + province
+	return local + " · " + province
 }
 
 // Path is the plot's friendly path, /plot/{region-slug}/{number}, or the

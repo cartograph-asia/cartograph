@@ -1,0 +1,47 @@
+{{/* The CSRF field every POST form carries; call with the page. */}}
+{{define "csrf"}}<input type="hidden" name="{{csrfField}}" value="{{.CSRF}}">{{end}}
+
+{{/* A grid of photo thumbnails, chronological as given. */}}
+{{define "grid" -}}
+<ul class="grid">
+{{- range $i, $p := .Photos}}
+<li><a class="ph" href="/photo/{{$p.ID}}"><img src="{{img $p.Keys.Thumb}}" width="480" height="360" alt="Photo near {{$p.Plot.Place}} by {{$p.Surveyor.Name}}" {{if and $.Eager (eq $i 0)}}fetchpriority="high"{{else}}loading="lazy"{{end}} decoding="async"></a>
+<p><a href="/plot/{{$p.Plot.Cell}}">{{$p.Plot.Place}}</a>{{with $p.Plot.Region.Slug}}, <a class="quiet" href="/region/{{.}}">{{$p.Plot.Region.NameEn}}</a>{{end}}<br>
+<a href="/surveyor/{{$p.Surveyor.Name}}">{{$p.Surveyor.Name}}</a> · {{when $.Now $p.UploadedAt}}{{if $p.FirstSurvey}} <span class="first">first survey</span>{{end}}</p></li>
+{{- end}}
+</ul>
+{{- end}}
+
+{{define "pagination" -}}
+{{if gt .Pagination.Pages 1}}<nav class="pages" aria-label="Pages">
+{{- if .Pagination.HasPrev}}<a rel="prev" href="{{pageURL .Canonical .Pagination.Prev}}">← Newer</a>{{else}}<span></span>{{end}}
+<span>Page {{.Pagination.Page}} of {{.Pagination.Pages}}</span>
+{{- if .Pagination.HasNext}}<a rel="next" href="{{pageURL .Canonical .Pagination.Next}}">Older →</a>{{else}}<span></span>{{end -}}
+</nav>{{end}}
+{{- end}}
+
+{{/* One region row: name, coverage, bar, most active Surveyors. */}}
+{{define "region-row" -}}
+<li><h3><a href="/region/{{.Region.Slug}}">{{.Region.NameEn}}</a>{{with .Region.NameTh}} <span lang="th" class="th">{{.}}</span>{{end}}</h3>
+<p class="cov"><span class="pct">{{pct .Coverage}}</span> <span class="bar" role="presentation">{{if .Coverage.Claimed}}<span style="width:{{bar .Coverage}}"></span>{{end}}</span> <span class="of">{{num .Coverage.Claimed}} of {{num .Coverage.Land}} plots</span></p>
+{{if .TopSurveyors}}<p class="who">Most active: {{range $i, $s := .TopSurveyors}}{{if $i}}, {{end}}<a href="/surveyor/{{$s.Surveyor.Name}}">{{$s.Surveyor.Name}}</a>{{end}}</p>{{end}}
+</li>
+{{- end}}
+
+{{/* Lists of Surveyors with their photo counts in a window. */}}
+{{define "activity" -}}
+<ol class="activity">{{range .}}<li><a href="/surveyor/{{.Surveyor.Name}}">{{.Surveyor.Name}}</a> <span class="n">{{count .Photos "photo" "photos"}}{{if .Plots}}, {{count .Plots "plot claimed" "plots claimed"}}{{end}}</span></li>{{end}}</ol>
+{{- end}}
+
+{{/* The small-map loader: imports the MapLibre module when a map scrolls into view. */}}
+{{define "minimap-script" -}}
+<script type="module">
+const els = document.querySelectorAll("[data-minimap]");
+if (els.length && "IntersectionObserver" in window) {
+  const io = new IntersectionObserver((es) => {
+    if (es.some((e) => e.isIntersecting)) { io.disconnect(); import({{minimap}}).catch((e) => console.warn("minimap:", e)); }
+  }, { rootMargin: "300px" });
+  els.forEach((el) => io.observe(el));
+}
+</script>
+{{- end}}

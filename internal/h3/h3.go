@@ -79,6 +79,26 @@ func ChildrenCount(cell string, childRes int) (int64, error) {
 	return n, nil
 }
 
+// LatLng is a point in degrees.
+type LatLng struct{ Lat, Lng float64 }
+
+// Boundary returns the vertices of cell in degrees, counter-clockwise, not closed.
+func Boundary(cell string) ([]LatLng, error) {
+	c, err := parse(cell)
+	if err != nil {
+		return nil, err
+	}
+	b, err := c.Boundary()
+	if err != nil {
+		return nil, fmt.Errorf("h3: cell to boundary: %w", err)
+	}
+	out := make([]LatLng, len(b))
+	for i, v := range b {
+		out[i] = LatLng{v.Lat, v.Lng}
+	}
+	return out, nil
+}
+
 func parse(cell string) (h3go.Cell, error) {
 	c := h3go.CellFromString(cell)
 	if !c.IsValid() {

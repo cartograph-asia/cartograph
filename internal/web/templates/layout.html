@@ -1,0 +1,53 @@
+{{define "layout" -}}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{if .Title}}{{.Title}} · Cartograph{{else}}Cartograph: a photo for every plot of land{{end}}</title>
+{{with .Description}}<meta name="description" content="{{.}}">
+{{end}}{{if .NoIndex}}<meta name="robots" content="noindex">
+{{end}}{{with .Canonical}}<link rel="canonical" href="{{abs .}}">
+{{end}}{{with .Feed}}<link rel="alternate" type="application/rss+xml" title="{{if $.Title}}Cartograph: {{$.Title}}{{else}}Cartograph: latest surveys{{end}}" href="{{abs .}}">
+{{end}}<link rel="stylesheet" href="{{asset "style.css"}}">
+<link rel="icon" type="image/svg+xml" href="{{asset "logo.svg"}}">
+<link rel="apple-touch-icon" href="{{asset "apple-touch-icon.png"}}">
+<meta name="theme-color" content="#F6F2EA">
+<meta property="og:site_name" content="Cartograph">
+<meta property="og:title" content="{{if .Title}}{{.Title}}{{else}}Cartograph{{end}}">
+{{with .Description}}<meta property="og:description" content="{{.}}">
+{{end}}{{with .Canonical}}<meta property="og:url" content="{{abs .}}">
+{{end}}<meta property="og:type" content="{{or .OG.Type "website"}}">
+{{with .OG.ImageKey}}<meta property="og:image" content="{{absimg .}}">
+{{if $.OG.ImageWidth}}<meta property="og:image:width" content="{{$.OG.ImageWidth}}">
+<meta property="og:image:height" content="{{$.OG.ImageHeight}}">
+{{end}}<meta property="og:image:type" content="image/jpeg">
+{{with $.OG.ImageAlt}}<meta property="og:image:alt" content="{{.}}">
+{{end}}<meta name="twitter:card" content="summary_large_image">
+{{end}}</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="mast">
+<a class="brand" href="/"><img src="{{asset "logo.svg"}}" alt="" width="36" height="36"><span class="name">Cartograph</span></a>
+<p class="claim">A photo for every plot of land in Asia.</p>
+<nav class="acts" aria-label="Account">
+<a class="go" href="/map">Start surveying</a>
+{{- with .Viewer}}
+{{if .HasName}}<a href="/surveyor/{{.Name}}">{{.Name}}</a>{{else}}<a href="/signin/name">Choose your name</a>{{end}}
+<form method="post" action="/signout">{{template "csrf" $}}<button class="link" type="submit">Sign out</button></form>
+{{- else}}
+<a href="/signin">Sign in</a>
+{{- end}}
+</nav>
+</header>
+<main id="main">
+{{template "content" .}}
+</main>
+<footer class="foot">
+<nav aria-label="About Cartograph"><a href="/about">About</a> <a href="/principles">Principles</a> <a href="/licence">Data &amp; licence</a> <a href="/latest.rss">RSS</a> <a href="https://github.com/cartograph-asia">GitHub</a> <a href="mailto:hello@cartograph.asia">Contact</a></nav>
+<p>hello@cartograph.asia · X @cartographasia · Instagram @cartograph.asia · GitHub cartograph-asia</p>
+<p>Photos by their Surveyors, <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a>. Map data © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, ODbL.</p>
+</footer>
+</body>
+</html>
+{{end}}

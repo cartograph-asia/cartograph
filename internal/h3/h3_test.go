@@ -95,3 +95,18 @@ func TestChildrenCount(t *testing.T) {
 		t.Error("ChildrenCount to coarser resolution succeeded, want error")
 	}
 }
+
+func TestBoundary(t *testing.T) {
+	b, err := Boundary("88658bd11dfffff")
+	if err != nil || len(b) != 6 {
+		t.Fatalf("boundary: %v %v", b, err)
+	}
+	for _, v := range b {
+		if v.Lat < 12.9 || v.Lat > 12.95 || v.Lng < 100.86 || v.Lng > 100.91 {
+			t.Fatalf("vertex %+v far from Pattaya", v)
+		}
+	}
+	if _, err := Boundary("nope"); err == nil {
+		t.Fatal("want error for invalid cell")
+	}
+}

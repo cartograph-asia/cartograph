@@ -1,0 +1,6 @@
+{{define "content" -}}
+<h1>Latest surveys</h1>
+<p class="note">Every photo, newest first. <a href="/latest.rss">RSS feed</a>.</p>
+{{if .Photos}}{{template "grid" (grid .Now .Photos true)}}{{else}}<p>No photos yet. <a href="/map">Be the first.</a></p>{{end}}
+{{template "pagination" .}}
+{{- end}}

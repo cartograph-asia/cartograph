@@ -52,8 +52,18 @@ type AdminPage struct {
 // AdminPhoto is a photo as the admin area sees it, hidden or not.
 type AdminPhoto struct {
 	PhotoItem
-	HiddenAt     *time.Time
-	HiddenReason string
+	HiddenAt       *time.Time
+	HiddenReason   string
+	FilesRemovedAt *time.Time // the image files were deleted from the bucket
+}
+
+// RemoveFilesAfter is how long a photo must be hidden before its image
+// files can be removed (docs/ADMIN_BRIEF.md, decision 2).
+const RemoveFilesAfter = 24 * time.Hour
+
+// CanRemoveFiles reports whether the photo's files may be removed at now.
+func (p AdminPhoto) CanRemoveFiles(now time.Time) bool {
+	return p.HiddenAt != nil && p.FilesRemovedAt == nil && !now.Before(p.HiddenAt.Add(RemoveFilesAfter))
 }
 
 // Hidden reports whether the photo is hidden.

@@ -38,6 +38,7 @@ type Store interface {
 	HideEffect(ctx context.Context, id string, now time.Time) (*views.HideEffect, error)
 	HidePhoto(ctx context.Context, adminID, id, reason string, now time.Time) error
 	UnhidePhoto(ctx context.Context, adminID, id string) error
+	RemovePhotoFiles(ctx context.Context, adminID, id, reason string, now time.Time, del func(context.Context, string) error) error
 	Featured(ctx context.Context, now time.Time) (*views.AdminFeaturedList, error)
 	CreateFeatured(ctx context.Context, adminID, photoID, text string, starts time.Time, ends *time.Time) (int, error)
 	EndFeatured(ctx context.Context, adminID string, id int, now time.Time) error
@@ -69,17 +70,23 @@ type Accounts interface {
 var _ Store = (*db.Admin)(nil)
 var _ Accounts = (*auth.Auth)(nil)
 
+// Files deletes photo objects; internal/storage's Store implements it.
+type Files interface {
+	Delete(ctx context.Context, key string) error
+}
+
 // Handlers serves /admin.
 type Handlers struct {
 	store  Store
 	acc    Accounts
+	files  Files
 	render views.RenderFunc
 	now    func() time.Time
 }
 
 // New returns the admin handlers.
-func New(store Store, acc Accounts, render views.RenderFunc) *Handlers {
-	return &Handlers{store: store, acc: acc, render: render, now: time.Now}
+func New(store Store, acc Accounts, files Files, render views.RenderFunc) *Handlers {
+	return &Handlers{store: store, acc: acc, files: files, render: render, now: time.Now}
 }
 
 // Routes mounts the admin area on r, every route behind the guard:
@@ -88,6 +95,7 @@ func New(store Store, acc Accounts, render views.RenderFunc) *Handlers {
 //	GET  /admin/photos?page=&hidden=1&surveyor=
 //	GET  /admin/photo/{id}                   POST …/unhide
 //	GET  /admin/photo/{id}/hide              confirm page; POST hides (field reason)
+//	GET  /admin/photo/{id}/remove-files      confirm page; POST deletes the image files (field reason)
 //	GET  /admin/featured                     POST creates; POST …/{id}/end, …/{id}/delete
 //	GET  /admin/surveyors?page=              GET /admin/surveyor/{name}
 //	GET  /admin/surveyor/{name}/block        confirm page; POST blocks (reason, hide_photos)
@@ -107,6 +115,8 @@ func (h *Handlers) Routes(r chi.Router) {
 		r.Get("/photo/{id}/hide", h.hideForm)
 		r.Post("/photo/{id}/hide", h.hide)
 		r.Post("/photo/{id}/unhide", h.unhide)
+		r.Get("/photo/{id}/remove-files", h.removeFilesForm)
+		r.Post("/photo/{id}/remove-files", h.removeFiles)
 		r.Get("/featured", h.featured)
 		r.Post("/featured", h.createFeatured)
 		r.Post("/featured/{fid}/end", h.endFeatured)
@@ -136,6 +146,7 @@ func (h *Handlers) Routes(r chi.Router) {
 var doneLines = map[string]string{
 	"hidden":           "The photo is hidden.",
 	"unhidden":         "The photo is visible again.",
+	"files-removed":    "The image files are deleted.",
 	"featured":         "The plot of the week is saved.",
 	"featured-ended":   "The plot of the week has ended.",
 	"featured-deleted": "The scheduled entry is deleted.",
@@ -336,6 +347,68 @@ func (h *Handlers) unhide(w http.ResponseWriter, r *http.Request) {
 	}
 	id := chi.URLParam(r, "id")
 	h.done(w, r, h.store.UnhidePhoto(r.Context(), viewer(r).SurveyorID, id), photoPath(id), "unhidden")
+}
+
+func (h *Handlers) removeFilesConfirm(r *http.Request, id string) (*views.AdminConfirm, error) {
+	d, err := h.store.Photo(r.Context(), id)
+	if err != nil {
+		return nil, err
+	}
+	if d.Photo.FilesRemovedAt != nil {
+		return nil, db.ErrUnchanged
+	}
+	if !d.Photo.CanRemoveFiles(h.now()) {
+		return nil, views.ErrNotFound
+	}
+	p := d.Photo
+	return &views.AdminConfirm{
+		AdminPage: h.base(r, "Remove the image files", views.AdminPhotosSection),
+		Heading:   "Remove the image files",
+		Action:    photoPath(p.ID) + "/remove-files",
+		Consequences: []string{
+			"The large, medium and thumb files are deleted from the photo store. This cannot be undone.",
+			"The photo stays hidden for good: it can no longer be unhidden. Its record and the admin log stay.",
+			"Copies that browsers or caches kept may survive for a while; the files were served as cacheable for a year.",
+		},
+		Photo:      &p,
+		NeedReason: true,
+		Button:     "Delete the files",
+		Back:       photoPath(p.ID),
+	}, nil
+}
+
+func (h *Handlers) removeFilesForm(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	c, err := h.removeFilesConfirm(r, id)
+	if errors.Is(err, db.ErrUnchanged) {
+		back(w, r, photoPath(id), "unchanged")
+		return
+	}
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	h.render(w, r, http.StatusOK, views.PageAdminConfirm, c)
+}
+
+func (h *Handlers) removeFiles(w http.ResponseWriter, r *http.Request) {
+	if !h.acc.CheckForm(w, r) {
+		return
+	}
+	id := chi.URLParam(r, "id")
+	reason := r.PostForm.Get("reason")
+	err := h.store.RemovePhotoFiles(r.Context(), viewer(r).SurveyorID, id, reason, h.now(), h.files.Delete)
+	if errors.Is(err, db.ErrInvalid) {
+		c, cerr := h.removeFilesConfirm(r, id)
+		if cerr != nil {
+			h.done(w, r, cerr, photoPath(id), "")
+			return
+		}
+		c.Reason, c.Error = reason, db.InvalidMessage(err)
+		h.render(w, r, http.StatusBadRequest, views.PageAdminConfirm, c)
+		return
+	}
+	h.done(w, r, err, photoPath(id), "files-removed")
 }
 
 // Plot of the week.

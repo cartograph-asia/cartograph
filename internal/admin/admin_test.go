@@ -13,14 +13,16 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/cartograph-asia/cartograph/internal/db"
+	"github.com/cartograph-asia/cartograph/internal/storage"
 	"github.com/cartograph-asia/cartograph/internal/views"
 )
 
 // fakeStore answers every read with an empty page and records writes.
 type fakeStore struct {
-	mu     sync.Mutex
-	writes []string
-	err    error // returned by the next write
+	mu       sync.Mutex
+	writes   []string
+	err      error      // returned by the next write
+	hiddenAt *time.Time // when set, Photo returns a photo hidden then
 }
 
 func (f *fakeStore) write(name string) error {
@@ -43,7 +45,12 @@ func (f *fakeStore) Photos(_ context.Context, _ int, hidden bool, surveyor strin
 	return &views.AdminPhotos{HiddenOnly: hidden, Surveyor: surveyor}, nil
 }
 func (f *fakeStore) Photo(_ context.Context, id string) (*views.AdminPhotoDetail, error) {
-	return &views.AdminPhotoDetail{Photo: photo()}, nil
+	p := photo()
+	p.HiddenAt = f.hiddenAt
+	if p.HiddenAt != nil {
+		p.HiddenReason = "test"
+	}
+	return &views.AdminPhotoDetail{Photo: p}, nil
 }
 func (f *fakeStore) HideEffect(context.Context, string, time.Time) (*views.HideEffect, error) {
 	return &views.HideEffect{Claims: true, PassesTo: "mali"}, nil
@@ -52,6 +59,12 @@ func (f *fakeStore) HidePhoto(context.Context, string, string, string, time.Time
 	return f.write("hide")
 }
 func (f *fakeStore) UnhidePhoto(context.Context, string, string) error { return f.write("unhide") }
+func (f *fakeStore) RemovePhotoFiles(_ context.Context, _, _, _ string, _ time.Time, del func(context.Context, string) error) error {
+	if err := del(context.Background(), "photos/x_large.jpg"); err != nil {
+		return err
+	}
+	return f.write("remove-files")
+}
 func (f *fakeStore) Featured(context.Context, time.Time) (*views.AdminFeaturedList, error) {
 	return &views.AdminFeaturedList{}, nil
 }
@@ -153,7 +166,7 @@ func newTestEnv() *testEnv {
 		e.pages = append(e.pages, rendered{status, page, data})
 		w.WriteHeader(status)
 	}
-	h := New(e.store, e.acc, render)
+	h := New(e.store, e.acc, storage.NewMemory("http://img.test"), render)
 	h.now = func() time.Time { return time.Date(2026, 11, 1, 9, 0, 0, 0, time.UTC) }
 	r := chi.NewRouter()
 	r.Use(func(next http.Handler) http.Handler {
@@ -226,7 +239,9 @@ func TestGetsChangeNothingAndPostsNeedTheForm(t *testing.T) {
 	for _, rt := range routes(t, e.router) {
 		switch rt[0] {
 		case http.MethodGet:
-			if rec := e.do(rt[0], rt[1], nil); rec.Code != http.StatusOK && rec.Code != http.StatusSeeOther {
+			// The files of a visible photo cannot be removed: no page for it.
+			if rec := e.do(rt[0], rt[1], nil); rec.Code != http.StatusOK && rec.Code != http.StatusSeeOther &&
+				!(rec.Code == http.StatusNotFound && strings.HasSuffix(rt[1], "/remove-files")) {
 				t.Errorf("GET %s: %d", rt[1], rec.Code)
 			}
 		case http.MethodPost:
@@ -318,5 +333,31 @@ func TestPageQueryKeepsFilters(t *testing.T) {
 	p := e.pages[len(e.pages)-1].data.(*views.AdminPhotos)
 	if p.Canonical != "/admin/photos?hidden=1&surveyor=ploy88" {
 		t.Fatalf("canonical %q", p.Canonical)
+	}
+}
+
+func TestRemoveFiles(t *testing.T) {
+	e := newTestEnv()
+	e.viewer = &views.Viewer{Name: "boss", SurveyorID: "a1", Admin: true}
+	path := "/admin/photo/" + photo().ID + "/remove-files"
+	// Hidden an hour ago: too early, no confirm page.
+	hour := time.Date(2026, 11, 1, 8, 0, 0, 0, time.UTC)
+	e.store.hiddenAt = &hour
+	if rec := e.do(http.MethodGet, path, nil); rec.Code != http.StatusNotFound {
+		t.Fatalf("too early: %d", rec.Code)
+	}
+	// Hidden two days ago: the confirm page, then the store deletes through the files.
+	days := time.Date(2026, 10, 30, 9, 0, 0, 0, time.UTC)
+	e.store.hiddenAt = &days
+	if rec := e.do(http.MethodGet, path, nil); rec.Code != http.StatusOK {
+		t.Fatalf("confirm: %d", rec.Code)
+	}
+	c := e.pages[len(e.pages)-1].data.(*views.AdminConfirm)
+	if !c.NeedReason || !strings.Contains(strings.Join(c.Consequences, " "), "cannot be undone") {
+		t.Fatalf("confirm page %+v", c)
+	}
+	rec := e.do(http.MethodPost, path, url.Values{views.CSRFField: {"ok"}, "reason": {"copyright"}})
+	if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/admin/photo/"+photo().ID+"?done=files-removed" {
+		t.Fatalf("remove: %d %q", rec.Code, rec.Header().Get("Location"))
 	}
 }

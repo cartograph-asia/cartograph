@@ -11,7 +11,10 @@
 <div>
 {{if $p.Hidden}}
 <p class="error">Hidden {{stamp $p.HiddenAt}}: {{$p.HiddenReason}}</p>
-<form class="actions" method="post" action="/admin/photo/{{$p.ID}}/unhide">{{template "csrf" .}}<button type="submit">Unhide the photo</button></form>
+{{with $p.FilesRemovedAt}}<p class="note">Image files deleted {{stamp .}}. The photo cannot be shown again.</p>
+{{else}}<form class="actions" method="post" action="/admin/photo/{{$p.ID}}/unhide">{{template "csrf" .}}<button type="submit">Unhide the photo</button></form>
+{{if $p.CanRemoveFiles .Now}}<ul class="ways"><li><a class="danger" href="/admin/photo/{{$p.ID}}/remove-files">Delete the image files <span aria-hidden="true">→</span></a></li></ul>
+{{else}}<p class="note">The image files can be deleted 24 hours after hiding.</p>{{end}}{{end}}
 {{else}}
 <ul class="ways">
 <li><a href="/photo/{{$p.ID}}">Public page <span aria-hidden="true">→</span></a></li>

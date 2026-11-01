@@ -464,3 +464,48 @@ func TestPublicReadsUseVisiblePhotos(t *testing.T) {
 		}
 	}
 }
+
+func TestRemovePhotoFiles(t *testing.T) {
+	w := newWorld(t)
+	ctx := context.Background()
+	a := w.d.Admin()
+	admin := w.surveyors["adrian"].String()
+	id := w.photos[3].String()
+	var deleted []string
+	del := func(_ context.Context, key string) error { deleted = append(deleted, key); return nil }
+
+	if err := a.RemovePhotoFiles(ctx, admin, id, "copyright", t0, del); !errors.Is(err, db.ErrInvalid) {
+		t.Fatalf("visible photo: %v", err)
+	}
+	if err := a.HidePhoto(ctx, admin, id, "copyright", t0); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.RemovePhotoFiles(ctx, admin, id, "copyright", t0.Add(time.Hour), del); !errors.Is(err, db.ErrInvalid) || len(deleted) != 0 {
+		t.Fatalf("too early: %v %v", err, deleted)
+	}
+	// A failing delete records nothing.
+	boom := errors.New("bucket down")
+	if err := a.RemovePhotoFiles(ctx, admin, id, "copyright", t0.Add(25*time.Hour), func(context.Context, string) error { return boom }); !errors.Is(err, boom) {
+		t.Fatalf("failing delete: %v", err)
+	}
+	if err := a.RemovePhotoFiles(ctx, admin, id, "copyright", t0.Add(25*time.Hour), del); err != nil {
+		t.Fatal(err)
+	}
+	if len(deleted) != 3 || !strings.HasSuffix(deleted[0], "_large.jpg") {
+		t.Fatalf("deleted %v", deleted)
+	}
+	if err := a.RemovePhotoFiles(ctx, admin, id, "again", t0.Add(26*time.Hour), del); !errors.Is(err, db.ErrUnchanged) {
+		t.Fatalf("twice: %v", err)
+	}
+	if err := a.UnhidePhoto(ctx, admin, id); !errors.Is(err, db.ErrInvalid) {
+		t.Fatalf("unhide after removal: %v", err)
+	}
+	d, err := a.Photo(ctx, id)
+	if err != nil || d.Photo.FilesRemovedAt == nil || d.Actions[0].Action != "photo.remove_files" {
+		t.Fatalf("admin photo %+v %v", d, err)
+	}
+	// Public reads still treat it as removed.
+	if _, err := w.d.Views().Photo(ctx, id); !errors.Is(err, views.ErrGone) {
+		t.Fatalf("public page: %v", err)
+	}
+}

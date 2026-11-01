@@ -37,6 +37,14 @@ func (m *Memory) Put(_ context.Context, key, contentType string, r io.Reader) er
 	return nil
 }
 
+// Delete removes key; a missing key is not an error.
+func (m *Memory) Delete(_ context.Context, key string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.objects, key)
+	return nil
+}
+
 // URL returns the public URL of key.
 func (m *Memory) URL(key string) string { return PublicURL(m.BaseURL, key) }
 

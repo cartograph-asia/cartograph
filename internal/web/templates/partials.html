@@ -1,3 +1,6 @@
+{{/* The CSRF field every POST form carries; call with the page. */}}
+{{define "csrf"}}<input type="hidden" name="{{csrfField}}" value="{{.CSRF}}">{{end}}
+
 {{/* A grid of photo thumbnails, chronological as given. */}}
 {{define "grid" -}}
 <ul class="grid">

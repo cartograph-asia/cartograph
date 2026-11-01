@@ -46,6 +46,7 @@ func (rd *Renderer) funcs() template.FuncMap {
 		"bounds":    boundsAttr,
 		"plotCells": func(p *views.Plot) []string { return neighbourCells(p.Plot.Cell, p.Neighbours) },
 		"pathEsc":   url.PathEscape,
+		"csrfField": func() string { return views.CSRFField },
 		"bioMax":    func() int { return views.BioMaxLen },
 		"nameMin":   func() int { return views.NameMinLen },
 		"nameMax":   func() int { return views.NameMaxLen },

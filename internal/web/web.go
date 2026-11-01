@@ -48,9 +48,6 @@ type Config struct {
 	// MinimapScript is the URL of the lazily imported small-map module from
 	// the web/ build. Defaults to DefaultMinimapScript.
 	MinimapScript string
-	// CSRF returns the request's CSRF token for POST forms; nil or "" leaves
-	// Page.CSRF as the handler set it. Set by the accounts middleware.
-	CSRF func(*http.Request) string
 	// Now is the clock for Page.Now when the Source left it zero; time.Now if nil.
 	Now func() time.Time
 	// Logger receives render errors; slog.Default() if nil.
@@ -118,7 +115,7 @@ func NewRenderer(cfg Config) (*Renderer, error) {
 	names := []string{
 		views.PageHome, views.PageLatest, views.PageSurveyors, views.PageRegions, views.PageSurveyor,
 		views.PagePlot, views.PagePhoto, views.PageRegion, views.PageSignIn, views.PageCheckEmail,
-		views.PageChooseName, views.PageEditProfile, views.PageError, "static",
+		views.PageChooseName, views.PageEditProfile, views.PageConfirmSignIn, views.PageError, "static",
 	}
 	for _, name := range names {
 		t, err := base.Clone()
@@ -143,7 +140,7 @@ func (rd *Renderer) RenderFunc() views.RenderFunc { return rd.Render }
 
 // Render writes page with data and status. data is the page struct named by
 // page (see the views.Page* constants). Viewer comes from the request
-// context, CSRF from Config.CSRF, Now from the clock when the Source left it
+// context (views.ViewerFrom), CSRF too (views.CSRFFrom), Now from the clock when the Source left it
 // zero. A template error becomes a plain 500.
 func (rd *Renderer) Render(w http.ResponseWriter, r *http.Request, status int, page string, data any) {
 	if b, ok := data.(views.Based); ok {
@@ -187,10 +184,8 @@ func (rd *Renderer) fill(r *http.Request, p *views.Page) {
 	if v := views.ViewerFrom(r.Context()); v != nil {
 		p.Viewer = v
 	}
-	if rd.cfg.CSRF != nil {
-		if t := rd.cfg.CSRF(r); t != "" {
-			p.CSRF = t
-		}
+	if t := views.CSRFFrom(r.Context()); t != "" {
+		p.CSRF = t
 	}
 	if p.Now.IsZero() {
 		p.Now = rd.cfg.Now()

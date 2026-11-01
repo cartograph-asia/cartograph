@@ -33,8 +33,8 @@
 <nav class="acts" aria-label="Account">
 <a class="go" href="/map">Start surveying</a>
 {{- with .Viewer}}
-{{if .HasName}}<a href="/surveyor/{{.Name}}">{{.Name}}</a>{{else}}<a href="/welcome">Choose your name</a>{{end}}
-<form method="post" action="/signout"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="link" type="submit">Sign out</button></form>
+{{if .HasName}}<a href="/surveyor/{{.Name}}">{{.Name}}</a>{{else}}<a href="/signin/name">Choose your name</a>{{end}}
+<form method="post" action="/signout">{{template "csrf" $}}<button class="link" type="submit">Sign out</button></form>
 {{- else}}
 <a href="/signin">Sign in</a>
 {{- end}}

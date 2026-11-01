@@ -4,7 +4,7 @@
 <p>Enter your e-mail address and we send you a link to sign in. There is no password.</p>
 {{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
 <form method="post" action="/signin">
-<input type="hidden" name="csrf" value="{{.CSRF}}">
+{{template "csrf" .}}
 {{with .Next}}<input type="hidden" name="next" value="{{.}}">{{end}}
 <label for="email">E-mail address</label>
 <input id="email" name="email" type="email" value="{{.Email}}" autocomplete="email" required{{if .Error}} autofocus aria-invalid="true"{{end}}>

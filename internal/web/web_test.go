@@ -25,8 +25,7 @@ const (
 
 func newRenderer(t *testing.T) *Renderer {
 	t.Helper()
-	rd, err := NewRenderer(Config{BaseURL: testBase + "/", ImgBaseURL: testImg,
-		CSRF: func(*http.Request) string { return "tok-123" }})
+	rd, err := NewRenderer(Config{BaseURL: testBase + "/", ImgBaseURL: testImg})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,6 +56,7 @@ func get(t *testing.T, h http.Handler, target string, ctx ...context.Context) re
 	if len(ctx) > 0 {
 		req = req.WithContext(ctx[0])
 	}
+	req = req.WithContext(views.WithCSRF(req.Context(), "tok-123"))
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 	b, _ := io.ReadAll(rec.Result().Body)
@@ -70,6 +70,7 @@ func render(t *testing.T, page string, data any, ctx ...context.Context) string 
 	if len(ctx) > 0 {
 		req = req.WithContext(ctx[0])
 	}
+	req = req.WithContext(views.WithCSRF(req.Context(), "tok-123"))
 	rec := httptest.NewRecorder()
 	rd.Render(rec, req, http.StatusOK, page, data)
 	if rec.Code != http.StatusOK {
@@ -169,8 +170,10 @@ func TestEveryPageRenders(t *testing.T) {
 		}},
 		{"signin", views.PageSignIn, viewstest.SignIn(), []string{`action="/signin"`, `name="csrf" value="tok-123"`, `name="next" value="/map"`, `type="email"`, `value="adrian@example"`, "That does not look"}},
 		{"check-email", views.PageCheckEmail, viewstest.CheckEmail(), []string{"adrian@example.org"}},
-		{"choose-name", views.PageChooseName, viewstest.ChooseName(), []string{`action="/welcome"`, `pattern="[A-Za-z0-9\-]{3,30}"`, `maxlength="30"`, "That name is taken"}},
+		{"choose-name", views.PageChooseName, viewstest.ChooseName(), []string{`action="/signin/name"`, `pattern="[A-Za-z0-9\-]{3,30}"`, `maxlength="30"`, "That name is taken"}},
 		{"edit-profile", views.PageEditProfile, viewstest.EditProfile(), []string{`action="/settings"`, "Saved.", `<option value="chon-buri" selected>`, `maxlength="500"`, "Walking Pattaya"}},
+		{"confirm-signin", views.PageConfirmSignIn, &views.ConfirmSignIn{Page: views.Page{Title: "Sign in", NoIndex: true}, Token: "abc&def"},
+			[]string{`action="/signin/link"`, `name="token" value="abc&amp;def"`, `name="csrf" value="tok-123"`, ">Sign in</button>"}},
 		{"error", views.PageError, viewstest.NotFound(), []string{"There is nothing at this address."}},
 	}
 	for _, p := range pages {
@@ -192,7 +195,7 @@ func TestAnonymousMasthead(t *testing.T) {
 	mustNot(t, body, "Edit your profile")
 	// A viewer without a name is asked to choose one.
 	body = render(t, views.PageChooseName, viewstest.ChooseName())
-	must(t, body, `href="/welcome">Choose your name`)
+	must(t, body, `href="/signin/name">Choose your name`)
 }
 
 func TestRoutes(t *testing.T) {
@@ -520,7 +523,8 @@ func TestRenderSetsNowAndRejectsUnknownPage(t *testing.T) {
 	rd.cfg.Now = func() time.Time { return fixed }
 	p := &views.Error{Message: "x"}
 	rec := httptest.NewRecorder()
-	rd.Render(rec, httptest.NewRequest(http.MethodGet, "/", nil), http.StatusTeapot, views.PageError, p)
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rd.Render(rec, req.WithContext(views.WithCSRF(req.Context(), "tok-123")), http.StatusTeapot, views.PageError, p)
 	if rec.Code != http.StatusTeapot || !p.Now.Equal(fixed) || p.CSRF != "tok-123" {
 		t.Fatalf("status %d now %v csrf %q", rec.Code, p.Now, p.CSRF)
 	}

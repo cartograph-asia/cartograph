@@ -28,7 +28,7 @@ func NewHandlers(src views.Source, rd *Renderer) *Handlers {
 //	/surveyor/{name}[.rss]  /plot/{cell}  /photo/{id}  /region/{slug}[.rss]
 //	/about  /principles  /licence  /static/*
 //
-// The account pages (/signin, /welcome, /settings, /signout) belong to
+// The account pages (/signin, /signin/link, /signin/name, /settings, /signout) belong to
 // internal/auth, which renders through Renderer.RenderFunc.
 func (h *Handlers) Routes(r chi.Router) {
 	r.Get("/", h.home)

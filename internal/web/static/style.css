@@ -155,7 +155,7 @@ textarea { resize: vertical; }
 }
 .form button[type="submit"]:not(.link):hover { background: var(--slate); }
 .error { color: #9b2c1f; font-weight: 700; }
-.saved { color: var(--green); font-weight: 700; }
+.saved { color: var(--muted); }
 
 /* Prose pages */
 .prose { max-width: 38rem; padding-bottom: 1rem; }

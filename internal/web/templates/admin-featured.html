@@ -1,0 +1,54 @@
+{{define "content" -}}
+{{template "admin-head" .}}
+<header class="head">
+<p class="kicker">Admin</p>
+<h1>Plot of the week</h1>
+<p class="note">The current entry is the latest one that has started and not ended. Without one, the front page shows the latest first survey.</p>
+</header>
+<section class="block">
+<h2>Now</h2>
+{{with .Current}}{{template "featured-row" (featuredRow . $ "current")}}{{else}}<p class="blank">Nothing is set: the front page shows the latest first survey.</p>{{end}}
+</section>
+{{if .Scheduled}}<section class="block">
+<h2>Scheduled</h2>
+{{range .Scheduled}}{{template "featured-row" (featuredRow . $ "scheduled")}}{{end}}
+</section>{{end}}
+<section class="block form">
+<h2>New entry</h2>
+{{with .Form.Error}}<p class="error" role="alert">{{.}}</p>{{end}}
+<form method="post" action="/admin/featured">
+{{template "csrf" .}}
+<label for="photo">Photo</label>
+<input id="photo" name="photo" type="text" value="{{.Form.Photo}}" required aria-describedby="photo-hint">
+<p id="photo-hint" class="hint">The photo’s address or id, e.g. from “Feature this photo” on its admin page.</p>
+<label for="text">Text</label>
+<textarea id="text" name="text" rows="4" maxlength="{{textMax}}" aria-describedby="text-hint">{{.Form.Text}}</textarea>
+<p id="text-hint" class="hint">Plain text, up to {{textMax}} characters.</p>
+<label for="starts">Starts</label>
+<input id="starts" name="starts" type="datetime-local" value="{{.Form.Starts}}" aria-describedby="starts-hint">
+<p id="starts-hint" class="hint">Bangkok time. Empty: now.</p>
+<label for="ends">Ends</label>
+<input id="ends" name="ends" type="datetime-local" value="{{.Form.Ends}}" aria-describedby="ends-hint">
+<p id="ends-hint" class="hint">Empty: until the next entry starts.</p>
+<button type="submit">Save</button>
+</form>
+</section>
+{{if .Past}}<section class="block">
+<h2>Before</h2>
+{{range .Past}}{{template "featured-row" (featuredRow . $ "past")}}{{end}}
+</section>{{end}}
+{{- end}}
+
+{{define "featured-row" -}}
+{{$f := .F}}
+<div class="feature-row">
+<a class="ph" href="/admin/photo/{{$f.Photo.ID}}"><img src="{{img $f.Photo.Keys.Thumb}}" width="480" height="360" alt="Photo at {{$f.Photo.Plot.Name}} by {{$f.Photo.Surveyor.Name}}" loading="lazy"></a>
+<div>
+<p class="feature-name"><a href="/admin/photo/{{$f.Photo.ID}}">{{$f.Photo.Plot.Name}}</a></p>
+<p class="by">by {{$f.Photo.Surveyor.Name}} · {{stamp $f.StartsAt}} – {{with $f.EndsAt}}{{stamp .}}{{else}}until replaced{{end}}</p>
+{{with $f.Text}}<p>{{.}}</p>{{end}}
+{{if eq .State "current"}}<form method="post" action="/admin/featured/{{$f.ID}}/end">{{template "csrf" .Page}}<button class="link" type="submit">End now</button></form>{{end}}
+{{if eq .State "scheduled"}}<form method="post" action="/admin/featured/{{$f.ID}}/delete">{{template "csrf" .Page}}<button class="link" type="submit">Delete this scheduled entry</button></form>{{end}}
+</div>
+</div>
+{{- end}}

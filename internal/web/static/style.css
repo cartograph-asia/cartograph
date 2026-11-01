@@ -342,6 +342,47 @@ textarea { resize: vertical; }
 .prose td { font-variant-numeric: tabular-nums; }
 .prose tbody th { font-weight: normal; color: var(--ink-muted); }
 
+/* Admin area (docs/ADMIN_BRIEF.md): the public pages' tokens and parts,
+   plus a navigation line, tables for lists, and red for what removes
+   something from the site. */
+.admin-nav { display: flex; flex-wrap: wrap; gap: calc(var(--tap) - 1lh) var(--s-m); margin: 0 0 var(--s-l); padding-bottom: var(--s-s); border-bottom: 1px solid var(--rule); font-size: var(--step-meta); }
+.admin-nav a { text-decoration: none; padding: calc((var(--tap) - 1lh) / 2) 0; margin: calc((1lh - var(--tap)) / 2) 0; }
+.admin-nav a:hover, .admin-nav a:focus-visible { text-decoration: underline; }
+.admin-nav a[aria-current="page"] { font-weight: 700; text-decoration: underline; text-decoration-color: currentColor; }
+.admin-line { margin-top: var(--s-s); font-size: var(--step-meta); color: var(--ink-muted); }
+.scroll { overflow-x: auto; }
+.list { width: 100%; border-collapse: collapse; font-size: var(--step-meta); }
+.list th, .list td { text-align: left; vertical-align: top; padding: var(--s-s) var(--s-m) var(--s-s) 0; border-bottom: 1px solid var(--rule); }
+.list th { font-weight: 700; font-variant: all-small-caps; letter-spacing: 0.06em; color: var(--ink-muted); }
+.list .n { text-align: right; font-variant-numeric: tabular-nums lining-nums; }
+.list form { display: inline; margin: 0 var(--s-m) 0 0; }
+.list details { margin-top: var(--s-xs); color: var(--ink-muted); }
+.list pre { margin: var(--s-xs) 0 0; white-space: pre-wrap; word-break: break-all; font-size: var(--step-small); }
+.nw { white-space: nowrap; }
+.tag { flex: none; margin-left: var(--s-xs); padding: 0 var(--s-xs); font-size: var(--step-small); font-weight: 700; font-variant: all-small-caps; letter-spacing: 0.06em; color: var(--error); border: 1px solid currentColor; }
+.grid .is-hidden .ph img { opacity: 0.45; }
+.facts { display: grid; grid-template-columns: minmax(7rem, auto) 1fr; gap: var(--s-xs) var(--s-m); margin: var(--s-l) 0 0; font-size: var(--step-meta); }
+.facts dt { color: var(--ink-muted); }
+.facts dd { margin: 0; }
+.thumb { width: 100%; max-width: 20rem; height: auto; background: var(--paper-deep); }
+.consequences { padding-left: var(--s-m); }
+.consequences li { margin-bottom: var(--s-s); }
+.check { display: flex; align-items: baseline; gap: var(--s-s); margin: var(--s-m) var(--s-m) 0 0; }
+.check label { display: inline; margin: 0; font-weight: 400; font-variant: normal; letter-spacing: 0; }
+span.check { display: inline-flex; }
+.choice { border: 0; margin: 0; padding: 0; }
+.ways a.danger, .ways a.danger:hover { color: var(--error); }
+.form button.danger[type="submit"]:not(.link) { background: var(--error); }
+.form button.danger[type="submit"]:not(.link):hover { background: var(--ink); }
+.actions button[type="submit"] { margin-top: var(--s-s); font: inherit; font-weight: 700; background: var(--action); color: var(--paper); border: 0; border-radius: 0; padding: var(--s-s) var(--s-m); cursor: pointer; }
+.actions button[type="submit"]:hover { background: var(--ink); }
+.feature-row { display: grid; grid-template-columns: minmax(0, 10rem) 1fr; gap: var(--s-m); padding: var(--s-m) 0; border-bottom: 1px solid var(--rule); }
+.feature-row p { margin-bottom: var(--s-xs); }
+.rows { padding-left: var(--s-m); font-size: var(--step-meta); }
+.override { padding: var(--s-m) 0; border-top: 1px solid var(--rule); }
+.override h2 { font-size: var(--step-title); margin: 0; }
+.override .form form, .override form.form { margin: 0; padding-top: 0; border-top: 0; }
+
 /* Footer: the mark and the links on the left, contact and licence on the right. */
 .foot {
   margin-top: var(--s-2xl); padding-top: var(--s-m); padding-bottom: var(--s-xl);

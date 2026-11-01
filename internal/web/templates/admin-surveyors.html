@@ -1,0 +1,17 @@
+{{define "content" -}}
+{{template "admin-head" .}}
+<header class="head">
+<p class="kicker">Admin</p>
+<h1>Surveyors</h1>
+<p class="note">{{count .Pagination.Total "Surveyor" "Surveyors"}}, most recently joined first.</p>
+</header>
+<div class="scroll"><table class="list">
+<thead><tr><th scope="col">Surveyor</th><th scope="col">E-mail</th><th scope="col">Joined</th><th scope="col" class="n">Photos</th><th scope="col" class="n">Hidden</th><th scope="col" class="n">Sessions</th><th scope="col">State</th></tr></thead>
+<tbody>
+{{- range .Surveyors}}
+<tr><td><a href="/admin/surveyor/{{.Name}}">{{.Name}}</a></td><td>{{.Email}}</td><td class="nw">{{date .JoinedAt}}</td><td class="n">{{num .Photos}}</td><td class="n">{{num .Hidden}}</td><td class="n">{{num .Sessions}}</td><td>{{with .BlockedAt}}<span class="tag">blocked</span>{{end}}</td></tr>
+{{- end}}
+</tbody>
+</table></div>
+{{template "admin-pagination" .}}
+{{- end}}

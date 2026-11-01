@@ -36,6 +36,8 @@
 <a class="go" href="/map">Start surveying <span aria-hidden="true">→</span></a>
 {{- with .Viewer}}
 {{if .HasName}}<a href="/surveyor/{{.Name}}">{{.Name}}</a>{{else}}<a href="/signin/name">Choose your name</a>{{end}}
+{{- if .IsAdmin}}
+<a href="/admin">Admin</a>{{end}}
 <form method="post" action="/signout">{{template "csrf" $}}<button class="link" type="submit">Sign out</button></form>
 {{- else}}
 <a href="/signin">Sign in</a>

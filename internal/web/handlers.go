@@ -56,10 +56,14 @@ func (h *Handlers) static(path string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) { h.rd.renderStatic(w, r, path) }
 }
 
-// fail renders ErrNotFound as 404 and anything else as 500.
+// fail renders ErrNotFound as 404, ErrGone as 410 and anything else as 500.
 func (h *Handlers) fail(w http.ResponseWriter, r *http.Request, err error) {
 	if errors.Is(err, views.ErrNotFound) {
 		h.NotFound(w, r)
+		return
+	}
+	if errors.Is(err, views.ErrGone) {
+		h.rd.renderError(w, r, http.StatusGone, "This photo was removed.")
 		return
 	}
 	h.rd.log.Error("page", "path", r.URL.Path, "err", err)

@@ -1,0 +1,40 @@
+{{define "content" -}}
+{{template "admin-head" .}}
+{{$p := .Photo}}
+<header class="head">
+<p class="kicker">Photo{{if $p.Hidden}} · hidden{{end}}</p>
+<h1 class="name">{{heading $p.Plot}}</h1>
+<p class="note">by <a href="/admin/surveyor/{{$p.Surveyor.Name}}">{{$p.Surveyor.Name}}</a>{{with .Email}} ({{.}}){{end}}{{if $p.FirstSurvey}} · first survey of this plot{{end}}</p>
+</header>
+<div class="cols">
+<figure class="photo"><img src="{{img $p.Keys.Thumb}}" width="480" height="360" alt="Photo at {{$p.Plot.Name}} by {{$p.Surveyor.Name}}"></figure>
+<div>
+{{if $p.Hidden}}
+<p class="error">Hidden {{stamp $p.HiddenAt}}: {{$p.HiddenReason}}</p>
+<form class="actions" method="post" action="/admin/photo/{{$p.ID}}/unhide">{{template "csrf" .}}<button type="submit">Unhide the photo</button></form>
+{{else}}
+<ul class="ways">
+<li><a href="/photo/{{$p.ID}}">Public page <span aria-hidden="true">→</span></a></li>
+<li><a href="/admin/featured?photo={{$p.ID}}">Feature this photo <span aria-hidden="true">→</span></a></li>
+<li><a class="danger" href="/admin/photo/{{$p.ID}}/hide">Hide this photo <span aria-hidden="true">→</span></a></li>
+</ul>
+{{end}}
+<dl class="facts">
+<dt>Plot</dt><dd><a href="{{$p.Plot.Path}}">{{$p.Plot.Name}}</a> · <code>{{$p.Plot.Cell}}</code></dd>
+<dt>First surveyor now</dt><dd>{{or .FirstSurveyor "nobody: the plot is blank"}}{{if .PlotPhotos}} · {{count .PlotPhotos "visible photo" "visible photos"}}{{end}}</dd>
+<dt>Position</dt><dd>{{printf "%.5f, %.5f" .Lat .Lng}} <span class="note">(only shown here)</span></dd>
+<dt>Taken</dt><dd>{{with $p.TakenAt}}{{stamp .}}{{else}}unknown{{end}}</dd>
+<dt>Uploaded</dt><dd>{{stamp $p.UploadedAt}}</dd>
+<dt>Files</dt><dd><a href="{{img $p.Keys.Large}}">large</a>{{with $p.Keys.Medium}} · <a href="{{img .}}">medium</a>{{end}} · <a href="{{img $p.Keys.Thumb}}">thumb</a></dd>
+</dl>
+</div>
+</div>
+{{if .Featured}}<section class="block">
+<h2>Plot of the week</h2>
+<ul class="rows">{{range .Featured}}<li>{{stamp .StartsAt}} – {{with .EndsAt}}{{stamp .}}{{else}}until replaced{{end}}{{with .Text}}: {{.}}{{end}}</li>{{end}}</ul>
+</section>{{end}}
+<section class="block">
+<h2>Log</h2>
+{{template "admin-actions" .Actions}}
+</section>
+{{- end}}

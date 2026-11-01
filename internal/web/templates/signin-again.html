@@ -1,0 +1,8 @@
+{{define "content" -}}
+<div class="form">
+<p class="kicker">Admin</p>
+<h1>Sign in again</h1>
+<p class="lede">The admin area needs a sign-in from the last day. Sign out here, ask for a new link and you come back to this page.</p>
+<form method="post" action="/signout">{{template "csrf" .}}<input type="hidden" name="next" value="{{.SignIn}}"><button type="submit">Sign out and sign in again</button></form>
+</div>
+{{- end}}

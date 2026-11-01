@@ -1,13 +1,18 @@
 // Command api is the Cartograph backend: a JSON API for plots, photos and
 // coverage. It is configured entirely through environment variables
 // (see deploy/.env.example).
+//
+// "api -healthcheck" probes GET /healthz on API_ADDR and exits 0 or 1, so the
+// distroless image (no shell, no curl) can still have a container healthcheck.
 package main
 
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -30,6 +35,16 @@ type config struct {
 }
 
 func main() {
+	healthcheck := flag.Bool("healthcheck", false, "probe GET /healthz on API_ADDR and exit 0 if healthy")
+	flag.Parse()
+	if *healthcheck {
+		if err := probe(envOr("API_ADDR", ":8000")); err != nil {
+			fmt.Fprintln(os.Stderr, "unhealthy:", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, nil)))
 	if err := run(); err != nil {
 		slog.Error("fatal", "err", err)
@@ -89,8 +104,29 @@ func run() error {
 	return nil
 }
 
+// probe requests /healthz from the server listening on addr.
+func probe(addr string) error {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return fmt.Errorf("API_ADDR %q: %w", addr, err)
+	}
+	if host == "" || host == "0.0.0.0" || host == "::" {
+		host = "127.0.0.1"
+	}
+	client := http.Client{Timeout: 3 * time.Second}
+	resp, err := client.Get("http://" + net.JoinHostPort(host, port) + "/healthz")
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("GET /healthz: %s", resp.Status)
+	}
+	return nil
+}
+
 // checkBucket logs whether the bucket exists. It never creates it; the
-// deployment does that (the mc container in compose).
+// deployment does that (garage-init in compose).
 func checkBucket(ctx context.Context, store *storage.S3, bucket string) {
 	cctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()

@@ -199,6 +199,9 @@ func TestCreatePhotoClaimsThenAdds(t *testing.T) {
 	if body["photo_count"] != 2.0 || body["first_surveyor"] != "Ada" {
 		t.Fatalf("get plot: %v", body)
 	}
+	if s, _ := body["claimed_at"].(string); s == "" || s == "0001-01-01T00:00:00Z" {
+		t.Fatalf("get plot: claimed_at missing: %v", body)
+	}
 	ph := body["photos"].([]any)
 	if len(ph) != 2 || ph[0].(map[string]any)["surveyor"] != "Ada" || ph[0].(map[string]any)["taken_at"] != "2026-09-09T09:38:06Z" {
 		t.Fatalf("photos: %v", ph)
@@ -313,9 +316,8 @@ func TestReadEndpointsValidate(t *testing.T) {
 	}
 
 	status, body := e.get("/api/coverage?res=5&cells=" + p5)
-	c := body["cells"].([]any)[0].(map[string]any)
-	if status != 200 || c["surveyed"] != 0.0 || c["total"] != 343.0 {
-		t.Errorf("empty coverage: %v", body)
+	if c, ok := body["cells"].([]any); status != 200 || !ok || len(c) != 0 {
+		t.Errorf("blank parents must be omitted from coverage: %v", body)
 	}
 
 	resp, err := http.Post(e.srv.URL+"/api/plots", "text/plain", nil)

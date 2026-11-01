@@ -165,7 +165,7 @@ export class Panel {
     nodes.push(pill);
     if (d) {
       row('First surveyor', d.first_surveyor);
-      row('Claimed', fmtDate(d.claimed_at ?? d.photos[d.photos.length - 1]?.uploaded_at));
+      row('Claimed', fmtDate(d.claimed_at));
       row('Photos', String(d.photo_count));
     }
     const cellDd = document.createElement('dd');

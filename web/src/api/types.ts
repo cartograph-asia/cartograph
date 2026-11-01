@@ -27,7 +27,7 @@ export interface PlotDetail {
   cell: string;
   photo_count: number;
   first_surveyor: string;
-  claimed_at?: string;
+  claimed_at: string;
   photos: PhotoInfo[];
 }
 

@@ -17,7 +17,7 @@ type S3Config struct {
 	SecretKey string
 	Region    string
 	UseSSL    bool
-	PathStyle bool   // true for MinIO; false uses virtual-hosted-style bucket lookup
+	PathStyle bool   // true for MinIO/Garage; false uses virtual-hosted-style bucket lookup
 	BaseURL   string // public base URL for objects (IMG_BASE_URL)
 }
 

@@ -40,6 +40,7 @@ type plotDetail struct {
 	Cell          string      `json:"cell"`
 	PhotoCount    int         `json:"photo_count"`
 	FirstSurveyor string      `json:"first_surveyor"`
+	ClaimedAt     time.Time   `json:"claimed_at"`
 	Photos        []plotPhoto `json:"photos"`
 }
 
@@ -130,6 +131,7 @@ func (s *Server) getPlot(w http.ResponseWriter, r *http.Request) {
 		Cell:          p.Cell,
 		PhotoCount:    p.PhotoCount,
 		FirstSurveyor: p.FirstSurveyor,
+		ClaimedAt:     p.ClaimedAt.UTC(),
 		Photos:        make([]plotPhoto, 0, len(p.Photos)),
 	}
 	for _, ph := range p.Photos {
@@ -150,6 +152,7 @@ func (s *Server) getPlot(w http.ResponseWriter, r *http.Request) {
 }
 
 // coverage handles GET /api/coverage?res=5|6&cells=...
+// Only parents with at least one surveyed plot are returned.
 func (s *Server) coverage(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	res, err := strconv.Atoi(q.Get("res"))
@@ -171,6 +174,9 @@ func (s *Server) coverage(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		for _, c := range cells {
+			if counts[c] == 0 {
+				continue
+			}
 			total, err := h3.ChildrenCount(c, h3.PlotRes)
 			if err != nil {
 				slog.Error("children count", "cell", c, "err", err)

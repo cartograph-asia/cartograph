@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/paulmach/orb"
 
 	"github.com/cartograph-asia/cartograph/migrations"
 )
@@ -58,6 +59,23 @@ func testDB(t *testing.T) *DB {
 	return d
 }
 
+// testRegion adds a square region around Pattaya (100.5–101.5 E,
+// 12.5–13.5 N) so that ClaimPhoto finds a region.
+func testRegion(t *testing.T, d *DB) int {
+	t.Helper()
+	sq := orb.MultiPolygon{{{{100.5, 12.5}, {101.5, 12.5}, {101.5, 13.5}, {100.5, 13.5}, {100.5, 12.5}}}}
+	ids, err := d.UpsertRegions(context.Background(), []Region{{
+		OSMID: 1, Kind: "province", AdminLevel: 4, Country: "th", Slug: "chon-buri", NameEn: "Chon Buri", NameTh: "ชลบุรี", Boundary: sq, LandCells: 100,
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := d.ReloadRegions(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	return ids[0]
+}
+
 func newPhoto(cell, surveyor string, at time.Time) NewPhoto {
 	id := uuid.New()
 	return NewPhoto{
@@ -69,9 +87,10 @@ func newPhoto(cell, surveyor string, at time.Time) NewPhoto {
 
 func TestClaimAndRead(t *testing.T) {
 	d := testDB(t)
+	testRegion(t, d)
 	ctx := context.Background()
 	t0 := time.Date(2026, 11, 1, 10, 0, 0, 0, time.UTC)
-	cell := "88651a2b2dfffff"
+	cell := "88658bd11dfffff"
 
 	p1 := newPhoto(cell, "Ada", t0)
 	taken := t0.Add(-time.Hour)
@@ -96,11 +115,11 @@ func TestClaimAndRead(t *testing.T) {
 		t.Fatalf("photos: %+v", p.Photos)
 	}
 
-	if _, err := d.Plot(ctx, "88651a2b2bfffff"); err != ErrNotFound {
+	if _, err := d.Plot(ctx, "88658bd157fffff"); err != ErrNotFound {
 		t.Fatalf("blank plot: %v", err)
 	}
 
-	list, err := d.Plots(ctx, []string{cell, "88651a2b2bfffff"})
+	list, err := d.Plots(ctx, []string{cell, "88658bd157fffff"})
 	if err != nil || len(list) != 1 || list[0].PhotoCount != 2 || list[0].ThumbKey != p1.KeyThumb {
 		t.Fatalf("plots: %+v %v", list, err)
 	}
@@ -113,8 +132,9 @@ func TestClaimAndRead(t *testing.T) {
 
 func TestConcurrentClaimsSinglePlot(t *testing.T) {
 	d := testDB(t)
+	testRegion(t, d)
 	ctx := context.Background()
-	cell := "88651a2b2dfffff"
+	cell := "88658bd11dfffff"
 	const n = 10
 	var wg sync.WaitGroup
 	results := make(chan bool, n)

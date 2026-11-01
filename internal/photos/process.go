@@ -13,10 +13,12 @@ import (
 )
 
 const (
-	LargeSide    = 2000
-	LargeQuality = 85
-	ThumbSide    = 480
-	ThumbQuality = 80
+	LargeSide     = 2000
+	LargeQuality  = 85
+	MediumSide    = 1200
+	MediumQuality = 85
+	ThumbSide     = 480
+	ThumbQuality  = 80
 
 	// MaxPixels guards against decompression bombs. A 48 MP phone photo is
 	// about 49 million pixels.
@@ -30,13 +32,14 @@ var ErrInvalidImage = errors.New("the file could not be read as an image")
 // Variants are the encoded images that get stored for one photo.
 type Variants struct {
 	Large       []byte
+	Medium      []byte // photo pages and share images
 	Thumb       []byte
-	LargeWidth  int
+	LargeWidth  int // stored in the DB; medium's size is derived from it
 	LargeHeight int
 }
 
 // Process decodes b (JPEG or PNG), applies the EXIF orientation and returns
-// the large and thumb JPEG variants. Re-encoding drops all metadata.
+// the large, medium and thumb JPEG variants. Re-encoding drops all metadata.
 func Process(b []byte) (*Variants, error) {
 	if _, err := Sniff(b); err != nil {
 		return nil, err
@@ -55,14 +58,19 @@ func Process(b []byte) (*Variants, error) {
 		return nil, ErrInvalidImage
 	}
 
-	// Resize large from the original, thumb from large: decoding once and
-	// never holding more than one full-size image keeps memory in check.
+	// Resize large from the original, medium from large and thumb from
+	// medium: decoding once and never holding more than one full-size image
+	// keeps memory in check.
 	large := flatten(imaging.Fit(img, LargeSide, LargeSide, imaging.Lanczos))
 	img = nil
-	thumb := imaging.Fit(large, ThumbSide, ThumbSide, imaging.Lanczos)
+	medium := imaging.Fit(large, MediumSide, MediumSide, imaging.Lanczos)
+	thumb := imaging.Fit(medium, ThumbSide, ThumbSide, imaging.Lanczos)
 
 	v := &Variants{LargeWidth: large.Bounds().Dx(), LargeHeight: large.Bounds().Dy()}
 	if v.Large, err = encode(large, LargeQuality); err != nil {
+		return nil, err
+	}
+	if v.Medium, err = encode(medium, MediumQuality); err != nil {
 		return nil, err
 	}
 	if v.Thumb, err = encode(thumb, ThumbQuality); err != nil {

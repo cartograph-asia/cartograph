@@ -137,7 +137,7 @@ func (s *Server) createPhoto(w http.ResponseWriter, r *http.Request) {
 	id := uuid.New()
 	now := s.now().UTC()
 	prefix := fmt.Sprintf("photos/%04d/%02d/%s", now.Year(), int(now.Month()), id)
-	keyLarge, keyThumb := prefix+"_large.jpg", prefix+"_thumb.jpg"
+	keyLarge, keyMedium, keyThumb := prefix+"_large.jpg", prefix+"_medium.jpg", prefix+"_thumb.jpg"
 
 	ctx := r.Context()
 	if err := s.store.Put(ctx, keyLarge, "image/jpeg", bytes.NewReader(variants.Large)); err != nil {
@@ -145,8 +145,13 @@ func (s *Server) createPhoto(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not store photo")
 		return
 	}
+	if err := s.store.Put(ctx, keyMedium, "image/jpeg", bytes.NewReader(variants.Medium)); err != nil {
+		slog.Error("store photo", "key", keyMedium, "err", err, "orphaned_keys", []string{keyLarge})
+		writeError(w, http.StatusInternalServerError, "could not store photo")
+		return
+	}
 	if err := s.store.Put(ctx, keyThumb, "image/jpeg", bytes.NewReader(variants.Thumb)); err != nil {
-		slog.Error("store photo", "key", keyThumb, "err", err, "orphaned_keys", []string{keyLarge})
+		slog.Error("store photo", "key", keyThumb, "err", err, "orphaned_keys", []string{keyLarge, keyMedium})
 		writeError(w, http.StatusInternalServerError, "could not store photo")
 		return
 	}
@@ -160,14 +165,22 @@ func (s *Server) createPhoto(w http.ResponseWriter, r *http.Request) {
 		Parent6:    parent6,
 		Surveyor:   surveyor,
 		KeyLarge:   keyLarge,
+		KeyMedium:  keyMedium,
 		KeyThumb:   keyThumb,
+		Width:      variants.LargeWidth,
+		Height:     variants.LargeHeight,
 		Lat:        lat,
 		Lng:        lng,
 		TakenAt:    meta.TakenAt,
 		UploadedAt: now,
 	})
+	if errors.Is(err, db.ErrOutsideRegions) {
+		slog.Info("photo outside every region", "cell", cell, "orphaned_keys", []string{keyLarge, keyMedium, keyThumb})
+		writeError(w, http.StatusBadRequest, "this photo was taken outside the area Cartograph covers so far (Thailand)")
+		return
+	}
 	if err != nil {
-		slog.Error("claim photo", "err", err, "orphaned_keys", []string{keyLarge, keyThumb})
+		slog.Error("claim photo", "err", err, "orphaned_keys", []string{keyLarge, keyMedium, keyThumb})
 		writeError(w, http.StatusInternalServerError, "could not save photo")
 		return
 	}

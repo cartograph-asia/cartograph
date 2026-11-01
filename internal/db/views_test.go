@@ -1,0 +1,334 @@
+package db_test
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/paulmach/orb"
+
+	"github.com/cartograph-asia/cartograph/internal/db"
+	"github.com/cartograph-asia/cartograph/internal/h3"
+	"github.com/cartograph-asia/cartograph/internal/importer"
+	"github.com/cartograph-asia/cartograph/internal/views"
+)
+
+var t0 = time.Date(2026, 11, 1, 9, 0, 0, 0, time.UTC)
+
+// fixtureDB is a database with the Pattaya fixture imported.
+func fixtureDB(t *testing.T) *db.DB {
+	t.Helper()
+	d := db.NewTestDB(t)
+	ctx := context.Background()
+	osmPath, waterPath := importer.Fixture()
+	st, err := importer.Regions(ctx, d, importer.RegionOptions{PBF: osmPath, Water: waterPath, BBox: importer.FixtureBBox})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Regions != 1 || st.LandCells < 200 || st.LandCells > 2000 {
+		t.Fatalf("regions: %+v", st)
+	}
+	ps, err := importer.Places(ctx, d, importer.PlaceOptions{PBF: osmPath, BBox: importer.FixtureBBox})
+	if err != nil || ps.Places < 3 {
+		t.Fatalf("places: %+v %v", ps, err)
+	}
+	return d
+}
+
+type world struct {
+	d         *db.DB
+	surveyors map[string]uuid.UUID
+	photos    []uuid.UUID // in upload order
+}
+
+func (w *world) surveyor(t *testing.T, name string, joined time.Time) {
+	t.Helper()
+	id := uuid.New()
+	_, err := w.d.Pool.Exec(context.Background(),
+		`insert into surveyors (id, name, email, joined_at) values ($1, $2, $3, $4)`, id, name, strings.ToLower(name)+"@example.test", joined)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.surveyors[name] = id
+}
+
+func (w *world) claim(t *testing.T, name string, lat, lng float64, at time.Time) (string, bool) {
+	t.Helper()
+	cell, err := h3.CellFromLatLng(lat, lng, h3.PlotRes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p5, _ := h3.Parent(cell, 5)
+	p6, _ := h3.Parent(cell, 6)
+	id := uuid.New()
+	key := fmt.Sprintf("photos/%s/%s", at.Format("2006/01"), id)
+	claimed, err := w.d.ClaimPhoto(context.Background(), db.NewPhoto{
+		ID: id, Cell: cell, Parent5: p5, Parent6: p6, Surveyor: name, SurveyorID: w.surveyors[name],
+		KeyLarge: key + "_large.jpg", KeyMedium: key + "_medium.jpg", KeyThumb: key + "_thumb.jpg",
+		Width: 2000, Height: 1500, Lat: lat, Lng: lng, UploadedAt: at,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.photos = append(w.photos, id)
+	return cell, claimed
+}
+
+// Points in the fixture: Pattaya Beach, Walking Street, Nong Prue, Jomtien.
+var (
+	beach   = [2]float64{12.9346, 100.8840}
+	walking = [2]float64{12.9270, 100.8720}
+	nongPru = [2]float64{12.9442, 100.9397}
+	jomtien = [2]float64{12.8870, 100.8760}
+)
+
+func newWorld(t *testing.T) *world {
+	w := &world{d: fixtureDB(t), surveyors: map[string]uuid.UUID{}}
+	w.surveyor(t, "adrian", t0.Add(-40*24*time.Hour))
+	w.surveyor(t, "Somchai-K", t0.Add(-10*24*time.Hour))
+	w.surveyor(t, "no-photos", t0.Add(-time.Hour))
+	w.claim(t, "adrian", beach[0], beach[1], t0.Add(-35*24*time.Hour))    // 0 claims beach, outside 30 days
+	w.claim(t, "adrian", walking[0], walking[1], t0.Add(-5*24*time.Hour)) // 1 claims walking street
+	w.claim(t, "Somchai-K", beach[0], beach[1], t0.Add(-3*24*time.Hour))  // 2
+	w.claim(t, "Somchai-K", nongPru[0], nongPru[1], t0.Add(-2*time.Hour)) // 3 claims nong prue
+	w.claim(t, "adrian", beach[0], beach[1], t0.Add(-time.Hour))          // 4
+	w.claim(t, "adrian", jomtien[0], jomtien[1], t0.Add(-30*time.Minute)) // 5 claims jomtien
+	return w
+}
+
+func TestClaimSetsLocation(t *testing.T) {
+	w := newWorld(t)
+	ctx := context.Background()
+	var region, claimed int
+	var place string
+	var last time.Time
+	cell, _ := h3.CellFromLatLng(beach[0], beach[1], h3.PlotRes)
+	err := w.d.Pool.QueryRow(ctx, `select pl.region_id, pl.place_name, r.claimed_cells, r.last_surveyed_at
+		from plots pl join regions r on r.id = pl.region_id where pl.cell = $1`, cell).Scan(&region, &place, &claimed, &last)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if place != "Pattaya" || claimed != 4 || !last.Equal(t0.Add(-30*time.Minute)) {
+		t.Fatalf("place %q claimed %d last %v", place, claimed, last)
+	}
+	var firstID uuid.UUID
+	if err := w.d.Pool.QueryRow(ctx, `select first_surveyor_id from plots where cell = $1`, cell).Scan(&firstID); err != nil || firstID != w.surveyors["adrian"] {
+		t.Fatalf("first surveyor %v %v", firstID, err)
+	}
+
+	// Bangkok is outside the fixture's regions.
+	_, err = w.d.ClaimPhoto(ctx, db.NewPhoto{ID: uuid.New(), Cell: "8864a4b161fffff", Surveyor: "adrian", KeyLarge: "l", KeyThumb: "t", UploadedAt: t0})
+	if !errors.Is(err, db.ErrOutsideRegions) {
+		t.Fatalf("outside: %v", err)
+	}
+
+	// A re-import keeps the counters right.
+	osmPath, waterPath := importer.Fixture()
+	if _, err := importer.Regions(ctx, w.d, importer.RegionOptions{PBF: osmPath, Water: waterPath, BBox: importer.FixtureBBox}); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.d.Pool.QueryRow(ctx, `select count(*), sum(claimed_cells) from regions`).Scan(&region, &claimed); err != nil || region != 1 || claimed != 4 {
+		t.Fatalf("after re-import: %d regions, %d claimed, %v", region, claimed, err)
+	}
+}
+
+func TestBackfill(t *testing.T) {
+	d := db.NewTestDB(t)
+	ctx := context.Background()
+	// A prototype plot claimed before any import.
+	cell, _ := h3.CellFromLatLng(beach[0], beach[1], h3.PlotRes)
+	id := uuid.New()
+	if _, err := d.Pool.Exec(ctx, `insert into plots (cell, first_photo, first_surveyor, claimed_at, photo_count) values ($1, $2, 'proto', $3, 1)`, cell, id, t0); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.Pool.Exec(ctx, `insert into photos (id, cell, surveyor, key_large, key_thumb, lat, lng, uploaded_at) values ($1, $2, 'proto', 'l', 't', $3, $4, $5)`, id, cell, beach[0], beach[1], t0); err != nil {
+		t.Fatal(err)
+	}
+	osmPath, waterPath := importer.Fixture()
+	st, err := importer.Regions(ctx, d, importer.RegionOptions{PBF: osmPath, Water: waterPath, BBox: importer.FixtureBBox})
+	if err != nil || st.PlotsBackfilled != 1 {
+		t.Fatalf("regions %+v %v", st, err)
+	}
+	var place string
+	d.Pool.QueryRow(ctx, `select place_name from plots where cell = $1`, cell).Scan(&place)
+	if place != "Chon Buri" { // no places yet: the province
+		t.Fatalf("place before places import: %q", place)
+	}
+	if _, err := importer.Places(ctx, d, importer.PlaceOptions{PBF: osmPath, BBox: importer.FixtureBBox}); err != nil {
+		t.Fatal(err)
+	}
+	d.Pool.QueryRow(ctx, `select place_name from plots where cell = $1`, cell).Scan(&place)
+	if place != "Chon Buri" { // names are filled once, never replaced
+		t.Fatalf("place after places import: %q", place)
+	}
+	var claimed int
+	var last time.Time
+	d.Pool.QueryRow(ctx, `select claimed_cells, last_surveyed_at from regions`).Scan(&claimed, &last)
+	if claimed != 1 || !last.Equal(t0) {
+		t.Fatalf("counts %d %v", claimed, last)
+	}
+}
+
+func TestViews(t *testing.T) {
+	w := newWorld(t)
+	ctx := context.Background()
+	v := w.d.Views().WithNow(func() time.Time { return t0 })
+
+	h, err := v.Home(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h.Counters != (views.Counters{Plots: 4, Photos: 6, Surveyors: 3, Regions: 1}) {
+		t.Fatalf("counters %+v", h.Counters)
+	}
+	if len(h.Latest) != 6 || h.Latest[0].ID != w.photos[5].String() || !h.Latest[0].FirstSurvey || h.Latest[1].FirstSurvey {
+		t.Fatalf("latest %+v", h.Latest)
+	}
+	it := h.Latest[0]
+	if it.Plot.Place == "" || it.Plot.Region != (views.RegionRef{Slug: "chon-buri", NameEn: "Chon Buri", NameTh: "ชลบุรี"}) ||
+		it.Surveyor.Name != "adrian" || it.Keys.Medium == "" || it.Width != 2000 || !it.UploadedAt.Equal(t0.Add(-30*time.Minute)) {
+		t.Fatalf("item %+v", it)
+	}
+	// No featured row: fallback to the newest first survey.
+	if h.Featured == nil || h.Featured.Editorial || h.Featured.Photo.ID != w.photos[5].String() {
+		t.Fatalf("featured fallback %+v", h.Featured)
+	}
+	if len(h.Regions) != 1 || h.Regions[0].Coverage.Claimed != 4 || h.Regions[0].Coverage.Land < 200 {
+		t.Fatalf("regions %+v", h.Regions)
+	}
+	top := h.Regions[0].TopSurveyors // last 30 days: adrian 3, Somchai-K 2
+	if len(top) != 2 || top[0].Surveyor.Name != "adrian" || top[0].Photos != 3 || top[0].Plots != 2 || top[1].Photos != 2 {
+		t.Fatalf("top %+v", top)
+	}
+	if len(h.NewSurveyors) != 2 || h.NewSurveyors[0].Surveyor.Name != "Somchai-K" || h.NewSurveyors[0].FirstPhoto.ID != w.photos[2].String() {
+		t.Fatalf("new surveyors %+v", h.NewSurveyors)
+	}
+
+	// Editorial featured photo.
+	if _, err := w.d.Pool.Exec(ctx, `insert into featured (photo_id, body, starts_at) values ($1, 'Second Road at six.', $2)`, w.photos[2], t0.Add(-time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.d.Pool.Exec(ctx, `insert into featured (photo_id, body, starts_at) values ($1, 'future', $2)`, w.photos[0], t0.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if h, err = v.Home(ctx); err != nil || !h.Featured.Editorial || h.Featured.Photo.ID != w.photos[2].String() || h.Featured.Text != "Second Road at six." {
+		t.Fatalf("featured %+v %v", h.Featured, err)
+	}
+
+	l, err := v.Latest(ctx, 0)
+	if err != nil || len(l.Photos) != 6 || l.Pagination.Page != 1 || l.Canonical != "/latest" {
+		t.Fatalf("latest %+v %v", l, err)
+	}
+	if _, err := v.Latest(ctx, 2); !errors.Is(err, views.ErrNotFound) {
+		t.Fatalf("latest page 2: %v", err)
+	}
+
+	sl, err := v.Surveyors(ctx, 1)
+	if err != nil || len(sl.Surveyors) != 3 || sl.Surveyors[0].Surveyor.Name != "no-photos" || sl.Surveyors[0].LastPhoto != nil ||
+		sl.Surveyors[2].Plots != 3 || sl.Surveyors[2].Photos != 4 || sl.Surveyors[2].LastPhoto.ID != w.photos[5].String() {
+		t.Fatalf("surveyors %+v %v", sl, err)
+	}
+
+	// A country row is reachable by slug but never listed as a province.
+	if _, err := w.d.UpsertRegions(ctx, []db.Region{{OSMID: 2067731, Kind: "country", AdminLevel: 2, Country: "th", Slug: "thailand",
+		NameEn: "Thailand", Boundary: orb.MultiPolygon{{{{97, 5}, {106, 5}, {106, 21}, {97, 21}, {97, 5}}}}}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.d.ReloadRegions(ctx); err != nil {
+		t.Fatal(err)
+	}
+	rl, err := v.Regions(ctx)
+	if err != nil || len(rl.Regions) != 1 || rl.Regions[0].Region.Slug != "chon-buri" {
+		t.Fatalf("regions %+v %v", rl, err)
+	}
+	if c, err := v.Region(ctx, "thailand", 1); err != nil || c.Region.NameEn != "Thailand" {
+		t.Fatalf("country page %+v %v", c, err)
+	}
+
+	s, err := v.Surveyor(ctx, "ADRIAN", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Profile.Name != "adrian" || s.Stats != (views.SurveyorStats{Plots: 3, Photos: 4, Regions: 1}) || len(s.PlotCells) != 3 ||
+		s.Bounds == nil || len(s.Photos) != 4 || s.Canonical != "/surveyor/adrian" || s.Feed != "/surveyor/adrian.rss" {
+		t.Fatalf("surveyor %+v", s)
+	}
+	if _, err := v.Surveyor(ctx, "nobody", 1); !errors.Is(err, views.ErrNotFound) {
+		t.Fatalf("unknown surveyor: %v", err)
+	}
+
+	beachCell, _ := h3.CellFromLatLng(beach[0], beach[1], h3.PlotRes)
+	p, err := v.Plot(ctx, strings.ToUpper(beachCell))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !p.Surveyed || p.PhotoCount != 3 || len(p.Photos) != 3 || p.Photos[0].ID != w.photos[0].String() ||
+		p.FirstSurveyor.Name != "adrian" || p.Plot.Place != "Pattaya" || len(p.Neighbours) != 6 || p.Lat == 0 || p.NoIndex {
+		t.Fatalf("plot %+v", p)
+	}
+	if p.Title != "Pattaya, Chon Buri" || strings.Contains(p.Description, beachCell) {
+		t.Fatalf("plot meta %q %q", p.Title, p.Description)
+	}
+	blank, err := v.Plot(ctx, p.Neighbours[0].Cell)
+	if err != nil || blank.Surveyed || !blank.NoIndex || blank.Plot.Place == "" || blank.Plot.Region.Slug != "chon-buri" {
+		t.Fatalf("blank plot %+v %v", blank, err)
+	}
+	for _, bad := range []string{"nonsense", "8864a4b161fffff" /* Bangkok, no region */, "85658bd3fffffff" /* res 5 */} {
+		if _, err := v.Plot(ctx, bad); !errors.Is(err, views.ErrNotFound) {
+			t.Errorf("plot %s: %v", bad, err)
+		}
+	}
+
+	ph, err := v.Photo(ctx, w.photos[2].String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ph.Position != 2 || ph.Count != 3 || ph.Prev.ID != w.photos[0].String() || ph.Next.ID != w.photos[4].String() ||
+		ph.Licence != views.CCBYSA4 || ph.OG.ImageKey != ph.Photo.Keys.Medium || ph.OG.ImageWidth != 1200 || ph.OG.ImageHeight != 900 {
+		t.Fatalf("photo %+v", ph)
+	}
+	if first, err := v.Photo(ctx, w.photos[0].String()); err != nil || first.Prev != nil || !first.Photo.FirstSurvey {
+		t.Fatalf("first photo %+v %v", first, err)
+	}
+	if _, err := v.Photo(ctx, "not-a-uuid"); !errors.Is(err, views.ErrNotFound) {
+		t.Fatal(err)
+	}
+	if _, err := v.Photo(ctx, uuid.NewString()); !errors.Is(err, views.ErrNotFound) {
+		t.Fatal(err)
+	}
+
+	r, err := v.Region(ctx, "Chon-Buri", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Counters.Plots != 4 || r.Counters.Photos != 6 || r.Counters.Surveyors != 2 || len(r.Latest) != 6 ||
+		len(r.ActiveRecent) != 2 || r.ActiveAllTime[0].Photos != 4 || r.LastSurveyedAt == nil || r.Bounds.MinLat == 0 || r.Feed != "/region/chon-buri.rss" {
+		t.Fatalf("region %+v", r)
+	}
+	if _, err := v.Region(ctx, "atlantis", 1); !errors.Is(err, views.ErrNotFound) {
+		t.Fatal(err)
+	}
+
+	refs, err := v.RegionRefs(ctx)
+	if err != nil || len(refs) != 1 || refs[0].Slug != "chon-buri" {
+		t.Fatalf("refs %+v %v", refs, err)
+	}
+
+	for name, f := range map[string]func() (*views.Feed, error){
+		"latest":   func() (*views.Feed, error) { return v.LatestFeed(ctx) },
+		"region":   func() (*views.Feed, error) { return v.RegionFeed(ctx, "chon-buri") },
+		"surveyor": func() (*views.Feed, error) { return v.SurveyorFeed(ctx, "somchai-k") },
+	} {
+		fd, err := f()
+		if err != nil || len(fd.Items) == 0 || !fd.Updated.Equal(fd.Items[0].UploadedAt) || fd.Title == "" {
+			t.Errorf("%s feed %+v %v", name, fd, err)
+		}
+	}
+	if _, err := v.SurveyorFeed(ctx, "nobody"); !errors.Is(err, views.ErrNotFound) {
+		t.Fatal(err)
+	}
+}

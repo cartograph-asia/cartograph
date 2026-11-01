@@ -16,12 +16,37 @@ type NewPhoto struct {
 	Cell       string // res-8 plot
 	Parent5    string
 	Parent6    string
-	Surveyor   string
+	Surveyor   string    // name as typed or the account's name; kept in photos.surveyor
+	SurveyorID uuid.UUID // account; uuid.Nil stores null
 	KeyLarge   string
+	KeyMedium  string // empty stores null
 	KeyThumb   string
+	Width      int // of the large variant; 0 stores null
+	Height     int
 	Lat, Lng   float64
 	TakenAt    *time.Time
 	UploadedAt time.Time
+}
+
+func nullUUID(u uuid.UUID) *uuid.UUID {
+	if u == uuid.Nil {
+		return nil
+	}
+	return &u
+}
+
+func nullString(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}
+
+func nullInt(n int) *int {
+	if n == 0 {
+		return nil
+	}
+	return &n
 }
 
 // PlotSummary is one surveyed plot for the map layer.
@@ -53,29 +78,53 @@ type PlotDetail struct {
 }
 
 // ClaimPhoto records a survey in one transaction: it upserts the plot
-// (first_photo, first_surveyor and claimed_at are only set when the plot row
-// is new; photo_count is incremented) and inserts the photo. The plot is
-// written first because photos.cell references plots(cell). claimed reports
-// whether this photo created the plot.
+// (first_photo, first_surveyor(_id), claimed_at, region and place name are
+// only set when the plot row is new; photo_count is incremented), inserts the
+// photo and updates the region's claimed_cells and last_surveyed_at. The plot
+// is written first because photos.cell references plots(cell). claimed
+// reports whether this photo created the plot. A plot whose centre is outside
+// every region is rejected with ErrOutsideRegions.
 func (d *DB) ClaimPhoto(ctx context.Context, p NewPhoto) (claimed bool, err error) {
+	loc, err := d.locatePlot(ctx, d.Pool, p.Cell)
+	if err != nil {
+		if errors.Is(err, ErrOutsideRegions) {
+			return false, err
+		}
+		return false, fmt.Errorf("db: claim photo: %w", err)
+	}
 	err = pgx.BeginFunc(ctx, d.Pool, func(tx pgx.Tx) error {
 		err := tx.QueryRow(ctx, `
-			insert into plots (cell, first_photo, first_surveyor, claimed_at, photo_count, parent5, parent6)
-			values ($1, $2, $3, $4, 1, $5, $6)
+			insert into plots (cell, first_photo, first_surveyor, first_surveyor_id, claimed_at, photo_count,
+			                   parent5, parent6, region_id, place_name, place_name_th)
+			values ($1, $2, $3, $4, $5, 1, $6, $7, $8, $9, $10)
 			on conflict (cell) do update set photo_count = plots.photo_count + 1
 			returning (xmax = 0)`,
-			p.Cell, p.ID, p.Surveyor, p.UploadedAt, p.Parent5, p.Parent6,
+			p.Cell, p.ID, p.Surveyor, nullUUID(p.SurveyorID), p.UploadedAt, p.Parent5, p.Parent6,
+			loc.RegionID, loc.PlaceEn, loc.PlaceTh,
 		).Scan(&claimed)
 		if err != nil {
 			return fmt.Errorf("upsert plot: %w", err)
 		}
 		_, err = tx.Exec(ctx, `
-			insert into photos (id, cell, surveyor, key_large, key_thumb, lat, lng, taken_at, uploaded_at)
-			values ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-			p.ID, p.Cell, p.Surveyor, p.KeyLarge, p.KeyThumb, p.Lat, p.Lng, p.TakenAt, p.UploadedAt,
+			insert into photos (id, cell, surveyor, surveyor_id, key_large, key_medium, key_thumb,
+			                    width, height, lat, lng, taken_at, uploaded_at)
+			values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+			p.ID, p.Cell, p.Surveyor, nullUUID(p.SurveyorID), p.KeyLarge, nullString(p.KeyMedium), p.KeyThumb,
+			nullInt(p.Width), nullInt(p.Height), p.Lat, p.Lng, p.TakenAt, p.UploadedAt,
 		)
 		if err != nil {
 			return fmt.Errorf("insert photo: %w", err)
+		}
+		// The plot's stored region: for a plot claimed before the import it
+		// may be null until cmd/regions backfills it.
+		_, err = tx.Exec(ctx, `
+			update regions set
+			  claimed_cells = claimed_cells + $2::int,
+			  last_surveyed_at = greatest(last_surveyed_at, $3)
+			where id = (select region_id from plots where cell = $1)`,
+			p.Cell, map[bool]int{true: 1}[claimed], p.UploadedAt)
+		if err != nil {
+			return fmt.Errorf("update region: %w", err)
 		}
 		return nil
 	})

@@ -36,12 +36,19 @@
     "admin-invites": "/admin/invites?as=admin",
     "admin-log": "/admin/log?as=admin",
     "signin-again": "/admin/sign-in-again-preview?as=admin",
-    "photo-admin": "/photo/00000000-0000-4000-8000-000000000009?as=admin"
+    "photo-admin": "/photo/00000000-0000-4000-8000-000000000009?as=admin",
+    "surveyor-display": "/surveyor/somchai-k",
+    "surveyor-thai": "/surveyor/ploy88",
+    "photo-display": "/photo/00000000-0000-4000-8000-000000000028",
+    "photo-thai": "/photo/00000000-0000-4000-8000-000000000030",
+    "choose-name-display": "/signin/name",
+    "settings-display": "/settings"
   },
   "sets": {
     "round-1": ["home"],
     "round-2": ["home", "latest", "surveyors", "regions", "surveyor", "plot", "plot-blank", "photo", "region", "about", "about-plots", "principles", "licence", "signin", "check-email", "choose-name", "settings", "not-found"],
     "round-3": ["map", "map-plots", "map-panel", "plot-smallmap", "region-smallmap"],
-    "admin": ["admin-overview", "admin-photos", "admin-photo", "admin-photo-hidden", "admin-confirm", "admin-featured", "admin-surveyors", "admin-surveyor", "admin-surveyor-blocked", "admin-places", "admin-invites", "admin-log", "signin-again", "photo-admin"]
+    "admin": ["admin-overview", "admin-photos", "admin-photo", "admin-photo-hidden", "admin-confirm", "admin-featured", "admin-surveyors", "admin-surveyor", "admin-surveyor-blocked", "admin-places", "admin-invites", "admin-log", "signin-again", "photo-admin"],
+    "display-name": ["home", "surveyors", "surveyor-display", "surveyor-thai", "photo-display", "photo-thai", "choose-name-display", "settings-display"]
   }
 }

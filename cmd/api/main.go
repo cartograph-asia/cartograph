@@ -1,5 +1,5 @@
-// Command api is the Cartograph backend: a JSON API for plots, photos and
-// coverage. It is configured entirely through environment variables
+// Command api is the Cartograph backend: the server-rendered pages, magic-link
+// sign-in and the JSON API for plots, photos and coverage. It is configured entirely through environment variables
 // (see deploy/.env.example).
 //
 // "api -healthcheck" probes GET /healthz on API_ADDR and exits 0 or 1, so the
@@ -21,9 +21,13 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+
 	"github.com/cartograph-asia/cartograph/internal/api"
+	"github.com/cartograph-asia/cartograph/internal/auth"
 	"github.com/cartograph-asia/cartograph/internal/db"
 	"github.com/cartograph-asia/cartograph/internal/storage"
+	"github.com/cartograph-asia/cartograph/internal/web"
 	"github.com/cartograph-asia/cartograph/migrations"
 )
 
@@ -76,9 +80,13 @@ func run() error {
 	}
 	checkBucket(ctx, store, cfg.s3.Bucket)
 
+	handler, err := routes(cfg, database, store)
+	if err != nil {
+		return err
+	}
 	srv := &http.Server{
 		Addr:              cfg.addr,
-		Handler:           api.New(database, store, api.Config{MaxUploadMB: cfg.maxUploadMB}).Handler(),
+		Handler:           handler,
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       2 * time.Minute, // large uploads on slow mobile connections
 		WriteTimeout:      2 * time.Minute,
@@ -102,6 +110,37 @@ func run() error {
 		return srv.Shutdown(sctx)
 	}
 	return nil
+}
+
+// routes puts the pages, the sign-in routes and the JSON API on one router.
+// The auth middleware wraps all of them, so the upload handler sees the
+// signed-in Surveyor and every page can show "Sign in" or the name.
+func routes(cfg config, database *db.DB, store storage.Store) (http.Handler, error) {
+	acfg, err := auth.ConfigFromEnv(os.Getenv)
+	if err != nil {
+		return nil, err
+	}
+	rd, err := web.NewRenderer(web.Config{BaseURL: acfg.BaseURL, ImgBaseURL: cfg.s3.BaseURL})
+	if err != nil {
+		return nil, err
+	}
+	a := auth.New(acfg, auth.NewPGStore(database.Pool), auth.NewMailer(acfg.SMTP), rd.RenderFunc(), database.Views())
+	pages := web.NewHandlers(database.Views(), rd)
+	apiH := api.New(database, store, api.Config{MaxUploadMB: cfg.maxUploadMB}).Handler()
+
+	r := chi.NewRouter()
+	r.Use(a.Middleware)
+	// The JSON API keeps its own router, logging and JSON errors; chi
+	// prefers the static /api/me from the auth routes over this wildcard.
+	r.Handle("/api/*", apiH)
+	r.Handle("/healthz", apiH)
+	r.Group(func(r chi.Router) {
+		r.Use(api.Observe)
+		a.Routes(r)
+		pages.Routes(r)
+	})
+	r.NotFound(api.Observe(http.HandlerFunc(pages.NotFound)).ServeHTTP)
+	return r, nil
 }
 
 // probe requests /healthz from the server listening on addr.

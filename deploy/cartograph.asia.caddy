@@ -1,0 +1,89 @@
+# Caddy site for the production host: copy to /etc/caddy/sites/cartograph.asia.caddy (the host's
+# main Caddyfile imports /etc/caddy/sites/*.caddy), check with
+# `caddy validate --config /etc/caddy/Caddyfile` (it opens the log files, so run it as a user that
+# may write them), then: caddy reload --config /etc/caddy/Caddyfile
+#
+# The host Caddy does TLS, the public headers and the access log. Behind it, Cartograph's own Caddy
+# container (deploy/Caddyfile) does the routing (/map, /tiles, /img, the rest to the api) and binds
+# 127.0.0.1:8070 (HTTP_PORT in .env).
+
+# Headers on every response of cartograph.asia, also on the placeholder below. The name is global
+# across all site files on the host, hence the prefix.
+(cartograph_headers) {
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Frame-Options DENY
+		X-Content-Type-Options nosniff
+		# Account and admin pages set their own no-referrer; "?" keeps it.
+		?Referrer-Policy strict-origin-when-cross-origin
+		# The map's "my location" button is the one feature that needs a permission.
+		Permissions-Policy "geolocation=(self), camera=(), microphone=(), payment=(), usb=(), browsing-topics=()"
+		-Server
+		-Via
+
+		# TODO(deploy): enable once it has been tested against the running app (/, a plot page with
+		# its small map, /map with an upload, the admin pages). Photos (/img) and tiles (/tiles) are
+		# served from this origin; MapLibre needs blob: for its workers.
+		# Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; worker-src 'self' blob:; child-src blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+	}
+}
+
+www.cartograph.asia {
+	import cartograph_headers
+	redir https://cartograph.asia{uri} permanent
+}
+
+cartograph.asia {
+	import cartograph_headers
+
+	# Access log, JSON, rolled daily (and at 20 MiB), kept 7 days, readable by the user that runs
+	# the Matomo import. The token of a magic link (/signin/link?token=…) signs its holder in for
+	# 15 minutes and must not reach the log; Caddy already leaves cookies and credentials out.
+	log {
+		output file /var/log/caddy/cartograph-access.log {
+			mode 0644
+			roll_interval 24h
+			roll_size 20MiB
+			roll_uncompressed
+			roll_keep 20
+			roll_keep_for 168h
+		}
+		format filter {
+			wrap json
+			fields {
+				request>uri query {
+					replace token REDACTED
+				}
+			}
+		}
+	}
+
+	# The base map archive is read in byte ranges and its tiles are compressed already.
+	@compressible not path /tiles/*
+	encode @compressible zstd gzip
+
+	reverse_proxy 127.0.0.1:8070
+
+	# While the stack is not running (the upstream refuses the connection, 502), a placeholder
+	# answers, and robots.txt keeps search engines out. Responses of the running app, 503 included,
+	# pass through unchanged.
+	handle_errors 502 {
+		import cartograph_headers
+		header X-Robots-Tag "noindex, nofollow"
+		header Cache-Control no-store
+
+		handle /robots.txt {
+			header Content-Type "text/plain; charset=utf-8"
+			respond "User-agent: *
+Disallow: /
+" 200
+		}
+
+		handle {
+			header Content-Type "text/plain; charset=utf-8"
+			header Retry-After 3600
+			respond "cartograph.asia – coming soon
+" 503
+		}
+	}
+}

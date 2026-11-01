@@ -56,7 +56,7 @@ func TestSchema(t *testing.T) {
 	mustOK("insert region", d.Pool.QueryRow(ctx, `
 		insert into regions (osm_id, admin_level, country, slug, name_en, name_th, boundary,
 		                     min_lat, min_lng, max_lat, max_lng, land_cells)
-		values (1, 4, 'th', 'chon-buri', 'Chon Buri', 'ชลบุรี', '{"type":"Polygon","coordinates":[]}',
+		values (1, 4, 'th', 'chon-buri', 'Chon Buri', 'ชลบุรี', '{"type":"Polygon","coordinates":[[[100.68,12.5],[101.73,12.5],[101.73,13.59],[100.68,13.59],[100.68,12.5]]]}',
 		        12.5, 100.68, 13.59, 101.73, 5921)
 		returning id`).Scan(&region))
 	mustFail("bad slug", "regions_slug_check", exec(`

@@ -153,17 +153,17 @@ func TestBackfill(t *testing.T) {
 	if err != nil || st.PlotsBackfilled != 1 {
 		t.Fatalf("regions %+v %v", st, err)
 	}
-	var place string
+	var place *string
 	d.Pool.QueryRow(ctx, `select place_name from plots where cell = $1`, cell).Scan(&place)
-	if place != "Chon Buri" { // no places yet: the province
-		t.Fatalf("place before places import: %q", place)
+	if place != nil { // no places yet: left empty, the pages show the province
+		t.Fatalf("place before places import: %q", *place)
 	}
 	if _, err := importer.Places(ctx, d, importer.PlaceOptions{PBF: osmPath, BBox: importer.FixtureBBox}); err != nil {
 		t.Fatal(err)
 	}
 	d.Pool.QueryRow(ctx, `select place_name from plots where cell = $1`, cell).Scan(&place)
-	if place != "Chon Buri" { // names are filled once, never replaced
-		t.Fatalf("place after places import: %q", place)
+	if place == nil || *place != "Pattaya" {
+		t.Fatalf("place after places import: %v", deref(place))
 	}
 	var claimed int
 	var last time.Time
@@ -331,4 +331,11 @@ func TestViews(t *testing.T) {
 	if _, err := v.SurveyorFeed(ctx, "nobody"); !errors.Is(err, views.ErrNotFound) {
 		t.Fatal(err)
 	}
+}
+
+func deref(s *string) string {
+	if s == nil {
+		return "<nil>"
+	}
+	return *s
 }

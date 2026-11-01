@@ -175,6 +175,7 @@ type PlotLocation struct {
 	Region   string  // region name_en
 	PlaceEn  string  // nearest place within PlaceRadiusKm, else the region's name
 	PlaceTh  *string // Thai name of the same; nil if unknown
+	Near     bool    // PlaceEn is an OSM place, not the region fallback
 	Lat, Lng float64 // cell centre
 }
 
@@ -199,10 +200,11 @@ func (d *DB) locatePlot(ctx context.Context, q querier, cell string) (*PlotLocat
 	loc := &PlotLocation{RegionID: id, Lat: lat, Lng: lng}
 	err = q.QueryRow(ctx, `
 		select r.name_en, coalesce(pl.name_en, r.name_en),
-		       case when pl.name_en is null then r.name_th else pl.name_th end
+		       case when pl.name_en is null then r.name_th else pl.name_th end,
+		       pl.name_en is not null
 		from regions r left join lateral (`+nearestPlaceSQL("$2::float8", "$3::float8")+`) pl on true
 		where r.id = $1`, id, lat, lng,
-	).Scan(&loc.Region, &loc.PlaceEn, &loc.PlaceTh)
+	).Scan(&loc.Region, &loc.PlaceEn, &loc.PlaceTh, &loc.Near)
 	if errors.Is(err, pgx.ErrNoRows) {
 		// The index is newer or older than the table; treat as outside.
 		return nil, ErrOutsideRegions
@@ -215,8 +217,10 @@ func (d *DB) locatePlot(ctx context.Context, q querier, cell string) (*PlotLocat
 
 // BackfillPlots sets region_id, place_name and place_name_th on plots that
 // lack them (claimed before the import, or before places were imported;
-// place names are only filled, never replaced). Plots outside every region
-// are left alone and counted in outside.
+// place names are only filled, never replaced). Only a real nearby place is
+// written: the region fallback would otherwise stick before cmd/places has
+// run, and the pages fall back to the region name anyway. Plots outside
+// every region are left alone and counted in outside.
 func (d *DB) BackfillPlots(ctx context.Context) (updated, outside int, err error) {
 	rows, err := d.Pool.Query(ctx, `select cell from plots where region_id is null or place_name is null order by cell`)
 	if err != nil {
@@ -235,11 +239,18 @@ func (d *DB) BackfillPlots(ctx context.Context) (updated, outside int, err error
 		if err != nil {
 			return updated, outside, err
 		}
+		var placeEn *string
+		placeTh := loc.PlaceTh
+		if loc.Near {
+			placeEn = &loc.PlaceEn
+		} else {
+			placeTh = nil
+		}
 		_, err = d.Pool.Exec(ctx, `
 			update plots set region_id = coalesce(region_id, $2),
 			  place_name_th = case when place_name is null then $4 else place_name_th end,
 			  place_name = coalesce(place_name, $3)
-			where cell = $1`, cell, loc.RegionID, loc.PlaceEn, loc.PlaceTh)
+			where cell = $1`, cell, loc.RegionID, placeEn, placeTh)
 		if err != nil {
 			return updated, outside, fmt.Errorf("db: backfill plot %s: %w", cell, err)
 		}

@@ -26,7 +26,7 @@ Stage names, so everyone means the same: *prototype* (done) → *alpha* (now: Ad
 - **Claimed / surveyed** – a plot with at least one photo. **Blank / unsurveyed** – no photo yet.
 - **First surveyor** – the member whose photo claimed the plot. Stored permanently.
 - **Coverage** – percentage of surveyed plots in an area.
-- **Wordmark** – the site's mark is `Cartograph.asia`: "Cartograph" in the display size, ".asia" set smaller (about 60 %, same baseline, muted ink) as a visible suffix, never dropped. It appears wherever the site stands as a mark: masthead, footer, `<title>`, `og:site_name`, feed titles (plain text there: "Cartograph.asia"). In running text the project is called **Cartograph** ("Cartograph divides the land …"). Never "Cartograph Asia" on the site itself; the social handles keep their own spelling.
+- **Wordmark** – the site's mark is `Cartograph.asia`: "Cartograph" in the display size, ".asia" set smaller (about 60 %, same baseline, muted ink) as a visible suffix, never dropped. It appears wherever the site stands as a mark: masthead, footer, `<title>`, `og:site_name`, feed titles, and the sender name and signature of e-mails (plain text there: "Cartograph.asia"). In running text the project is called **Cartograph** ("Cartograph divides the land …"). Never "Cartograph Asia" on the site itself; the social handles keep their own spelling.
 - **Plot name** – "{place}, {district} · {province} {number}", formatted only by `views.PlotRef.Name()`. The H3 index appears in links and a details line, never as a title.
 
 ## Architecture decisions (settled – do not re-open without asking)

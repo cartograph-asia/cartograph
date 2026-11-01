@@ -26,7 +26,7 @@ type SMTPConfig struct {
 	Port     int
 	User     string // empty: no SMTP AUTH
 	Password string
-	From     string // e.g. "Cartograph <hello@cartograph.asia>"
+	From     string // e.g. "Cartograph.asia <hello@cartograph.asia>"
 }
 
 // Mailer delivers magic links.
@@ -67,7 +67,7 @@ func signInBody(link string) string {
 		link + "\n\n" +
 		"It works once, within " + strconv.Itoa(int(LinkTTL/time.Minute)) + " minutes.\n" +
 		"If you did not ask for it, you can ignore this e-mail.\n\n" +
-		"Cartograph – a photo for every plot of land\n"
+		"Cartograph.asia – a photo for every plot of land\n"
 }
 
 // SendSignInLink sends the link to to.

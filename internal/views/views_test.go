@@ -65,3 +65,13 @@ func TestImageKeysBest(t *testing.T) {
 		t.Fatal("Best")
 	}
 }
+
+func TestCSRFContext(t *testing.T) {
+	ctx := context.Background()
+	if CSRFFrom(ctx) != "" {
+		t.Fatal("expected empty token")
+	}
+	if got := CSRFFrom(WithCSRF(ctx, "tok")); got != "tok" {
+		t.Fatalf("got %q", got)
+	}
+}

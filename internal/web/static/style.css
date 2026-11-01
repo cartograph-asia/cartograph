@@ -78,6 +78,9 @@ h1 .th { font-size: 0.6em; letter-spacing: 0; }
    after the dot (funcs.go heading). */
 .nb { white-space: nowrap; }
 .pv { display: inline-block; }
+/* Balancing would move the break of a plot name to "Pattaya, Bang" /
+   "Lamung · Chon Buri 2417"; the map panel's titles wrap plainly too. */
+h1:has(.nb) { text-wrap: wrap; }
 .note, .meta { color: var(--ink-muted); font-size: var(--step-meta); }
 .details { color: var(--ink-muted); font-size: var(--step-small); margin-top: var(--s-l); }
 .details code { font-size: inherit; }

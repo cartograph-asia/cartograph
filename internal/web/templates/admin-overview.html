@@ -1,0 +1,37 @@
+{{define "content" -}}
+{{template "admin-head" .}}
+<header class="head">
+<p class="kicker">Admin</p>
+<h1>Overview</h1>
+{{with .Counters}}<ul class="figures small">
+<li><a href="/admin/surveyors"><b>{{num .Surveyors}}</b> Surveyors, {{num .NewSurveyors}} new in 7 days</a></li>
+<li><a href="/admin/invites"><b>{{num .PendingInvites}}</b> {{if eq .PendingInvites 1}}invitation{{else}}invitations{{end}} pending</a></li>
+<li><a href="/admin/photos"><b>{{num .Photos24h}}</b> photos in 24 hours, {{num .Photos7d}} in 7 days</a></li>
+<li><b>{{num .Plots}}</b> plots surveyed</li>
+<li><a href="/admin/photos?hidden=1"><b>{{num .Hidden}}</b> hidden photos</a></li>
+<li><b>{{num .Blocked}}</b> blocked Surveyors</li>
+<li><b>{{num .Refusals7d}}</b> invitation-only mails in 7 days</li>
+</ul>{{end}}
+</header>
+<section class="block">
+<div class="head-row"><h2>Newest uploads</h2><a class="more" href="/admin/photos">All photos <span aria-hidden="true">→</span></a></div>
+{{if .Uploads}}{{template "admin-grid" .Uploads}}{{else}}<p class="note">No photos yet.</p>{{end}}
+</section>
+<section class="block">
+<div class="head-row"><h2>Sign-ins</h2><p class="note">{{count .LinksSent "link" "links"}} sent and {{num .LinksRedeemed}} redeemed in the last 24 hours</p></div>
+<div class="scroll"><table class="list">
+<thead><tr><th scope="col">Surveyor</th><th scope="col">E-mail</th><th scope="col">Signed in</th><th scope="col">Last seen</th></tr></thead>
+<tbody>
+{{- range .SignIns}}
+<tr><td>{{if .Surveyor}}<a href="/admin/surveyor/{{.Surveyor}}">{{.Surveyor}}</a>{{else}}<span class="note">no name yet</span>{{end}}</td><td>{{.Email}}</td><td class="nw">{{stamp .SignedInAt}}</td><td class="nw">{{when $.Now .LastSeen}}</td></tr>
+{{- else}}
+<tr><td colspan="4">Nobody is signed in.</td></tr>
+{{- end}}
+</tbody>
+</table></div>
+</section>
+<section class="block">
+<div class="head-row"><h2>Admin actions</h2><a class="more" href="/admin/log">The whole log <span aria-hidden="true">→</span></a></div>
+{{template "admin-actions" .Actions}}
+</section>
+{{- end}}

@@ -26,9 +26,38 @@ type rendered struct {
 }
 
 type fakeMailer struct {
-	mu    sync.Mutex
-	links map[string][]string
-	err   error
+	mu      sync.Mutex
+	links   map[string][]string // sign-in and invitation links by recipient
+	invites map[string][]string // invitation mails: "inviter|note"
+	notices map[string]int      // invitation-only notices
+	err     error
+}
+
+func (f *fakeMailer) SendInvitation(_ context.Context, to, inviter, note, link string, _ time.Duration) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.err != nil {
+		return f.err
+	}
+	if f.invites == nil {
+		f.invites = map[string][]string{}
+	}
+	f.links[to] = append(f.links[to], link)
+	f.invites[to] = append(f.invites[to], inviter+"|"+note)
+	return nil
+}
+
+func (f *fakeMailer) SendInvitationOnly(_ context.Context, to string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.err != nil {
+		return f.err
+	}
+	if f.notices == nil {
+		f.notices = map[string]int{}
+	}
+	f.notices[to]++
+	return nil
 }
 
 func (f *fakeMailer) SendSignInLink(_ context.Context, to, link string) error {
@@ -62,6 +91,7 @@ type env struct {
 	store  *memStore
 	mail   *fakeMailer
 	srv    *httptest.Server
+	router chi.Router
 	client *http.Client
 
 	mu      sync.Mutex
@@ -81,7 +111,8 @@ func newEnv(t *testing.T, baseURL string) *env {
 		w.WriteHeader(status)
 		_, _ = io.WriteString(w, page)
 	}
-	e.a = New(Config{BaseURL: baseURL}, e.store, e.mail, render,
+	e.a = New(Config{BaseURL: baseURL, Signup: SignupOpen, AdminMaxAge: 24 * time.Hour, InviteTTL: 7 * 24 * time.Hour,
+		Admins: map[string]bool{}, Contact: "hello@cartograph.asia"}, e.store, e.mail, render,
 		fakeRegions{{Slug: "chon-buri", NameEn: "Chon Buri"}, {Slug: "bangkok", NameEn: "Bangkok"}})
 	e.a.now = func() time.Time {
 		e.mu.Lock()
@@ -99,6 +130,7 @@ func newEnv(t *testing.T, baseURL string) *env {
 		}
 		_, _ = io.WriteString(w, "home:"+name)
 	})
+	e.router = r
 	e.srv = httptest.NewServer(r)
 	t.Cleanup(e.srv.Close)
 	jar, _ := cookiejar.New(nil)

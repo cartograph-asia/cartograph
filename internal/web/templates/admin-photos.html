@@ -1,0 +1,10 @@
+{{define "content" -}}
+{{template "admin-head" .}}
+<header class="head">
+<p class="kicker">Admin</p>
+<h1>{{if .HiddenOnly}}Hidden photos{{else}}Photos{{end}}{{with .Surveyor}} by {{.}}{{end}}</h1>
+<p class="note">{{count .Pagination.Total "photo" "photos"}}, newest first. {{if .HiddenOnly}}<a href="/admin/photos">Show all photos</a>{{else}}<a href="/admin/photos?hidden=1">Show only hidden photos</a>{{end}}{{if .Surveyor}} · <a href="/admin/photos">Everyone’s</a>{{end}}</p>
+</header>
+{{if .Photos}}{{template "admin-grid" .Photos}}{{else}}<p class="blank">No photos here.</p>{{end}}
+{{template "admin-pagination" .}}
+{{- end}}

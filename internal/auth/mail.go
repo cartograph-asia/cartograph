@@ -29,9 +29,15 @@ type SMTPConfig struct {
 	From     string // e.g. "cartograph.asia <hello@cartograph.asia>"
 }
 
-// Mailer delivers magic links.
+// Mailer delivers magic links, invitations and the invitation-only notice.
 type Mailer interface {
 	SendSignInLink(ctx context.Context, to, link string) error
+	// SendInvitation sends an admin's invitation: inviter is their
+	// Surveyor name, note their optional personal note, link a magic link.
+	SendInvitation(ctx context.Context, to, inviter, note, link string, ttl time.Duration) error
+	// SendInvitationOnly tells an address without an account or invitation
+	// that sign-up needs an invitation. It contains no link.
+	SendInvitationOnly(ctx context.Context, to string) error
 }
 
 // NewMailer returns an SMTP mailer, or the dev-mode logging mailer when
@@ -53,6 +59,18 @@ func (LogMailer) SendSignInLink(_ context.Context, to, link string) error {
 	return nil
 }
 
+// SendInvitation logs the invitation's link.
+func (LogMailer) SendInvitation(_ context.Context, to, inviter, _, link string, _ time.Duration) error {
+	slog.Info("invitation link (dev mode, not sent)", "to", to, "inviter", inviter, "link", link)
+	return nil
+}
+
+// SendInvitationOnly logs that the notice would be sent.
+func (LogMailer) SendInvitationOnly(_ context.Context, to string) error {
+	slog.Info("invitation-only notice (dev mode, not sent)", "to", to)
+	return nil
+}
+
 // SMTPMailer sends plain-text mail with net/smtp. STARTTLS is required
 // unless the server is on localhost.
 type SMTPMailer struct {
@@ -67,7 +85,74 @@ func signInBody(link string) string {
 		link + "\n\n" +
 		"It works once, within " + strconv.Itoa(int(LinkTTL/time.Minute)) + " minutes.\n" +
 		"If you did not ask for it, you can ignore this e-mail.\n\n" +
-		"cartograph.asia – a photo for every plot of land\n"
+		signature
+}
+
+const (
+	invitationSubject     = "You're invited to Cartograph"
+	invitationOnlySubject = "Cartograph is invitation-only for now"
+	signature             = "cartograph.asia – a photo for every plot of land\n"
+)
+
+func invitationBody(inviter, note, link, baseURL string, ttl time.Duration) string {
+	var b strings.Builder
+	b.WriteString("Hello,\n\n")
+	b.WriteString(inviter + " invited you to survey with Cartograph.\n\n")
+	if note != "" {
+		b.WriteString(note + "\n\n")
+	}
+	b.WriteString("Cartograph divides the land into plots of about 0.74 km² and asks for one photo of each. " +
+		"The first photo of a plot claims it for the Surveyor who took it.\n\n")
+	b.WriteString("Follow this link to sign in and choose your Surveyor name:\n\n" + link + "\n\n")
+	b.WriteString("The link works for " + days(ttl) + ". After that, sign in at " + baseURL + "/signin with this address.\n\n")
+	b.WriteString(signature)
+	return b.String()
+}
+
+func days(d time.Duration) string {
+	n := int(d.Round(time.Hour) / (24 * time.Hour))
+	switch {
+	case n == 1:
+		return "1 day"
+	case n > 1:
+		return strconv.Itoa(n) + " days"
+	}
+	return strconv.Itoa(int(d.Round(time.Hour)/time.Hour)) + " hours"
+}
+
+func invitationOnlyBody() string {
+	return "Hello,\n\n" +
+		"someone asked to sign in to Cartograph with this address.\n\n" +
+		"Cartograph is in an early test with a few invited Surveyors, so for now an account needs an invitation. " +
+		"Reply to this e-mail if you would like one.\n\n" +
+		"Nothing was created for this address. If you did not ask, you can ignore this e-mail.\n\n" +
+		signature
+}
+
+// SendInvitation sends an invitation to to.
+func (m *SMTPMailer) SendInvitation(ctx context.Context, to, inviter, note, link string, ttl time.Duration) error {
+	msg, err := buildMessage(m.cfg.From, to, invitationSubject, invitationBody(inviter, note, link, baseOf(link), ttl), time.Now())
+	if err != nil {
+		return err
+	}
+	return m.send(ctx, to, msg)
+}
+
+// baseOf is the origin of a magic link.
+func baseOf(link string) string {
+	if i := strings.Index(link, "/signin/link"); i > 0 {
+		return link[:i]
+	}
+	return link
+}
+
+// SendInvitationOnly sends the invitation-only notice to to.
+func (m *SMTPMailer) SendInvitationOnly(ctx context.Context, to string) error {
+	msg, err := buildMessage(m.cfg.From, to, invitationOnlySubject, invitationOnlyBody(), time.Now())
+	if err != nil {
+		return err
+	}
+	return m.send(ctx, to, msg)
 }
 
 // SendSignInLink sends the link to to.

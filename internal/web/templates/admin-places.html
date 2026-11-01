@@ -1,0 +1,42 @@
+{{define "content" -}}
+{{template "admin-head" .}}
+<header class="head">
+<p class="kicker">Admin</p>
+<h1>Place names</h1>
+<p class="note">Odd place names from OpenStreetMap and what to do with them. “Replace” names plots claimed from now on with the replacement; plots that already have the name keep it.</p>
+</header>
+{{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
+{{range $k, $o := .Overrides}}
+<section class="override">
+<h2>{{$o.Name}} <span class="note">{{$o.Kind}} · {{$o.Country}} · {{count $o.Plots "plot" "plots"}} named so</span></h2>
+<form class="form" method="post" action="/admin/places/{{pathEsc $o.Country}}/{{pathEsc $o.Name}}">
+{{template "csrf" $}}
+<fieldset class="choice"><legend class="label">Action</legend>
+{{range overrideActions}}<span class="check"><input id="a{{$k}}-{{.}}" name="action" type="radio" value="{{.}}"{{if eq . $o.Action}} checked{{end}}> <label for="a{{$k}}-{{.}}">{{.}}</label></span>
+{{end}}</fieldset>
+<label for="r{{$k}}">Replacement</label>
+<input id="r{{$k}}" name="replacement" type="text" value="{{$o.Replacement}}">
+<label for="n{{$k}}">Note</label>
+<textarea id="n{{$k}}" name="note" rows="3" required>{{$o.Note}}</textarea>
+<button type="submit">Save</button>
+</form>
+</section>
+{{else}}<p class="blank">No place names are listed.</p>
+{{end}}
+<section class="block form">
+<h2>List a place name</h2>
+<form method="post" action="/admin/places">
+{{template "csrf" .}}
+<label for="country">Country</label>
+<select id="country" name="country">{{range .Countries}}<option value="{{.}}"{{if eq . $.Form.Country}} selected{{end}}>{{.}}</option>{{end}}</select>
+<label for="name">Name as imported</label>
+<input id="name" name="name" type="text" value="{{.Form.Name}}" required>
+<label for="kind">OSM kind</label>
+<input id="kind" name="kind" type="text" value="{{.Form.Kind}}" required aria-describedby="kind-hint">
+<p id="kind-hint" class="hint">The place value, e.g. village, quarter, suburb.</p>
+<label for="note">Note</label>
+<textarea id="note" name="note" rows="3" required>{{.Form.Note}}</textarea>
+<button type="submit">List it</button>
+</form>
+</section>
+{{- end}}

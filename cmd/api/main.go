@@ -23,6 +23,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/cartograph-asia/cartograph/internal/admin"
 	"github.com/cartograph-asia/cartograph/internal/api"
 	"github.com/cartograph-asia/cartograph/internal/auth"
 	"github.com/cartograph-asia/cartograph/internal/db"
@@ -125,6 +126,8 @@ func routes(cfg config, database *db.DB, store storage.Store) (http.Handler, err
 	}
 	a := auth.New(acfg, auth.NewPGStore(database.Pool), auth.NewMailer(acfg.SMTP), rd.RenderFunc(), database.Views())
 	pages := web.NewHandlers(database.Views(), rd)
+	adminH := admin.New(database.Admin(), a, rd.RenderFunc())
+	slog.Info("accounts", "admins", len(acfg.Admins), "signup", acfg.Signup)
 	apiH := api.New(database, store, api.Config{MaxUploadMB: cfg.maxUploadMB, TilesURL: cfg.tilesURL}).Handler()
 
 	r := chi.NewRouter()
@@ -136,6 +139,7 @@ func routes(cfg config, database *db.DB, store storage.Store) (http.Handler, err
 	r.Group(func(r chi.Router) {
 		r.Use(api.Observe)
 		a.Routes(r)
+		adminH.Routes(r)
 		pages.Routes(r)
 	})
 	r.NotFound(api.Observe(http.HandlerFunc(pages.NotFound)).ServeHTTP)

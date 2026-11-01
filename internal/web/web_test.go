@@ -190,6 +190,7 @@ func TestEveryPageRenders(t *testing.T) {
 		{"confirm-signin", views.PageConfirmSignIn, &views.ConfirmSignIn{Page: views.Page{Title: "Sign in", NoIndex: true}, Token: "abc&def"},
 			[]string{`action="/signin/link"`, `name="token" value="abc&amp;def"`, `name="csrf" value="tok-123"`, ">Sign in</button>"}},
 		{"error", views.PageError, viewstest.NotFound(), []string{"There is nothing at this address."}},
+		{"signin-again", views.PageSignInAgain, viewstest.SignInAgain(), []string{`action="/signout"`, `name="next" value="/signin?next=%2Fadmin"`}},
 	}
 	for _, p := range pages {
 		t.Run(p.name, func(t *testing.T) {
@@ -520,10 +521,67 @@ func TestFrontPageWeight(t *testing.T) {
 	}
 }
 
+func TestAdminPagesRender(t *testing.T) {
+	ctx := views.WithViewer(context.Background(), viewstest.AdminViewer())
+	pages := []struct {
+		name  string
+		page  string
+		data  any
+		wants []string
+	}{
+		{"overview", views.PageAdminOverview, viewstest.AdminOverview(), []string{"<h1>Overview</h1>", "<b>1</b> invitation pending", "4 links sent and 2 redeemed",
+			"no name yet", `<code>surveyor.block</code>`, `href="/admin/surveyor/spam-bot"`, `<span class="tag">hidden</span>`, `aria-current="page">Overview`}},
+		{"photos", views.PageAdminPhotos, viewstest.AdminPhotos(), []string{"Hidden photos", "Show all photos", `href="/admin/photo/` + viewstest.HiddenPhotoID}},
+		{"hidden photo", views.PageAdminPhoto, viewstest.AdminPhoto(true), []string{"Shows a face close up.", "/unhide", "Unhide the photo", "12.93201, 100.88713", "adrian@example.org"}},
+		{"photo", views.PageAdminPhoto, viewstest.AdminPhoto(false), []string{"Feature this photo", "/hide", "Plot of the week", "until replaced"}},
+		{"confirm", views.PageAdminConfirm, viewstest.AdminConfirm(), []string{"Hide this photo", "passes to ploy88", `name="reason"`, `maxlength="200"`, `aria-invalid="true"`,
+			`name="hide_photos" type="checkbox" value="1"`, `class="danger" type="submit">Hide the photo`, "Back, change nothing"}},
+		{"featured", views.PageAdminFeatured, viewstest.AdminFeatured(), []string{"End now", "Delete this scheduled entry", `type="datetime-local"`, "Paste a photo", "Last week."}},
+		{"surveyors", views.PageAdminSurveyors, viewstest.AdminSurveyors(), []string{"spam-bot", `<span class="tag">blocked</span>`, "bot@example.org"}},
+		{"surveyor", views.PageAdminSurveyor, viewstest.AdminSurveyor(false), []string{"Block ploy88", "Clear the bio", "Sign out everywhere", "Jomtien every morning."}},
+		{"blocked surveyor", views.PageAdminSurveyor, viewstest.AdminSurveyor(true), []string{"Blocked ", "Uploads screenshots.", "Lift the block", "Also unhide the 1 photo hidden with the block"}},
+		{"places", views.PageAdminPlaces, viewstest.AdminPlaces(), []string{"Ban Bang Krabueang", `action="/admin/places/th/Ban%20Bang%20Krabueang"`, `value="replace" checked`, "Seri Village", "List it"}},
+		{"invites", views.PageAdminInvites, viewstest.AdminInvites(), []string{"Sign-up is by invitation", "already a Surveyor: ploy88", "pending", "accepted as", "Send a new link", "Revoke", `maxlength="300"`}},
+		{"log", views.PageAdminLog, viewstest.AdminLog(), []string{"<h1>Log</h1>", "Before and after", `<code>invite.create</code>`}},
+	}
+	for _, p := range pages {
+		t.Run(p.name, func(t *testing.T) {
+			body := render(t, p.page, p.data, ctx)
+			checkHTML(t, "admin "+p.name, body)
+			must(t, body, p.wants...)
+			must(t, body, `<meta name="robots" content="noindex">`, `<nav class="admin-nav" aria-label="Admin">`, `href="/admin">Admin</a>`)
+		})
+	}
+}
+
+func TestAdminLinksOnlyForAdmins(t *testing.T) {
+	admin := views.WithViewer(context.Background(), viewstest.AdminViewer())
+	member := views.WithViewer(context.Background(), viewstest.Viewer())
+	must(t, render(t, views.PagePhoto, viewstest.Photo(), admin), `href="/admin">Admin</a>`, `<p class="admin-line">Admin:`)
+	for _, ctx := range []context.Context{member, context.Background()} {
+		mustNot(t, render(t, views.PagePhoto, viewstest.Photo(), ctx), `href="/admin"`, "admin-line")
+	}
+	si := viewstest.SignIn()
+	si.InviteOnly = true
+	must(t, render(t, views.PageSignIn, si), "Cartograph is invitation-only for now.")
+	mustNot(t, render(t, views.PageSignIn, viewstest.SignIn()), "invitation-only")
+}
+
+func TestHiddenPhotoIsGone(t *testing.T) {
+	h := newServer(t, 0)
+	r := get(t, h, "/photo/"+viewstest.GonePhotoID)
+	if r.status != http.StatusGone {
+		t.Fatalf("hidden photo: %d", r.status)
+	}
+	must(t, r.body, "This photo was removed.", `content="noindex"`, "Error 410")
+}
+
 func TestNoInlineStyles(t *testing.T) {
 	// Every page is styled from style.css only (docs/DESIGN_BRIEF.md).
 	for _, name := range []string{"home", "latest", "surveyors", "regions", "surveyor", "plot", "photo", "region",
-		"signin", "check-email", "choose-name", "edit-profile", "confirm-signin", "error", "static", "layout", "partials"} {
+		"signin", "check-email", "choose-name", "edit-profile", "confirm-signin", "error", "static", "layout", "partials",
+		"admin-overview", "admin-photos", "admin-photo", "admin-confirm", "admin-featured", "admin-surveyors", "admin-surveyor",
+		"admin-places", "admin-invites", "admin-log", "signin-again"} {
 		b, err := templateFS.ReadFile("templates/" + name + ".html")
 		if err != nil {
 			t.Fatal(err)

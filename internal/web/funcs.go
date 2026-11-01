@@ -58,7 +58,20 @@ func (rd *Renderer) funcs() template.FuncMap {
 			}
 			return strings.Join(out, ",")
 		},
-		"pathEsc":   url.PathEscape,
+		"pathEsc":       url.PathEscape,
+		"adminSections": func() []adminSection { return adminSections },
+		"featuredRow": func(f views.AdminFeatured, page *views.AdminFeaturedList, state string) featuredRow {
+			return featuredRow{F: f, Page: page, State: state}
+		},
+		"overrideActions": func() []string {
+			return []string{views.OverrideUndecided, views.OverrideKeep, views.OverrideReplace}
+		},
+		"stamp":     stamp,
+		"localTime": func(t time.Time) string { return t.In(zone).Format("2006-01-02T15:04") },
+		"pageQuery": pageQuery,
+		"reasonMax": func() int { return views.ReasonMax },
+		"noteMax":   func() int { return views.InviteNoteMax },
+		"textMax":   func() int { return views.FeaturedTextMax },
 		"csrfField": func() string { return views.CSRFField },
 		"bioMax":    func() int { return views.BioMaxLen },
 		"nameMin":   func() int { return views.NameMinLen },
@@ -305,6 +318,53 @@ func bar(c views.Coverage) string {
 }
 
 // pageURL returns canonical's path with ?page=n (no query for page 1).
+// adminSection is one link of the admin navigation line.
+type adminSection struct{ Key, Path, Label string }
+
+var adminSections = []adminSection{
+	{views.AdminOverviewSection, "/admin", "Overview"},
+	{views.AdminPhotosSection, "/admin/photos", "Photos"},
+	{views.AdminInvitesSection, "/admin/invites", "Invitations"},
+	{views.AdminFeaturedSection, "/admin/featured", "Plot of the week"},
+	{views.AdminSurveyorsSection, "/admin/surveyors", "Surveyors"},
+	{views.AdminPlacesSection, "/admin/places", "Place names"},
+	{views.AdminLogSection, "/admin/log", "Log"},
+}
+
+// featuredRow is one plot-of-the-week entry with its page (for the CSRF
+// field) and whether it is current, scheduled or past.
+type featuredRow struct {
+	F     views.AdminFeatured
+	Page  *views.AdminFeaturedList
+	State string
+}
+
+// stamp is a date with the time of day in Bangkok, for the admin area:
+// "1 November 2026, 16:05".
+func stamp(v any) string {
+	t, ok := toTime(v)
+	if !ok {
+		return ""
+	}
+	return t.In(zone).Format("2 January 2006, 15:04")
+}
+
+// pageQuery is pageURL that keeps the other query parameters of canonical
+// (the admin lists' filters).
+func pageQuery(canonical string, n int) string {
+	p, q, _ := strings.Cut(canonical, "?")
+	vs, _ := url.ParseQuery(q)
+	vs.Del("page")
+	vs.Del("done")
+	if n > 1 {
+		vs.Set("page", strconv.Itoa(n))
+	}
+	if e := vs.Encode(); e != "" {
+		return p + "?" + e
+	}
+	return p
+}
+
 func pageURL(canonical string, n int) string {
 	p, _, _ := strings.Cut(canonical, "?")
 	if n <= 1 {

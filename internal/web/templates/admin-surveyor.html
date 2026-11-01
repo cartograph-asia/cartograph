@@ -1,0 +1,39 @@
+{{define "content" -}}
+{{template "admin-head" .}}
+{{$s := .Surveyor}}
+<header class="head">
+<p class="kicker">Surveyor{{if $s.BlockedAt}} · blocked{{end}}</p>
+<h1 class="name">{{$s.Name}}</h1>
+<p class="note">{{$s.Email}} · joined {{date $s.JoinedAt}} · <a href="/surveyor/{{$s.Name}}">public profile</a></p>
+<ul class="figures small">
+<li><a href="/admin/photos?surveyor={{$s.Name}}"><b>{{num $s.Photos}}</b> photos</a></li>
+<li><b>{{num $s.Hidden}}</b> hidden</li>
+<li><b>{{num $s.Sessions}}</b> {{if eq $s.Sessions 1}}session{{else}}sessions{{end}}</li>
+</ul>
+</header>
+{{with $s.BlockedAt}}<p class="error">Blocked {{stamp .}}: {{$.BlockedReason}}</p>
+<form class="form actions" method="post" action="/admin/surveyor/{{$s.Name}}/unblock">{{template "csrf" $}}
+{{if $.HiddenByBlock}}<p class="check"><input id="unhide_photos" name="unhide_photos" type="checkbox" value="1"> <label for="unhide_photos">Also unhide the {{count $.HiddenByBlock "photo" "photos"}} hidden with the block</label></p>{{end}}
+<button type="submit">Lift the block</button></form>
+{{else}}<ul class="ways">
+<li><a class="danger" href="/admin/surveyor/{{$s.Name}}/block">Block {{$s.Name}} <span aria-hidden="true">→</span></a></li>
+{{if .Bio}}<li><a class="danger" href="/admin/surveyor/{{$s.Name}}/clear-bio">Clear the bio <span aria-hidden="true">→</span></a></li>{{end}}
+<li><form method="post" action="/admin/surveyor/{{$s.Name}}/end-sessions">{{template "csrf" $}}<button class="link" type="submit">Sign out everywhere</button></form></li>
+</ul>{{end}}
+{{with .Bio}}<section class="block"><h2>Bio</h2><p class="bio">{{.}}</p></section>{{end}}
+<section class="block">
+<div class="head-row"><h2>Photos</h2>{{if gt $s.Photos (len .Photos)}}<a class="more" href="/admin/photos?surveyor={{$s.Name}}">All {{num $s.Photos}} <span aria-hidden="true">→</span></a>{{end}}</div>
+{{if .Photos}}{{template "admin-grid" .Photos}}{{else}}<p class="note">No photos yet.</p>{{end}}
+</section>
+<section class="block">
+<h2>Sessions</h2>
+<div class="scroll"><table class="list">
+<thead><tr><th scope="col">Signed in</th><th scope="col">Last seen</th></tr></thead>
+<tbody>{{range .Sessions}}<tr><td class="nw">{{stamp .SignedInAt}}</td><td class="nw">{{when $.Now .LastSeen}}</td></tr>{{else}}<tr><td colspan="2">No sessions.</td></tr>{{end}}</tbody>
+</table></div>
+</section>
+<section class="block">
+<h2>Log</h2>
+{{template "admin-actions" .Actions}}
+</section>
+{{- end}}

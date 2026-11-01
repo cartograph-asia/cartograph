@@ -1,0 +1,20 @@
+{{define "content" -}}
+{{template "admin-head" .}}
+<div class="form">
+<p class="kicker">Confirm</p>
+<h1>{{.Heading}}</h1>
+{{with .Photo}}<p><img class="thumb" src="{{img .Keys.Thumb}}" width="480" height="360" alt="Photo at {{.Plot.Name}} by {{.Surveyor.Name}}" fetchpriority="high"></p>
+<p class="note">{{.Plot.Name}}, by {{.Surveyor.Name}}, uploaded {{stamp .UploadedAt}}</p>{{end}}
+<ul class="consequences">{{range .Consequences}}<li>{{.}}</li>{{end}}</ul>
+{{with .Error}}<p id="reason-error" class="error" role="alert">{{.}}</p>{{end}}
+<form method="post" action="{{.Action}}">
+{{template "csrf" .}}
+{{if .NeedReason}}<label for="reason">Reason</label>
+<input id="reason" name="reason" type="text" value="{{.Reason}}" maxlength="{{reasonMax}}" required aria-describedby="reason-hint{{if .Error}} reason-error{{end}}"{{if .Error}} aria-invalid="true" autofocus{{end}}>
+<p id="reason-hint" class="hint">Up to {{reasonMax}} characters. Only admins see it, in the log.</p>{{end}}
+{{with .Option}}<p class="check"><input id="{{.}}" name="{{.}}" type="checkbox" value="1"> <label for="{{.}}">{{$.OptionLabel}}</label></p>{{end}}
+<button class="danger" type="submit">{{.Button}}</button>
+</form>
+<p><a href="{{.Back}}">← Back, change nothing</a></p>
+</div>
+{{- end}}

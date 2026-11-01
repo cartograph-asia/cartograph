@@ -1,0 +1,36 @@
+{{define "content" -}}
+{{template "admin-head" .}}
+<header class="head">
+<p class="kicker">Admin</p>
+<h1>Invitations</h1>
+<p class="note">{{if .InviteOnly}}Sign-up is by invitation (SIGNUP=invite): a new account needs one.{{else}}Sign-up is open (SIGNUP=open): anyone can join, invitations are a friendly way in.{{end}} An invitation mail carries a sign-in link that works for a week.</p>
+</header>
+<section class="form">
+{{with .Error}}<p id="invite-error" class="error" role="alert">{{.}}</p>{{end}}
+<form method="post" action="/admin/invites">
+{{template "csrf" .}}
+<label for="email">E-mail address</label>
+<input id="email" name="email" type="email" value="{{.Email}}" required{{if .Error}} aria-invalid="true" aria-describedby="invite-error" autofocus{{end}}>
+<label for="note">Personal note</label>
+<textarea id="note" name="note" rows="3" maxlength="{{noteMax}}" aria-describedby="note-hint">{{.Note}}</textarea>
+<p id="note-hint" class="hint">Optional, plain text, up to {{noteMax}} characters. It goes into the mail.</p>
+<button type="submit">Send the invitation</button>
+</form>
+</section>
+<section class="block">
+<h2>Sent</h2>
+<div class="scroll"><table class="list">
+<thead><tr><th scope="col">E-mail</th><th scope="col">Invited</th><th scope="col">By</th><th scope="col">State</th><th scope="col"><span class="sr">Actions</span></th></tr></thead>
+<tbody>
+{{- range .Invitations}}
+<tr><td>{{.Email}}{{with .Note}}<br><span class="note">{{.}}</span>{{end}}</td><td class="nw">{{stamp .InvitedAt}}</td><td>{{.InvitedBy}}</td>
+<td>{{if .AcceptedAt}}accepted as <a href="/admin/surveyor/{{.AcceptedAs}}">{{.AcceptedAs}}</a>{{else if .RevokedAt}}revoked {{date .RevokedAt}}{{else}}pending{{end}}</td>
+<td>{{if .Pending}}<form method="post" action="/admin/invites/resend">{{template "csrf" $}}<input type="hidden" name="email" value="{{.Email}}"><button class="link" type="submit">Send a new link</button></form>
+<form method="post" action="/admin/invites/revoke">{{template "csrf" $}}<input type="hidden" name="email" value="{{.Email}}"><button class="link" type="submit">Revoke</button></form>{{end}}</td></tr>
+{{- else}}
+<tr><td colspan="5">No invitations yet.</td></tr>
+{{- end}}
+</tbody>
+</table></div>
+</section>
+{{- end}}

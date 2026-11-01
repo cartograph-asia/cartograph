@@ -10,6 +10,7 @@
 <div class="photo-meta">
 <p>{{with $p.TakenAt}}Taken {{date .}}<br>{{end}}Uploaded {{when .Now $p.UploadedAt}}</p>
 <p class="licence">© {{$p.Surveyor.Name}}, <a rel="license" href="{{.Licence.URL}}">{{.Licence.Name}}</a> · <a href="{{img $p.Keys.Large}}">Full size</a></p>
+{{if .Viewer.IsAdmin}}<p class="admin-line">Admin: <a href="/admin/photo/{{$p.ID}}">details</a> · <a href="/admin/featured?photo={{$p.ID}}">feature</a> · <a href="/admin/photo/{{$p.ID}}/hide">hide</a></p>{{end}}
 </div>
 </figcaption>
 </figure>

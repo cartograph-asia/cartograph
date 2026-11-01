@@ -1,6 +1,8 @@
-// Package auth is the minimum account system of the Home brief: e-mail magic
-// links, a session cookie, the one-time Surveyor name, the profile form and
-// GET /api/me. There are no passwords, no OAuth and no roles.
+// Package auth is the account system: e-mail magic links, a session cookie,
+// the one-time Surveyor name, the profile form and GET /api/me, plus what
+// the admin area of docs/ADMIN_BRIEF.md needs from it: admins (ADMIN_EMAILS),
+// blocked accounts, sign-up by invitation (SIGNUP) and the /admin guard.
+// There are no passwords, no OAuth and no role besides admin.
 //
 // Routes (mounted by Routes):
 //
@@ -46,9 +48,10 @@ import (
 	"github.com/cartograph-asia/cartograph/internal/views"
 )
 
-// Lifetimes and limits (see docs/decisions.md, Home).
+// Lifetimes and limits (see docs/decisions.md, Home and Admin).
 const (
 	LinkTTL            = 15 * time.Minute    // a magic link works once, within this time
+	refusalEvery       = 24 * time.Hour      // at most one invitation-only mail per address in this time
 	SessionTTL         = 30 * 24 * time.Hour // a session ends after this long without a visit
 	sessionTouchEvery  = time.Hour           // last_seen_at/expires_at are written at most this often
 	linksPerAddress    = 5                   // magic links per e-mail address per hour
@@ -68,10 +71,32 @@ type Config struct {
 	// makes cookies Secure.
 	BaseURL string
 	SMTP    SMTPConfig
+	// Admins are the lower-cased addresses of ADMIN_EMAILS. Empty: nobody
+	// is an admin and /admin is a 404 for everyone.
+	Admins map[string]bool
+	// AdminMaxAge is how long after its magic link a session may use the
+	// admin area (ADMIN_SESSION_MAX_AGE, default 24h).
+	AdminMaxAge time.Duration
+	// Signup is SignupInvite (default) or SignupOpen (SIGNUP).
+	Signup string
+	// InviteTTL is the lifetime of an invitation's link (INVITE_TTL, default 168h).
+	InviteTTL time.Duration
+	// Contact is the address of MAIL_FROM, named on the blocked page; empty
+	// if MAIL_FROM is unset (development).
+	Contact string
 }
 
-// ConfigFromEnv reads BASE_URL, the SMTP_* / MAIL_FROM variables and
-// MAIL_DEV_LOG.
+// Sign-up modes (SIGNUP).
+const (
+	SignupInvite = "invite" // a new account needs an invitation from an admin
+	SignupOpen   = "open"   // any address can join
+)
+
+// InviteOnly reports whether a new account needs an invitation.
+func (c Config) InviteOnly() bool { return c.Signup != SignupOpen }
+
+// ConfigFromEnv reads BASE_URL, the SMTP_* / MAIL_FROM variables,
+// MAIL_DEV_LOG, ADMIN_EMAILS, ADMIN_SESSION_MAX_AGE, SIGNUP and INVITE_TTL.
 // getenv is os.Getenv in production.
 func ConfigFromEnv(getenv func(string) string) (Config, error) {
 	cfg := Config{BaseURL: strings.TrimRight(strings.TrimSpace(getenv("BASE_URL")), "/")}
@@ -111,16 +136,59 @@ func ConfigFromEnv(getenv func(string) string) (Config, error) {
 			return Config{}, errors.New("auth: SMTP_HOST is empty; set SMTP_HOST to send sign-in e-mails, or MAIL_DEV_LOG=1 to write sign-in links to the log (development only)")
 		}
 	}
-	if cfg.SMTP.Host != "" {
-		if cfg.SMTP.From == "" {
-			return Config{}, errors.New("auth: MAIL_FROM is required when SMTP_HOST is set")
-		}
-		if _, err := mail.ParseAddress(cfg.SMTP.From); err != nil {
+	if cfg.SMTP.Host != "" && cfg.SMTP.From == "" {
+		return Config{}, errors.New("auth: MAIL_FROM is required when SMTP_HOST is set")
+	}
+	if cfg.SMTP.From != "" {
+		a, err := mail.ParseAddress(cfg.SMTP.From)
+		if err != nil {
 			return Config{}, fmt.Errorf("auth: MAIL_FROM is not an address: %w", err)
 		}
+		cfg.Contact = a.Address
+	}
+
+	cfg.Admins = map[string]bool{}
+	for _, e := range strings.Split(getenv("ADMIN_EMAILS"), ",") {
+		if strings.TrimSpace(e) == "" {
+			continue
+		}
+		addr, ok := normalizeEmail(e)
+		if !ok {
+			return Config{}, fmt.Errorf("auth: ADMIN_EMAILS must be a comma-separated list of addresses; %q is not one", strings.TrimSpace(e))
+		}
+		cfg.Admins[addr] = true
+	}
+	if cfg.AdminMaxAge, err = envDuration(getenv, "ADMIN_SESSION_MAX_AGE", 24*time.Hour); err != nil {
+		return Config{}, err
+	}
+	if cfg.InviteTTL, err = envDuration(getenv, "INVITE_TTL", 7*24*time.Hour); err != nil {
+		return Config{}, err
+	}
+	switch cfg.Signup = strings.ToLower(strings.TrimSpace(getenv("SIGNUP"))); cfg.Signup {
+	case "":
+		cfg.Signup = SignupInvite
+	case SignupInvite, SignupOpen:
+	default:
+		return Config{}, fmt.Errorf("auth: SIGNUP must be invite or open, got %q", cfg.Signup)
 	}
 	return cfg, nil
 }
+
+// envDuration reads a positive Go duration such as "24h".
+func envDuration(getenv func(string) string, name string, def time.Duration) (time.Duration, error) {
+	v := strings.TrimSpace(getenv(name))
+	if v == "" {
+		return def, nil
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil || d <= 0 {
+		return 0, fmt.Errorf("auth: %s must be a positive duration such as 24h, got %q", name, v)
+	}
+	return d, nil
+}
+
+// IsAdmin reports whether email (normalised) is listed in ADMIN_EMAILS.
+func (c Config) IsAdmin(email string) bool { return c.Admins[email] }
 
 // RegionLister lists the options of the home-region select; views.Source
 // (and so *db.DB) implements it.
@@ -191,6 +259,8 @@ func (a *Auth) Middleware(next http.Handler) http.Handler {
 			switch {
 			case err == nil:
 				viewer = &s.Viewer
+				viewer.SignedInAt = s.CreatedAt
+				viewer.Admin = viewer.HasName() && a.cfg.IsAdmin(viewer.Email)
 				csrf = csrfToken(raw)
 				ctx = context.WithValue(ctx, sessionKey{}, h)
 				if now.Sub(s.LastSeen) >= sessionTouchEvery {
@@ -229,6 +299,11 @@ func csrfToken(raw []byte) string {
 	m.Write([]byte("cartograph csrf v1"))
 	return encodeToken(m.Sum(nil))
 }
+
+// CheckForm is formOK for the admin area: it parses the form and checks the
+// same origin and the CSRF field, rendering 400 or 403 and returning false
+// when they fail.
+func (a *Auth) CheckForm(w http.ResponseWriter, r *http.Request) bool { return a.formOK(w, r) }
 
 // formOK checks a state-changing form: same origin and a valid CSRF field.
 // It renders a 403 page and returns false otherwise.

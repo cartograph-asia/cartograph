@@ -1,0 +1,10 @@
+{{define "content" -}}
+{{template "admin-head" .}}
+<header class="head">
+<p class="kicker">Admin</p>
+<h1>Log</h1>
+<p class="note">Every admin action, newest first. Rows are never changed or deleted.</p>
+</header>
+{{template "admin-actions" .Actions}}
+{{template "admin-pagination" .}}
+{{- end}}

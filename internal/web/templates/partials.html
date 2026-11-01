@@ -69,3 +69,48 @@ if (els.length && "IntersectionObserver" in window) {
 }
 </script>
 {{- end}}
+
+{{/* The admin area's navigation line and the line saying what the last
+   action did; every admin page starts with it. */}}
+{{define "admin-head" -}}
+<nav class="admin-nav" aria-label="Admin">
+{{- range adminSections}}<a href="{{.Path}}"{{if eq .Key $.Section}} aria-current="page"{{end}}>{{.Label}}</a>{{end -}}
+</nav>
+{{with .Done}}<p class="saved" role="status">{{.}}</p>{{end}}
+{{- end}}
+
+{{/* A grid of photos for the admin area: links to the admin photo page,
+   hidden photos marked. */}}
+{{define "admin-grid" -}}
+<ul class="grid">
+{{- range .}}
+<li{{if .Hidden}} class="is-hidden"{{end}}><a class="ph" href="/admin/photo/{{.ID}}"><img src="{{img .Keys.Thumb}}" width="480" height="360" alt="Photo at {{.Plot.Name}} by {{.Surveyor.Name}}" loading="lazy" decoding="async"></a>
+<p class="cap"><a class="plot" href="/admin/photo/{{.ID}}" title="{{.Plot.Name}}">{{template "short-name" .Plot}}</a>
+<span class="line"><span class="lt"><a href="/admin/surveyor/{{.Surveyor.Name}}">{{.Surveyor.Name}}</a> · {{stamp .UploadedAt}}</span>{{if .Hidden}} <span class="tag">hidden</span>{{else}}{{template "first" .}}{{end}}</span></p></li>
+{{- end}}
+</ul>
+{{- end}}
+
+{{/* The audit trail as a table. */}}
+{{define "admin-actions" -}}
+<div class="scroll"><table class="list">
+<thead><tr><th scope="col">When</th><th scope="col">Admin</th><th scope="col">Action</th><th scope="col">Target</th><th scope="col">Reason</th></tr></thead>
+<tbody>
+{{- range .}}
+<tr><td class="nw">{{stamp .At}}</td><td>{{.Admin}}</td><td><code>{{.Action}}</code></td><td>{{if .Link}}<a href="{{.Link}}">{{.Target}}</a>{{else}}{{.Target}}{{end}}</td><td>{{.Reason}}{{if or .Before .After}}<details><summary>Before and after</summary><pre>{{with .Before}}before: {{.}}
+{{end}}{{with .After}}after: {{.}}{{end}}</pre></details>{{end}}</td></tr>
+{{- else}}
+<tr><td colspan="5">No admin actions yet.</td></tr>
+{{- end}}
+</tbody>
+</table></div>
+{{- end}}
+
+{{/* Pagination for the admin lists, keeping their filters. */}}
+{{define "admin-pagination" -}}
+{{if gt .Pagination.Pages 1}}<nav class="pages" aria-label="Pages">
+{{- if .Pagination.HasPrev}}<a rel="prev" href="{{pageQuery .Canonical .Pagination.Prev}}">← Newer</a>{{else}}<span></span>{{end}}
+<span>Page {{.Pagination.Page}} of {{.Pagination.Pages}}</span>
+{{- if .Pagination.HasNext}}<a rel="next" href="{{pageQuery .Canonical .Pagination.Next}}">Older →</a>{{else}}<span></span>{{end -}}
+</nav>{{end}}
+{{- end}}

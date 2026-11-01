@@ -112,6 +112,9 @@ func NewRenderer(cfg Config) (*Renderer, error) {
 		views.PageHome, views.PageLatest, views.PageSurveyors, views.PageRegions, views.PageSurveyor,
 		views.PagePlot, views.PagePhoto, views.PageRegion, views.PageSignIn, views.PageCheckEmail,
 		views.PageChooseName, views.PageEditProfile, views.PageConfirmSignIn, views.PageError, "static",
+		views.PageAdminOverview, views.PageAdminPhotos, views.PageAdminPhoto, views.PageAdminConfirm,
+		views.PageAdminFeatured, views.PageAdminSurveyors, views.PageAdminSurveyor, views.PageAdminPlaces,
+		views.PageAdminInvites, views.PageAdminLog, views.PageSignInAgain,
 	}
 	for _, name := range names {
 		t, err := base.Clone()
@@ -214,8 +217,11 @@ func (rd *Renderer) renderStatic(w http.ResponseWriter, r *http.Request, path st
 // renderError renders the error page with status and message.
 func (rd *Renderer) renderError(w http.ResponseWriter, r *http.Request, status int, msg string) {
 	title := http.StatusText(status)
-	if status == http.StatusNotFound {
+	switch status {
+	case http.StatusNotFound:
 		title = "Not found"
+	case http.StatusGone:
+		title = "Removed"
 	}
 	rd.Render(w, r, status, views.PageError, &views.Error{
 		Page:   views.Page{Title: title, NoIndex: true},

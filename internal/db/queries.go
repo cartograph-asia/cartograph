@@ -85,11 +85,12 @@ type PlotDetail struct {
 }
 
 // ClaimPhoto records a survey in one transaction: it upserts the plot
-// (first_photo, first_surveyor(_id), claimed_at, region and place name are
-// only set when the plot row is new; photo_count is incremented), inserts the
+// (region and place name are only set when the plot row is new;
+// first_photo, first_surveyor(_id) and claimed_at when it is new or blank,
+// i.e. every photo of it was hidden; photo_count is incremented), inserts the
 // photo and updates the region's claimed_cells and last_surveyed_at. The plot
 // is written first because photos.cell references plots(cell). claimed
-// reports whether this photo created the plot. A plot whose centre is outside
+// reports whether this photo claimed the plot. A plot whose centre is outside
 // every region is rejected with ErrOutsideRegions.
 func (d *DB) ClaimPhoto(ctx context.Context, p NewPhoto) (claimed bool, err error) {
 	loc, err := d.locatePlot(ctx, d.Pool, p.Cell)
@@ -104,8 +105,13 @@ func (d *DB) ClaimPhoto(ctx context.Context, p NewPhoto) (claimed bool, err erro
 			insert into plots (cell, first_photo, first_surveyor, first_surveyor_id, claimed_at, photo_count,
 			                   parent5, parent6, region_id, place_name, place_name_th, district_id)
 			values ($1, $2, $3, $4, $5, 1, $6, $7, $8, $9, $10, $11)
-			on conflict (cell) do update set photo_count = plots.photo_count + 1
-			returning (xmax = 0)`,
+			on conflict (cell) do update set
+			  photo_count       = plots.photo_count + 1,
+			  first_photo       = case when plots.photo_count = 0 then excluded.first_photo else plots.first_photo end,
+			  first_surveyor    = case when plots.photo_count = 0 then excluded.first_surveyor else plots.first_surveyor end,
+			  first_surveyor_id = case when plots.photo_count = 0 then excluded.first_surveyor_id else plots.first_surveyor_id end,
+			  claimed_at        = case when plots.photo_count = 0 then excluded.claimed_at else plots.claimed_at end
+			returning photo_count = 1`,
 			p.Cell, p.ID, p.Surveyor, nullUUID(p.SurveyorID), p.UploadedAt, p.Parent5, p.Parent6,
 			loc.RegionID, loc.PlaceEn, loc.PlaceTh, loc.DistrictID,
 		).Scan(&claimed)
@@ -151,7 +157,7 @@ func (d *DB) Plots(ctx context.Context, cells []string) ([]PlotSummary, error) {
 	rows, err := d.Pool.Query(ctx, `
 		select p.cell, p.photo_count, coalesce(p.first_surveyor, ''), p.claimed_at, coalesce(ph.key_thumb, '')
 		from plots p
-		left join photos ph on ph.id = p.first_photo
+		left join visible_photos ph on ph.id = p.first_photo
 		where p.cell = any($1) and p.photo_count > 0
 		order by p.cell`, cells)
 	if err != nil {
@@ -188,7 +194,7 @@ func (d *DB) Plot(ctx context.Context, cell string) (*PlotDetail, error) {
 	}
 	rows, err := d.Pool.Query(ctx, `
 		select id, surveyor, taken_at, uploaded_at, key_large, key_thumb
-		from photos where cell = $1
+		from visible_photos where cell = $1
 		order by uploaded_at, id`, cell)
 	if err != nil {
 		return nil, fmt.Errorf("db: plot photos: %w", err)

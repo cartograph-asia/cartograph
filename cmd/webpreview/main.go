@@ -6,7 +6,10 @@
 //	go run ./cmd/webpreview            # http://127.0.0.1:8093
 //	(cd web && npx vite build --base /map/)   # optional: small maps
 //
-// /preview/as?viewer=adrian|new|none switches the signed-in viewer (cookie).
+// /preview/as?viewer=adrian|admin|new|none switches the signed-in viewer
+// (cookie); ?as=admin on any URL shows that one page to the admin. The
+// admin pages (/admin, /admin/photos, …) show their fixtures; their forms
+// post to stubs.
 // Photos are crops of the JPEGs in -photos (testdata/ by default), so the
 // pages look like pages with photos; without them, calm generated images.
 // The account pages (/signin, /check-email, /signin/link, /signin/name,
@@ -104,8 +107,17 @@ func main() {
 // viewerFromCookie signs the preview in as a fixture viewer.
 func viewerFromCookie(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		who := ""
 		if c, err := r.Cookie("preview_viewer"); err == nil {
-			switch c.Value {
+			who = c.Value
+		}
+		if as := r.URL.Query().Get("as"); as != "" {
+			who = as
+		}
+		{
+			switch who {
+			case "admin":
+				r = r.WithContext(views.WithViewer(r.Context(), viewstest.AdminViewer()))
 			case "adrian":
 				r = r.WithContext(views.WithViewer(r.Context(), viewstest.Viewer()))
 			case "new":
@@ -147,6 +159,44 @@ func accountPages(r chi.Router, render views.RenderFunc) {
 	for _, p := range []string{"/signin/link", "/signin/name", "/settings", "/signout"} {
 		r.Post(p, func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "/", http.StatusSeeOther) })
 	}
+	adminPages(r, render)
+}
+
+// adminPages serves the admin fixtures to the admin viewer only, like the
+// real guard; everyone else gets the 404 page.
+func adminPages(r chi.Router, render views.RenderFunc) {
+	show := func(page string, data func() views.Based) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			if !views.ViewerFrom(r.Context()).IsAdmin() {
+				render(w, r, http.StatusNotFound, views.PageError, viewstest.NotFound())
+				return
+			}
+			render(w, r, http.StatusOK, page, data())
+		}
+	}
+	pages := map[string]http.HandlerFunc{
+		"/admin":                    show(views.PageAdminOverview, func() views.Based { return viewstest.AdminOverview() }),
+		"/admin/photos":             show(views.PageAdminPhotos, func() views.Based { return viewstest.AdminPhotos() }),
+		"/admin/photo/hidden":       show(views.PageAdminPhoto, func() views.Based { return viewstest.AdminPhoto(true) }),
+		"/admin/photo/visible":      show(views.PageAdminPhoto, func() views.Based { return viewstest.AdminPhoto(false) }),
+		"/admin/photo/visible/hide": show(views.PageAdminConfirm, func() views.Based { return viewstest.AdminConfirm() }),
+		"/admin/featured":           show(views.PageAdminFeatured, func() views.Based { return viewstest.AdminFeatured() }),
+		"/admin/surveyors":          show(views.PageAdminSurveyors, func() views.Based { return viewstest.AdminSurveyors() }),
+		"/admin/surveyor/ploy88":    show(views.PageAdminSurveyor, func() views.Based { return viewstest.AdminSurveyor(false) }),
+		"/admin/surveyor/spam-bot":  show(views.PageAdminSurveyor, func() views.Based { return viewstest.AdminSurveyor(true) }),
+		"/admin/places":             show(views.PageAdminPlaces, func() views.Based { return viewstest.AdminPlaces() }),
+		"/admin/invites":            show(views.PageAdminInvites, func() views.Based { return viewstest.AdminInvites() }),
+		"/admin/log":                show(views.PageAdminLog, func() views.Based { return viewstest.AdminLog() }),
+		"/admin/sign-in-again-preview": func(w http.ResponseWriter, r *http.Request) {
+			render(w, r, http.StatusForbidden, views.PageSignInAgain, viewstest.SignInAgain())
+		},
+	}
+	for p, h := range pages {
+		r.Get(p, h)
+	}
+	r.Post("/admin/*", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/admin?as=admin", http.StatusSeeOther)
+	})
 }
 
 // coverage answers GET /api/coverage from the fixture photos.

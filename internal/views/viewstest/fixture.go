@@ -60,7 +60,7 @@ var plots = []plot{
 	p("88658bd86bfffff", "Bang Lamung", "บางละมุง", ChonBuri, 3021, 13.04610, 100.92978),
 	p("88658a36a9fffff", "Si Racha", "ศรีราชา", ChonBuri, 3804, 13.17188, 100.93200),
 	p("8865886183fffff", "Sattahip", "สัตหีบ", ChonBuri, 1187, 12.66285, 100.89934),
-	p("8864a4b161fffff", "Bangkok 905,", "กรุงเทพมหานคร", Bangkok, 905, 13.75059, 100.54134),
+	p("8864a4b161fffff", "Bangkok", "กรุงเทพมหานคร", Bangkok, 905, 13.75059, 100.54134),
 }
 
 // surveyor is a fixture Surveyor.

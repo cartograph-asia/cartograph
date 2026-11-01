@@ -22,11 +22,26 @@
     "map-plots": "http://127.0.0.1:8080/map#14.5/12.935/100.885",
     "map-panel": "http://127.0.0.1:8080/map?cell=88658bd11dfffff#14.5/12.935/100.885",
     "plot-smallmap": "http://127.0.0.1:8080/plot/chon-buri/88",
-    "region-smallmap": "http://127.0.0.1:8080/region/chon-buri"
+    "region-smallmap": "http://127.0.0.1:8080/region/chon-buri",
+    "admin-overview": "/admin?as=admin",
+    "admin-photos": "/admin/photos?as=admin",
+    "admin-photo": "/admin/photo/visible?as=admin",
+    "admin-photo-hidden": "/admin/photo/hidden?as=admin",
+    "admin-confirm": "/admin/photo/visible/hide?as=admin",
+    "admin-featured": "/admin/featured?as=admin",
+    "admin-surveyors": "/admin/surveyors?as=admin",
+    "admin-surveyor": "/admin/surveyor/ploy88?as=admin",
+    "admin-surveyor-blocked": "/admin/surveyor/spam-bot?as=admin",
+    "admin-places": "/admin/places?as=admin",
+    "admin-invites": "/admin/invites?as=admin",
+    "admin-log": "/admin/log?as=admin",
+    "signin-again": "/admin/sign-in-again-preview?as=admin",
+    "photo-admin": "/photo/00000000-0000-4000-8000-000000000009?as=admin"
   },
   "sets": {
     "round-1": ["home"],
     "round-2": ["home", "latest", "surveyors", "regions", "surveyor", "plot", "plot-blank", "photo", "region", "about", "about-plots", "principles", "licence", "signin", "check-email", "choose-name", "settings", "not-found"],
-    "round-3": ["map", "map-plots", "map-panel", "plot-smallmap", "region-smallmap"]
+    "round-3": ["map", "map-plots", "map-panel", "plot-smallmap", "region-smallmap"],
+    "admin": ["admin-overview", "admin-photos", "admin-photo", "admin-photo-hidden", "admin-confirm", "admin-featured", "admin-surveyors", "admin-surveyor", "admin-surveyor-blocked", "admin-places", "admin-invites", "admin-log", "signin-again", "photo-admin"]
   }
 }

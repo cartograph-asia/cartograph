@@ -365,6 +365,9 @@ textarea { resize: vertical; }
 .facts dt { color: var(--ink-muted); }
 .facts dd { margin: 0; }
 .thumb { width: 100%; max-width: 20rem; height: auto; background: var(--paper-deep); }
+.shot { margin: 0; }
+.shot img { width: 100%; height: auto; background: var(--paper-deep); }
+.block.form form { margin-top: var(--s-m); padding-top: 0; border-top: 0; }
 .consequences { padding-left: var(--s-m); }
 .consequences li { margin-bottom: var(--s-s); }
 .check { display: flex; align-items: baseline; gap: var(--s-s); margin: var(--s-m) var(--s-m) 0 0; }

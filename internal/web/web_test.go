@@ -532,7 +532,7 @@ func TestAdminPagesRender(t *testing.T) {
 		{"overview", views.PageAdminOverview, viewstest.AdminOverview(), []string{"<h1>Overview</h1>", "<b>1</b> invitation pending", "4 links sent and 2 redeemed",
 			"no name yet", `<code>surveyor.block</code>`, `href="/admin/surveyor/spam-bot"`, `<span class="tag">hidden</span>`, `aria-current="page">Overview`}},
 		{"photos", views.PageAdminPhotos, viewstest.AdminPhotos(), []string{"Hidden photos", "Show all photos", `href="/admin/photo/` + viewstest.HiddenPhotoID}},
-		{"hidden photo", views.PageAdminPhoto, viewstest.AdminPhoto(true), []string{"Shows a face close up.", "/unhide", "Unhide the photo", "12.93201, 100.88713", "ploy88@example.org"}},
+		{"hidden photo", views.PageAdminPhoto, viewstest.AdminPhoto(true), []string{"Shows a face close up.", "/unhide", "Unhide the photo", "12.93201, 100.88713", "adrian@example.org"}},
 		{"photo", views.PageAdminPhoto, viewstest.AdminPhoto(false), []string{"Feature this photo", "/hide", "Plot of the week", "until replaced"}},
 		{"confirm", views.PageAdminConfirm, viewstest.AdminConfirm(), []string{"Hide this photo", "passes to ploy88", `name="reason"`, `maxlength="200"`, `aria-invalid="true"`,
 			`name="hide_photos" type="checkbox" value="1"`, `class="danger" type="submit">Hide the photo`, "Back, change nothing"}},

@@ -95,7 +95,7 @@ func AdminPhoto(hidden bool) *views.AdminPhotoDetail {
 	}
 	d := &views.AdminPhotoDetail{
 		AdminPage: adminPage("Photo", views.AdminPhotosSection),
-		Photo:     adminPhoto(id), Lat: 12.93201, Lng: 100.88713, Email: "ploy88@example.org",
+		Photo:     adminPhoto(id), Lat: 12.93201, Lng: 100.88713, Email: "adrian@example.org",
 		PlotPhotos: 2, FirstSurveyor: "adrian", Actions: adminActions()[1:2],
 	}
 	if !hidden {

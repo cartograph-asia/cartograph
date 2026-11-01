@@ -4,7 +4,7 @@ Builds `map/asia.pmtiles`, an OpenMapTiles-schema vector tile archive
 (zoom 0–14) from OpenStreetMap, for the base style in `web/style.json`.
 Caddy serves this directory at `/tiles/` with range requests.
 
-The archive covers `BOUNDS` (default 88,-12 – 150,55) and holds OSM detail
+The archive covers `BOUNDS` (default the whole world: coasts, sea and Natural Earth borders everywhere) and holds OSM detail
 for the extracts in `EXTRACTS` (Southeast and East Asia), merged into one
 file with osmium. The map reads the bounds from the archive's header and
 shows the page's paper beyond them (`web/src/style.ts`), so other BOUNDS
@@ -72,7 +72,7 @@ merges and names the files to delete and fetch again.
 docker run --rm -v "$PWD/map:/map:ro" protomaps/go-pmtiles:v1.31.2 show /map/asia.pmtiles
 ```
 
-Expect bounds 88,-2 – 114,28 and zoom 0–14.
+Expect bounds -180,-85 – 180,85 (the whole world) and zoom 0–14.
 
 ## Licence
 

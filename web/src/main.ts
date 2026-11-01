@@ -6,7 +6,7 @@ import { Protocol } from 'pmtiles';
 import { cellToBoundary, cellToLatLng, getHexagonAreaAvg, getResolution, isValidCell, latLngToCell, UNITS } from 'h3-js';
 import { loadApi, MOCK, type UploadResult } from './api';
 import { DataStore } from './data';
-import { PLOT_RES, planView, type ViewPlan } from './grid';
+import { PLOT_MIN_ZOOM, PLOT_RES, planView, type ViewPlan } from './grid';
 import { addLayers, pulse, renderCoverage, renderPlots, setGroupState, setPlotState, showMode } from './layers';
 import { Panel } from './panel';
 import { baseStyle } from './style';
@@ -281,7 +281,7 @@ map.getCanvas().addEventListener('mouseleave', () => {
   hoverGroup(null);
 });
 
-/** Zoom so that a group of plots fills the view, clear of the labels at the edges. */
+/** Zoom so that a group of plots fills the view, clear of the labels at the edges, and at least to single plots. */
 function zoomToGroup(cell: string): void {
   let w = 180, s = 90, e = -180, n = -90;
   for (const [lat, lng] of cellToBoundary(cell)) {
@@ -290,7 +290,11 @@ function zoomToGroup(cell: string): void {
   }
   hoverGroup(null);
   const pad = Math.round(Math.min(innerWidth, innerHeight) * 0.08);
-  map.fitBounds([[w, s], [e, n]], { padding: pad, duration: 700 });
+  const cam = map.cameraForBounds([[w, s], [e, n]], { padding: pad });
+  if (!cam) return;
+  // Always land on single plots: on a phone a large group (343 plots) fits
+  // only at about zoom 9, where the map would still show groups.
+  map.easeTo({ ...cam, zoom: Math.max(cam.zoom ?? 0, PLOT_MIN_ZOOM), duration: 700 });
 }
 
 map.on('click', (e) => {

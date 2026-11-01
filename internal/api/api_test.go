@@ -95,23 +95,43 @@ func (f *fakeRepo) Coverage(_ context.Context, res int, parents []string) (map[s
 type testEnv struct {
 	t     *testing.T
 	srv   *httptest.Server
+	s     *Server
 	store *storage.Memory
 	repo  *fakeRepo
 	as    atomic.Pointer[views.Viewer] // the signed-in viewer internal/auth would set; nil = signed out
 }
 
-func newEnv(t *testing.T, maxMB int) *testEnv {
+func newEnv(t *testing.T, maxMB int) *testEnv { return newEnvWith(t, Config{MaxUploadMB: maxMB}, nil) }
+
+// newEnvWith starts the API with cfg (SpoolDir is set to a test directory)
+// on an http.Server that srvCfg may adjust before it starts. Every test
+// checks at its end that no spooled upload is left behind.
+func newEnvWith(t *testing.T, cfg Config, srvCfg func(*http.Server)) *testEnv {
 	repo := newFakeRepo()
 	store := storage.NewMemory("http://img.test/img")
-	s := New(repo, store, Config{MaxUploadMB: maxMB})
+	cfg.SpoolDir = t.TempDir()
+	s := New(repo, store, cfg)
 	s.now = func() time.Time { return time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC) }
-	e := &testEnv{t: t, store: store, repo: repo}
+	e := &testEnv{t: t, s: s, store: store, repo: repo}
 	e.signIn("Ada")
 	h := s.Handler()
-	e.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		h.ServeHTTP(w, r.WithContext(views.WithViewer(r.Context(), e.as.Load())))
+	e.srv = httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		v := e.as.Load()
+		if name := r.Header.Get("X-Test-Surveyor"); name != "" {
+			v = &views.Viewer{SurveyorID: "id-" + name, Name: name, Email: name + "@example.org"}
+		}
+		h.ServeHTTP(w, r.WithContext(views.WithViewer(r.Context(), v)))
 	}))
+	if srvCfg != nil {
+		srvCfg(e.srv.Config)
+	}
+	e.srv.Start()
 	t.Cleanup(e.srv.Close)
+	t.Cleanup(func() {
+		if left, _ := os.ReadDir(cfg.SpoolDir); len(left) != 0 {
+			t.Errorf("spooled uploads left behind: %v", left)
+		}
+	})
 	return e
 }
 
@@ -130,8 +150,7 @@ func fixture(t *testing.T, name string) []byte {
 	return b
 }
 
-func (e *testEnv) upload(file []byte, fields map[string]string) (int, map[string]any) {
-	e.t.Helper()
+func multipartBody(file []byte, fields map[string]string) ([]byte, string) {
 	var body bytes.Buffer
 	mw := multipart.NewWriter(&body)
 	for k, v := range fields {
@@ -142,7 +161,29 @@ func (e *testEnv) upload(file []byte, fields map[string]string) (int, map[string
 		_, _ = fw.Write(file)
 	}
 	_ = mw.Close()
-	resp, err := http.Post(e.srv.URL+"/api/photos", mw.FormDataContentType(), &body)
+	return body.Bytes(), mw.FormDataContentType()
+}
+
+func (e *testEnv) upload(file []byte, fields map[string]string) (int, map[string]any) {
+	e.t.Helper()
+	return e.uploadAs("", file, fields)
+}
+
+// uploadAs uploads as Surveyor name ("" = the signed-in viewer).
+func (e *testEnv) uploadAs(name string, file []byte, fields map[string]string) (int, map[string]any) {
+	e.t.Helper()
+	body, ct := multipartBody(file, fields)
+	return e.post(name, ct, bytes.NewReader(body))
+}
+
+func (e *testEnv) post(name, contentType string, body io.Reader) (int, map[string]any) {
+	e.t.Helper()
+	req, _ := http.NewRequest(http.MethodPost, e.srv.URL+"/api/photos", body)
+	req.Header.Set("Content-Type", contentType)
+	if name != "" {
+		req.Header.Set("X-Test-Surveyor", name)
+	}
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		e.t.Fatal(err)
 	}
@@ -298,6 +339,132 @@ func TestCreatePhotoRejects(t *testing.T) {
 	if status, _ := decode(t, resp); status != http.StatusBadRequest {
 		t.Errorf("non-multipart: %d", status)
 	}
+}
+
+// slowUpload is an upload by Surveyor name whose body arrives until done
+// is called; status then receives its response's status.
+type slowUpload struct {
+	w      *io.PipeWriter
+	rest   []byte
+	status chan int
+}
+
+func (e *testEnv) startSlowUpload(name string, file []byte, fields map[string]string) *slowUpload {
+	body, ct := multipartBody(file, fields)
+	pr, pw := io.Pipe()
+	u := &slowUpload{w: pw, rest: body[len(body)/2:], status: make(chan int, 1)}
+	go func() {
+		req, _ := http.NewRequest(http.MethodPost, e.srv.URL+"/api/photos", pr)
+		req.Header.Set("Content-Type", ct)
+		req.Header.Set("X-Test-Surveyor", name)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			u.status <- 0
+			return
+		}
+		resp.Body.Close()
+		u.status <- resp.StatusCode
+	}()
+	go func() { _, _ = pw.Write(body[:len(body)/2]) }()
+	return u
+}
+
+func (u *slowUpload) done() int {
+	_, _ = u.w.Write(u.rest)
+	_ = u.w.Close()
+	return <-u.status
+}
+
+// waitFor polls cond for up to two seconds.
+func waitFor(t *testing.T, what string, cond func() bool) {
+	t.Helper()
+	for i := 0; !cond(); i++ {
+		if i == 200 {
+			t.Fatalf("timed out waiting for %s", what)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// While a body is still arriving, the upload holds its file on disk and no
+// processing slot; meanwhile the same Surveyor cannot start a second upload,
+// and other Surveyors can upload.
+func TestCreatePhotoSpoolsWithoutSlot(t *testing.T) {
+	e := newEnvWith(t, Config{MaxUploadMB: 25, MaxConcurrentProcessing: 1}, nil)
+	img := fixture(t, "gps.jpg")
+	slow := e.startSlowUpload("Ada", img, nil)
+	waitFor(t, "the spooled upload", func() bool {
+		files, _ := os.ReadDir(e.s.cfg.SpoolDir)
+		if len(files) != 1 {
+			return false
+		}
+		fi, err := files[0].Info()
+		return err == nil && fi.Size() > 0
+	})
+	if n := len(e.s.sem); n != 0 {
+		t.Fatalf("%d processing slots held while the body arrives", n)
+	}
+
+	status, body := e.uploadAs("Ada", img, nil)
+	if msg, _ := body["error"].(string); status != http.StatusTooManyRequests || !strings.Contains(msg, "still in progress") {
+		t.Errorf("second upload by the same Surveyor: %d %v", status, body)
+	}
+	if status, body := e.uploadAs("Bo", img, nil); status != http.StatusCreated {
+		t.Errorf("another Surveyor during a slow upload: %d %v", status, body)
+	}
+
+	if status := slow.done(); status != http.StatusCreated {
+		t.Fatalf("slow upload: %d", status)
+	}
+	if status, body := e.uploadAs("Ada", img, nil); status != http.StatusCreated {
+		t.Errorf("next upload after the first finished: %d %v", status, body)
+	}
+	waitFor(t, "the slots to be released", func() bool { return len(e.s.sem) == 0 })
+}
+
+// The upload route sets its own deadline: it outlasts a short server
+// ReadTimeout and is cut off by a short UploadTimeout. Other routes keep the
+// server's timeouts, since nothing else changes them.
+func TestCreatePhotoUploadTimeout(t *testing.T) {
+	body, ct := multipartBody(fixture(t, "gps.jpg"), nil)
+	trickle := func() io.Reader { // about one second for the whole body
+		pr, pw := io.Pipe()
+		go func() {
+			step := len(body)/4 + 1
+			for i := 0; i < len(body); i += step {
+				if _, err := pw.Write(body[i:min(i+step, len(body))]); err != nil {
+					return
+				}
+				time.Sleep(250 * time.Millisecond)
+			}
+			_ = pw.Close()
+		}()
+		return pr
+	}
+
+	e := newEnvWith(t, Config{MaxUploadMB: 25, UploadTimeout: 10 * time.Second},
+		func(s *http.Server) { s.ReadTimeout = 300 * time.Millisecond })
+	if status, resp := e.post("Ada", ct, trickle()); status != http.StatusCreated {
+		t.Fatalf("slow upload, short ReadTimeout: %d %v", status, resp)
+	}
+
+	e = newEnvWith(t, Config{MaxUploadMB: 25, UploadTimeout: 400 * time.Millisecond},
+		func(s *http.Server) { s.ReadTimeout = time.Minute })
+	req, _ := http.NewRequest(http.MethodPost, e.srv.URL+"/api/photos", trickle())
+	req.Header.Set("Content-Type", ct)
+	req.Header.Set("X-Test-Surveyor", "Ada")
+	if resp, err := http.DefaultClient.Do(req); err == nil {
+		b, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode == http.StatusCreated {
+			t.Fatalf("slow upload, short UploadTimeout: %d %s", resp.StatusCode, b)
+		}
+	}
+	waitFor(t, "the upload to end", func() bool {
+		e.s.mu.Lock()
+		defer e.s.mu.Unlock()
+		return len(e.s.uploading) == 0
+	})
 }
 
 func TestCreatePhotoNeedsSurveyor(t *testing.T) {

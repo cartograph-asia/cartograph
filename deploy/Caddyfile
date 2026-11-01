@@ -9,7 +9,16 @@
 }
 
 :80 {
-	log
+	# The token of a magic link (/signin/link?token=…) signs its holder in
+	# for up to 15 minutes; it must not reach the access log. Caddy already
+	# redacts Cookie headers.
+	log {
+		format filter {
+			request>uri query {
+				replace token REDACTED
+			}
+		}
+	}
 
 	handle /api/* {
 		# Uploads are capped at MAX_UPLOAD_MB (25) by the api; leave room for

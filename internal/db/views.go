@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"net/url"
 	"strings"
 	"time"
@@ -434,19 +435,14 @@ func (v *Views) Surveyor(ctx context.Context, name string, page int) (*views.Sur
 		return nil, err
 	}
 	out := &views.Surveyor{Profile: s.profile}
-	var minLat, minLng, maxLat, maxLng *float64
 	err = v.d.Pool.QueryRow(ctx, `
 		select
 		  count(distinct ph.cell), (select count(*) from plots where first_surveyor_id = $1),
-		  count(*), count(distinct pl.region_id),
-		  min(ph.lat), min(ph.lng), max(ph.lat), max(ph.lng)
+		  count(*), count(distinct pl.region_id)
 		from photos ph join plots pl on pl.cell = ph.cell where ph.surveyor_id = $1`, s.id,
-	).Scan(&out.Stats.Surveyed, &out.Stats.Plots, &out.Stats.Photos, &out.Stats.Regions, &minLat, &minLng, &maxLat, &maxLng)
+	).Scan(&out.Stats.Surveyed, &out.Stats.Plots, &out.Stats.Photos, &out.Stats.Regions)
 	if err != nil {
 		return nil, fmt.Errorf("db: surveyor stats: %w", err)
-	}
-	if minLat != nil {
-		out.Bounds = &views.Bounds{MinLat: *minLat, MinLng: *minLng, MaxLat: *maxLat, MaxLng: *maxLng}
 	}
 	pg, err := pagination(page, views.PerPage, out.Stats.Photos)
 	if err != nil {
@@ -464,6 +460,9 @@ func (v *Views) Surveyor(ctx context.Context, name string, page int) (*views.Sur
 		return nil, fmt.Errorf("db: surveyor cells: %w", err)
 	}
 	if out.PlotPaths, err = v.plotPaths(ctx, out.PlotCells); err != nil {
+		return nil, err
+	}
+	if out.Bounds, err = cellBounds(out.PlotCells); err != nil {
 		return nil, err
 	}
 	desc := s.profile.Bio
@@ -600,6 +599,27 @@ func (v *Views) plotPaths(ctx context.Context, cells []string) (map[string]strin
 		out[p.Cell] = p.Path()
 	}
 	return out, rows.Err()
+}
+
+// cellBounds is the box around the boundaries of cells, or nil for none.
+// Public bounds are built from plots only: exact photo coordinates never
+// leave the database (docs/decisions.md, 2026-11-01).
+func cellBounds(cells []string) (*views.Bounds, error) {
+	if len(cells) == 0 {
+		return nil, nil
+	}
+	b := views.Bounds{MinLat: math.Inf(1), MinLng: math.Inf(1), MaxLat: math.Inf(-1), MaxLng: math.Inf(-1)}
+	for _, c := range cells {
+		ring, err := h3.Boundary(c)
+		if err != nil {
+			return nil, fmt.Errorf("db: cell bounds: %w", err)
+		}
+		for _, p := range ring {
+			b.MinLat, b.MaxLat = math.Min(b.MinLat, p.Lat), math.Max(b.MaxLat, p.Lat)
+			b.MinLng, b.MaxLng = math.Min(b.MinLng, p.Lng), math.Max(b.MaxLng, p.Lng)
+		}
+	}
+	return &b, nil
 }
 
 // PlotCell implements views.Source.

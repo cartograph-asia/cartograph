@@ -1,7 +1,7 @@
 # Cartograph prototype stack.
 #
 #   cd deploy
-#   cp .env.example .env      # optional: every variable has a default below
+#   cp .env.example .env      # needed: sets MAIL_DEV_LOG=1 (sign-in links in the log)
 #   docker compose up --build
 #
 # Then open http://localhost:8080. Only one host port is published: 8080
@@ -28,12 +28,15 @@ x-api-env: &api-env
   SMTP_USER: ${SMTP_USER:-}
   SMTP_PASSWORD: ${SMTP_PASSWORD:-}
   MAIL_FROM: ${MAIL_FROM:-Cartograph.asia <hello@cartograph.asia>}
+  # No default: without SMTP_HOST the api starts only with MAIL_DEV_LOG=1.
+  MAIL_DEV_LOG: ${MAIL_DEV_LOG:-}
 
 services:
   postgres:
     # Plain PostgreSQL; PostGIS is not used by the prototype.
     image: postgres:16.15-alpine3.24
     restart: unless-stopped
+    mem_limit: ${POSTGRES_MEM_LIMIT:-1g}
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-cartograph}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cartograph}
@@ -52,6 +55,7 @@ services:
     # image has no shell, so there is no healthcheck; garage-init waits for it.
     image: dxflrs/garage:v2.5.0
     restart: unless-stopped
+    mem_limit: ${GARAGE_MEM_LIMIT:-512m}
     environment:
       GARAGE_RPC_SECRET: ${GARAGE_RPC_SECRET:-dda494800248dc844572c3cb46c426b8ef2b3f1e6b83aa2ab47b47ee5a859c44}
       GARAGE_ADMIN_TOKEN: ${GARAGE_ADMIN_TOKEN:-PAT5VqzxsIBdt0Y4PsJWopnlIQovuzPVD9jpjV8}
@@ -134,12 +138,19 @@ services:
       context: ..
       dockerfile: deploy/Dockerfile.api
     restart: unless-stopped
+    # A photo at the pixel limit needs up to about 400 MB while it is
+    # decoded and resized, and the api processes two at once. GOMEMLIMIT
+    # makes the Go runtime collect harder before the container limit, which
+    # stops the api alone instead of the kernel picking a victim on the host.
+    mem_limit: ${API_MEM_LIMIT:-1536m}
     depends_on:
       postgres:
         condition: service_healthy
       garage-init:
         condition: service_completed_successfully
-    environment: *api-env
+    environment:
+      <<: *api-env
+      GOMEMLIMIT: ${API_GOMEMLIMIT:-1GiB}
     healthcheck:
       # The binary probes its own /healthz; distroless has no shell or curl.
       test: ["CMD", "/usr/local/bin/api", "-healthcheck"]
@@ -153,10 +164,12 @@ services:
       context: ../web
       dockerfile: ../deploy/Dockerfile.web
     restart: unless-stopped
+    mem_limit: ${WEB_MEM_LIMIT:-128m}
 
   caddy:
     image: caddy:2.11.7-alpine
     restart: unless-stopped
+    mem_limit: ${CADDY_MEM_LIMIT:-256m}
     depends_on:
       api:
         condition: service_healthy

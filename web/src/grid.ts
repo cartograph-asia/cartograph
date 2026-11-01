@@ -13,8 +13,13 @@ export const PLOT_RES = 8;
 export const PLOT_MIN_ZOOM = 10;
 /** Above this many cells in view we stay in coverage mode (raises the effective threshold zoom). */
 export const MAX_VIEW_CELLS = 8000;
-/** Contract limit for GET /api/plots?cells= */
-export const PLOTS_BATCH = 2000;
+/**
+ * Cells per GET /api/plots?cells= request. The API takes up to 2000, but at
+ * 16 characters a cell that is a 32 KB URL, and Caddy refuses request lines
+ * past about 20 KB with a 431 (so do Vite's dev proxy at 16 KB): those plots
+ * then never got their colour. 800 cells keep the URL near 13 KB.
+ */
+export const PLOTS_BATCH = 800;
 /** Contract limit for GET /api/coverage?cells= */
 export const COVERAGE_BATCH = 500;
 

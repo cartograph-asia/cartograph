@@ -511,7 +511,7 @@ func TestSecureCookies(t *testing.T) {
 
 func TestConfigFromEnv(t *testing.T) {
 	env := func(m map[string]string) func(string) string { return func(k string) string { return m[k] } }
-	cfg, err := ConfigFromEnv(env(nil))
+	cfg, err := ConfigFromEnv(env(map[string]string{"MAIL_DEV_LOG": "1"}))
 	if err != nil || cfg.BaseURL != "http://localhost:8080" || cfg.SMTP.Host != "" || cfg.SMTP.Port != 587 {
 		t.Fatalf("defaults: %+v %v", cfg, err)
 	}
@@ -533,15 +533,27 @@ func TestConfigFromEnv(t *testing.T) {
 			t.Errorf("%v: no error", bad)
 		}
 	}
-	// A public https site never falls back to logging sign-in links.
-	for _, host := range []string{"", "  "} {
-		_, err := ConfigFromEnv(env(map[string]string{"BASE_URL": "https://cartograph.asia", "SMTP_HOST": host}))
-		if err == nil || !strings.Contains(err.Error(), "SMTP_HOST is required when BASE_URL is https") {
-			t.Errorf("https without SMTP_HOST %q: %v", host, err)
+	// Sign-in links are logged only with an explicit MAIL_DEV_LOG=1, and
+	// never on a public https site.
+	for _, c := range []struct {
+		env  map[string]string
+		want string // "" = starts
+	}{
+		{map[string]string{}, "MAIL_DEV_LOG=1"},
+		{map[string]string{"MAIL_DEV_LOG": "0"}, "MAIL_DEV_LOG=1"},
+		{map[string]string{"SMTP_HOST": "  "}, "MAIL_DEV_LOG=1"},
+		{map[string]string{"MAIL_DEV_LOG": "true"}, "MAIL_DEV_LOG must be 1"},
+		{map[string]string{"MAIL_DEV_LOG": "1"}, ""},
+		{map[string]string{"MAIL_DEV_LOG": " 1 "}, ""},
+		{map[string]string{"BASE_URL": "https://cartograph.asia"}, "SMTP_HOST is required when BASE_URL is https"},
+		{map[string]string{"BASE_URL": "https://cartograph.asia", "MAIL_DEV_LOG": "1"}, "SMTP_HOST is required when BASE_URL is https"},
+		{map[string]string{"BASE_URL": "https://cartograph.asia", "SMTP_HOST": "smtp.example.org", "MAIL_FROM": "hello@cartograph.asia"}, ""},
+		{map[string]string{"SMTP_HOST": "smtp.example.org", "MAIL_FROM": "hello@cartograph.asia"}, ""},
+	} {
+		_, err := ConfigFromEnv(env(c.env))
+		if c.want == "" && err != nil || c.want != "" && (err == nil || !strings.Contains(err.Error(), c.want)) {
+			t.Errorf("%v: %v, want %q", c.env, err, c.want)
 		}
-	}
-	if _, err := ConfigFromEnv(env(map[string]string{"BASE_URL": "http://localhost:8080"})); err != nil {
-		t.Errorf("http without SMTP_HOST (dev mode): %v", err)
 	}
 }
 

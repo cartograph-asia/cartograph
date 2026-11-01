@@ -1,7 +1,7 @@
 # Cartograph prototype stack.
 #
 #   cd deploy
-#   cp .env.example .env      # optional: every variable has a default below
+#   cp .env.example .env      # needed: sets MAIL_DEV_LOG=1 (sign-in links in the log)
 #   docker compose up --build
 #
 # Then open http://localhost:8080. Only one host port is published: 8080
@@ -28,6 +28,8 @@ x-api-env: &api-env
   SMTP_USER: ${SMTP_USER:-}
   SMTP_PASSWORD: ${SMTP_PASSWORD:-}
   MAIL_FROM: ${MAIL_FROM:-Cartograph.asia <hello@cartograph.asia>}
+  # No default: without SMTP_HOST the api starts only with MAIL_DEV_LOG=1.
+  MAIL_DEV_LOG: ${MAIL_DEV_LOG:-}
 
 services:
   postgres:

@@ -68,7 +68,7 @@ func (f *fakeStore) Surveyors(context.Context, int, time.Time) (*views.AdminSurv
 	return &views.AdminSurveyors{}, nil
 }
 func (f *fakeStore) Surveyor(_ context.Context, name string, _ time.Time) (*views.AdminSurveyor, error) {
-	return &views.AdminSurveyor{Surveyor: views.AdminSurveyorItem{Name: name, Photos: 3}, Bio: "spam"}, nil
+	return &views.AdminSurveyor{Surveyor: views.AdminSurveyorItem{Name: name, Display: "Ploy", Photos: 3}, Bio: "spam"}, nil
 }
 func (f *fakeStore) BlockSurveyor(context.Context, string, string, string, bool, time.Time) error {
 	return f.write("block")
@@ -81,6 +81,9 @@ func (f *fakeStore) EndSessions(context.Context, string, string) error {
 }
 func (f *fakeStore) ClearBio(context.Context, string, string, string) error {
 	return f.write("clear-bio")
+}
+func (f *fakeStore) ClearDisplayName(context.Context, string, string, string) error {
+	return f.write("clear-display-name")
 }
 func (f *fakeStore) Places(context.Context) (*views.AdminPlaces, error) {
 	return &views.AdminPlaces{}, nil

@@ -4,10 +4,10 @@
 <header class="head">
 <p class="kicker">Photo{{if $p.Hidden}} · hidden{{end}}</p>
 <h1 class="name">{{heading $p.Plot}}</h1>
-<p class="note">by <a href="/admin/surveyor/{{$p.Surveyor.Name}}">{{$p.Surveyor.Name}}</a>{{with .Email}} ({{.}}){{end}}{{if $p.FirstSurvey}} · first survey of this plot{{end}}</p>
+<p class="note">by <a href="/admin/surveyor/{{$p.Surveyor.Name}}">{{$p.Surveyor.Label}}</a>{{with .Email}} ({{.}}){{end}}{{if $p.FirstSurvey}} · first survey of this plot{{end}}</p>
 </header>
 <div class="cols">
-<figure class="shot"><img src="{{img $p.Keys.Thumb}}" width="480" height="360" alt="Photo at {{$p.Plot.Name}} by {{$p.Surveyor.Name}}" fetchpriority="high"></figure>
+<figure class="shot"><img src="{{img $p.Keys.Thumb}}" width="480" height="360" alt="Photo at {{$p.Plot.Name}} by {{$p.Surveyor.Label}}" fetchpriority="high"></figure>
 <div>
 {{if $p.Hidden}}
 <p class="error">Hidden {{stamp $p.HiddenAt}}: {{$p.HiddenReason}}</p>

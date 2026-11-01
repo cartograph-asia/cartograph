@@ -235,14 +235,14 @@ func TestPGStore(t *testing.T) {
 	if _, err := pool.Exec(ctx, "insert into surveyors (id, name, placeholder) values ($1, 'Taken', true)", uuid.New()); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.ChooseName(ctx, sh, "TAKEN", now, false); !errors.Is(err, ErrNameTaken) {
+	if _, err := s.ChooseName(ctx, sh, "TAKEN", "", now, false); !errors.Is(err, ErrNameTaken) {
 		t.Fatalf("taken: %v", err)
 	}
-	v, err = s.ChooseName(ctx, sh, "Nok", now.Add(time.Minute), false)
+	v, err = s.ChooseName(ctx, sh, "Nok", "", now.Add(time.Minute), false)
 	if err != nil || v.Name != "Nok" || v.SurveyorID == "" {
 		t.Fatalf("choose: %+v %v", v, err)
 	}
-	if v2, err := s.ChooseName(ctx, sh, "Other", now, false); err != nil || v2.Name != "Nok" {
+	if v2, err := s.ChooseName(ctx, sh, "Other", "", now, false); err != nil || v2.Name != "Nok" {
 		t.Fatalf("second choice: %+v %v", v2, err)
 	}
 	if ses, err := s.Session(ctx, sh2, now); err != nil || ses.Viewer.Name != "Nok" {
@@ -252,7 +252,7 @@ func TestPGStore(t *testing.T) {
 	if err := pool.QueryRow(ctx, "select joined_at from surveyors where name = 'Nok'").Scan(&joined); err != nil || !joined.Equal(now.Add(time.Minute)) {
 		t.Fatalf("joined_at %v %v", joined, err)
 	}
-	if _, err := s.ChooseName(ctx, hashToken(newToken()), "Nobody", now, false); !errors.Is(err, ErrNotFound) {
+	if _, err := s.ChooseName(ctx, hashToken(newToken()), "Nobody", "", now, false); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("unknown session: %v", err)
 	}
 
@@ -293,19 +293,19 @@ func TestPGStore(t *testing.T) {
 		values ('province', 4, 'th', 'chon-buri', 'Chon Buri', '{}', 0, 0, 0, 0)`); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.UpdateProfile(ctx, v.SurveyorID, "Walking the coast.", "chon-buri"); err != nil {
+	if err := s.UpdateProfile(ctx, v.SurveyorID, Profile{Display: "Nok Pattaya", Bio: "Walking the coast.", HomeRegion: "chon-buri"}); err != nil {
 		t.Fatal(err)
 	}
-	if bio, home, err := s.Profile(ctx, v.SurveyorID); err != nil || bio != "Walking the coast." || home != "chon-buri" {
-		t.Fatalf("profile: %q %q %v", bio, home, err)
+	if p, err := s.Profile(ctx, v.SurveyorID); err != nil || p != (Profile{Display: "Nok Pattaya", Bio: "Walking the coast.", HomeRegion: "chon-buri"}) {
+		t.Fatalf("profile: %+v %v", p, err)
 	}
-	if err := s.UpdateProfile(ctx, v.SurveyorID, "", ""); err != nil {
+	if err := s.UpdateProfile(ctx, v.SurveyorID, Profile{}); err != nil {
 		t.Fatal(err)
 	}
-	if bio, home, err := s.Profile(ctx, v.SurveyorID); err != nil || bio != "" || home != "" {
-		t.Fatalf("cleared profile: %q %q %v", bio, home, err)
+	if p, err := s.Profile(ctx, v.SurveyorID); err != nil || p != (Profile{}) {
+		t.Fatalf("cleared profile: %+v %v", p, err)
 	}
-	if err := s.UpdateProfile(ctx, uuid.NewString(), "", ""); !errors.Is(err, ErrNotFound) {
+	if err := s.UpdateProfile(ctx, uuid.NewString(), Profile{}); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("unknown surveyor: %v", err)
 	}
 }
@@ -349,14 +349,14 @@ func TestPGStoreInvitations(t *testing.T) {
 	if _, err := s.CreateSession(ctx, strangerSession, "stranger@example.org", now, now.Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.ChooseName(ctx, strangerSession, "stranger", now, true); !errors.Is(err, ErrNotInvited) {
+	if _, err := s.ChooseName(ctx, strangerSession, "stranger", "", now, true); !errors.Is(err, ErrNotInvited) {
 		t.Fatalf("stranger chose a name: %v", err)
 	}
 	newSession := hashToken(newToken())
 	if _, err := s.CreateSession(ctx, newSession, "new@example.org", now, now.Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
-	v, err := s.ChooseName(ctx, newSession, "newbie", now, true)
+	v, err := s.ChooseName(ctx, newSession, "newbie", "", now, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -413,5 +413,32 @@ func TestPGStoreInvitations(t *testing.T) {
 	}
 	if sess, err := s.Session(ctx, strangerSession, now); err != nil || !sess.CreatedAt.Equal(now) {
 		t.Fatalf("nameless session %+v %v", sess, err)
+	}
+}
+
+func TestPGStoreDisplayNameClashes(t *testing.T) {
+	pool := testPool(t)
+	migrate(t, pool, "")
+	s := NewPGStore(pool)
+	ctx := context.Background()
+	now := time.Date(2026, 11, 1, 9, 0, 0, 0, time.UTC)
+	a := hashToken(newToken())
+	if _, err := s.CreateSession(ctx, a, "a@example.org", now, now.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ChooseName(ctx, a, "ada", "somchai-k", now, false); err != nil {
+		t.Fatal(err)
+	}
+	// A new Surveyor name may not equal someone's display name, nor their
+	// display name someone's Surveyor name.
+	b := hashToken(newToken())
+	if _, err := s.CreateSession(ctx, b, "b@example.org", now, now.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ChooseName(ctx, b, "Somchai-K", "", now, false); !errors.Is(err, ErrNameTaken) {
+		t.Fatalf("handle equal to a display name: %v", err)
+	}
+	if _, err := s.ChooseName(ctx, b, "bob", "ADA", now, false); !errors.Is(err, ErrDisplayTaken) {
+		t.Fatalf("display name equal to a handle: %v", err)
 	}
 }

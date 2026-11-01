@@ -2,26 +2,26 @@
 {{$s := .Profile}}
 <header class="head">
 <p class="kicker">Surveyor</p>
-<h1>{{$s.Name}}</h1>
-<p class="meta">Surveyor since {{date $s.JoinedAt}}{{with $s.HomeRegion}} · home region <a href="/region/{{.Slug}}">{{.NameEn}}</a>{{end}}</p>
+<h1>{{$s.Label}}</h1>
+<p class="meta">{{if $s.Display}}@{{$s.Name}} · {{end}}Surveyor since {{date $s.JoinedAt}}{{with $s.HomeRegion}} · home region <a href="/region/{{.Slug}}">{{.NameEn}}</a>{{end}}</p>
 {{with $s.Bio}}<p class="bio">{{.}}</p>{{end}}
 <ul class="figures small">
 <li><b>{{num .Stats.Surveyed}}</b> {{surveyed .Stats.Surveyed .Stats.Plots}}</li>
 <li><b>{{num .Stats.Photos}}</b> {{if eq .Stats.Photos 1}}photo{{else}}photos{{end}}</li>
 <li><b>{{num .Stats.Regions}}</b> {{if eq .Stats.Regions 1}}region{{else}}regions{{end}}</li>
 </ul>
-<p class="note"><a href="{{.Feed}}">RSS feed of {{$s.Name}}'s photos</a>{{if and .Viewer .Viewer.HasName (eq .Viewer.Name $s.Name)}} · <a href="/settings">Edit your profile</a>{{end}}</p>
+<p class="note"><a href="{{.Feed}}">RSS feed of {{$s.Label}}'s photos</a>{{if and .Viewer .Viewer.HasName (eq .Viewer.Name $s.Name)}} · <a href="/settings">Edit your profile</a>{{end}}</p>
 </header>
 
 {{if .PlotCells}}<section class="block minimap" aria-labelledby="map-h">
 <div class="head-row"><h2 id="map-h">Plots</h2>{{with .Bounds}}<a class="more" href="{{mapHash .}}">Open on the map <span aria-hidden="true">→</span></a>{{end}}</div>
-<div class="mapbox" data-minimap="plots" data-cells="{{join .PlotCells ","}}" data-paths="{{pathsFor .PlotCells .PlotPaths}}" data-photos="{{photosFor .PlotCells .PlotPhotos}}">{{cellsSVG .PlotCells .PlotPhotos (printf "Outline of the plots %s surveyed." $s.Name)}}</div>
-<p class="note">{{count (len .PlotCells) "plot" "plots"}} surveyed by {{$s.Name}}.</p>
+<div class="mapbox" data-minimap="plots" data-cells="{{join .PlotCells ","}}" data-paths="{{pathsFor .PlotCells .PlotPaths}}" data-photos="{{photosFor .PlotCells .PlotPhotos}}">{{cellsSVG .PlotCells .PlotPhotos (printf "Outline of the plots %s surveyed." $s.Label)}}</div>
+<p class="note">{{count (len .PlotCells) "plot" "plots"}} surveyed by {{$s.Label}}.</p>
 </section>{{end}}
 
 <section class="block" aria-labelledby="photos-h">
 <div class="head-row"><h2 id="photos-h">Photos</h2><span class="note">Newest first.</span></div>
-{{if .Photos}}{{template "grid" (grid .Now .Photos true "surveyor")}}{{else}}<p>{{$s.Name}} has not uploaded a photo yet.</p>{{end}}
+{{if .Photos}}{{template "grid" (grid .Now .Photos true "surveyor")}}{{else}}<p>{{$s.Label}} has not uploaded a photo yet.</p>{{end}}
 {{template "pagination" .}}
 </section>
 {{if .PlotCells}}{{template "minimap-script"}}{{end}}

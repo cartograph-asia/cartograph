@@ -784,3 +784,61 @@ func TestHeading(t *testing.T) {
 		t.Errorf("heading without a place = %q", got)
 	}
 }
+
+func TestDisplayNames(t *testing.T) {
+	// somchai-k is "Somchai Kittisak", ploy88 "พลอย ชลบุรี"; adrian has none.
+	h := newServer(t, 0)
+	home := get(t, h, "/").body
+	must(t, home, `<a href="/surveyor/ploy88">พลอย ชลบุรี</a>`)
+	mustNot(t, home, `>ploy88<`)
+
+	prof := get(t, h, "/surveyor/somchai-k").body
+	must(t, prof, "<h1>Somchai Kittisak</h1>", `<p class="meta">@somchai-k · Surveyor since`, "<title>Somchai Kittisak · cartograph.asia</title>",
+		`href="/surveyor/somchai-k.rss"`, `<link rel="canonical" href="https://cartograph.asia/surveyor/somchai-k">`)
+	mustNot(t, get(t, h, "/surveyor/adrian").body, "@adrian")
+
+	feed := get(t, h, "/surveyor/somchai-k.rss").body
+	must(t, feed, `xmlns:dc="http://purl.org/dc/elements/1.1/"`, "<dc:creator>Somchai Kittisak</dc:creator>", "by Somchai Kittisak</title>")
+
+	// A photo by a Surveyor with a display name: label, handle, licence.
+	src := viewstest.NewFake()
+	l, _ := src.Latest(context.Background(), 1)
+	var id string
+	for _, p := range l.Photos {
+		if p.Surveyor.Name == "somchai-k" {
+			id = p.ID
+			break
+		}
+	}
+	ph := get(t, h, "/photo/"+id).body
+	must(t, ph, `by <a href="/surveyor/somchai-k">Somchai Kittisak</a> @somchai-k`,
+		`© <a href="/surveyor/somchai-k">Somchai Kittisak (@somchai-k)</a>, <a rel="license"`)
+}
+
+func TestDisplayNameIsTextNotURL(t *testing.T) {
+	// A display name with markup characters is escaped in text and never
+	// becomes part of a URL.
+	p := viewstest.Photo()
+	p.Photo.Surveyor = views.SurveyorRef{Name: "ada", Display: `Ada "<b>" Lovelace`}
+	v := viewstest.Viewer()
+	v.Display = `Ada "<b>" Lovelace`
+	body := render(t, views.PagePhoto, p, views.WithViewer(context.Background(), v))
+	must(t, body, `Ada &#34;&lt;b&gt;&#34; Lovelace`, `href="/surveyor/ada"`)
+	mustNot(t, body, `<b>"`, `/surveyor/Ada`, `Lovelace"`+">", `%3cb%3e`)
+	for _, m := range regexp.MustCompile(`href="[^"]*"`).FindAllString(body, -1) {
+		if strings.Contains(m, "Lovelace") {
+			t.Errorf("display name in a URL: %s", m)
+		}
+	}
+}
+
+func TestDisplayNameForms(t *testing.T) {
+	cn := viewstest.ChooseName()
+	cn.Error, cn.ErrorField, cn.Display = "That is another Surveyor's name.", "display", "somchai-k"
+	body := render(t, views.PageChooseName, cn)
+	must(t, body, `name="display_name"`, `value="somchai-k"`, `maxlength="50"`, `aria-describedby="name-error display-hint" autofocus aria-invalid="true"`)
+	mustNot(t, body, `aria-describedby="name-error name-hint"`)
+	ep := viewstest.EditProfile()
+	ep.Display = "Adrian Altner"
+	must(t, render(t, views.PageEditProfile, ep), `id="display_name" name="display_name" type="text" value="Adrian Altner"`, "Optional; you can change it any time.")
+}

@@ -42,7 +42,7 @@ const photoCols = `ph.id, ph.key_thumb, coalesce(ph.key_medium, ''), ph.key_larg
 	coalesce(pl.place_name, r.name_en, ''), coalesce(pl.place_name_th, ''),
 	coalesce(r.slug, ''), coalesce(r.name_en, ''), coalesce(r.name_th, ''),
 	coalesce(s.name, ph.surveyor), ph.taken_at, ph.uploaded_at, pl.first_photo is not distinct from ph.id,
-	coalesce(pn.number, 0), coalesce(dr.name_en, '')`
+	coalesce(pn.number, 0), coalesce(dr.name_en, ''), coalesce(s.display_name, '')`
 
 const photoFrom = ` from visible_photos ph
 	join plots pl on pl.cell = ph.cell
@@ -66,7 +66,7 @@ func scanPhoto(row pgx.CollectableRow) (views.PhotoItem, error) {
 func photoDest(p *views.PhotoItem, id *uuid.UUID) []any {
 	return []any{id, &p.Keys.Thumb, &p.Keys.Medium, &p.Keys.Large, &p.Width, &p.Height, &p.Plot.Cell,
 		&p.Plot.Place, &p.Plot.PlaceTh, &p.Plot.Region.Slug, &p.Plot.Region.NameEn, &p.Plot.Region.NameTh,
-		&p.Surveyor.Name, &p.TakenAt, &p.UploadedAt, &p.FirstSurvey, &p.Plot.Number, &p.Plot.District}
+		&p.Surveyor.Name, &p.TakenAt, &p.UploadedAt, &p.FirstSurvey, &p.Plot.Number, &p.Plot.District, &p.Surveyor.Display}
 }
 
 func finishPhoto(p *views.PhotoItem, id uuid.UUID) {
@@ -181,20 +181,20 @@ func (v *Views) featured(ctx context.Context) (*views.Featured, error) {
 
 func (v *Views) newSurveyors(ctx context.Context) ([]views.NewSurveyor, error) {
 	rows, err := v.d.Pool.Query(ctx, `
-		select s.name, s.joined_at, f.id from surveyors s
+		select s.name, coalesce(s.display_name, ''), s.joined_at, f.id from surveyors s
 		join lateral (select id from visible_photos where surveyor_id = s.id order by uploaded_at, id limit 1) f on true
 		order by s.joined_at desc, s.id limit $1`, views.HomeNewSurveyors)
 	if err != nil {
 		return nil, fmt.Errorf("db: new surveyors: %w", err)
 	}
 	type row struct {
-		name   string
-		joined time.Time
-		photo  uuid.UUID
+		name, display string
+		joined        time.Time
+		photo         uuid.UUID
 	}
 	rs, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (row, error) {
 		var x row
-		return x, r.Scan(&x.name, &x.joined, &x.photo)
+		return x, r.Scan(&x.name, &x.display, &x.joined, &x.photo)
 	})
 	if err != nil {
 		return nil, fmt.Errorf("db: new surveyors: %w", err)
@@ -209,7 +209,7 @@ func (v *Views) newSurveyors(ctx context.Context) ([]views.NewSurveyor, error) {
 	}
 	out := make([]views.NewSurveyor, 0, len(rs))
 	for _, r := range rs {
-		out = append(out, views.NewSurveyor{Surveyor: views.SurveyorRef{Name: r.name}, JoinedAt: r.joined.UTC(), FirstPhoto: byID[r.photo.String()]})
+		out = append(out, views.NewSurveyor{Surveyor: views.SurveyorRef{Name: r.name, Display: r.display}, JoinedAt: r.joined.UTC(), FirstPhoto: byID[r.photo.String()]})
 	}
 	return out, nil
 }
@@ -287,8 +287,8 @@ func (v *Views) since() time.Time { return v.now().Add(-views.ActiveDays * 24 * 
 // it to one region.
 func (v *Views) activity(ctx context.Context, regionSlug string, since time.Time, limit int) (map[int][]views.SurveyorActivity, error) {
 	rows, err := v.d.Pool.Query(ctx, `
-		select region_id, name, photos, plots from (
-		  select pl.region_id, `+surveyorKey+` as name, count(*) as photos,
+		select region_id, name, display, photos, plots from (
+		  select pl.region_id, `+surveyorKey+` as name, coalesce(max(s.display_name), '') as display, count(*) as photos,
 		         count(*) filter (where pl.first_photo = ph.id) as plots,
 		         row_number() over (partition by pl.region_id order by count(*) desc, `+surveyorKey+`) as rn
 		  `+photoFrom+`
@@ -303,7 +303,7 @@ func (v *Views) activity(ctx context.Context, regionSlug string, since time.Time
 	for rows.Next() {
 		var id int
 		var a views.SurveyorActivity
-		if err := rows.Scan(&id, &a.Surveyor.Name, &a.Photos, &a.Plots); err != nil {
+		if err := rows.Scan(&id, &a.Surveyor.Name, &a.Surveyor.Display, &a.Photos, &a.Plots); err != nil {
 			return nil, fmt.Errorf("db: activity: %w", err)
 		}
 		out[id] = append(out[id], a)
@@ -345,7 +345,7 @@ func (v *Views) Surveyors(ctx context.Context, page int) (*views.SurveyorList, e
 		return nil, err
 	}
 	rows, err := v.d.Pool.Query(ctx, `
-		select s.name, s.joined_at,
+		select s.name, coalesce(s.display_name, ''), s.joined_at,
 		  (select count(distinct cell) from visible_photos where surveyor_id = s.id),
 		  (select count(*) from plots where first_surveyor_id = s.id),
 		  (select count(*) from visible_photos where surveyor_id = s.id),
@@ -360,7 +360,7 @@ func (v *Views) Surveyors(ctx context.Context, page int) (*views.SurveyorList, e
 	}
 	rs, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (row, error) {
 		var x row
-		err := r.Scan(&x.item.Surveyor.Name, &x.item.JoinedAt, &x.item.Surveyed, &x.item.Plots, &x.item.Photos, &x.last)
+		err := r.Scan(&x.item.Surveyor.Name, &x.item.Surveyor.Display, &x.item.JoinedAt, &x.item.Surveyed, &x.item.Plots, &x.item.Photos, &x.last)
 		x.item.JoinedAt = x.item.JoinedAt.UTC()
 		return x, err
 	})
@@ -411,10 +411,10 @@ func (v *Views) surveyor(ctx context.Context, name string) (*surveyorRow, error)
 	var s surveyorRow
 	var slug, en, th *string
 	err := v.d.Pool.QueryRow(ctx, `
-		select s.id, s.name, s.joined_at, s.bio, r.slug, r.name_en, r.name_th
+		select s.id, s.name, coalesce(s.display_name, ''), s.joined_at, s.bio, r.slug, r.name_en, r.name_th
 		from surveyors s left join regions r on r.id = s.home_region_id
 		where lower(s.name) = lower($1)`, name,
-	).Scan(&s.id, &s.profile.Name, &s.profile.JoinedAt, &s.profile.Bio, &slug, &en, &th)
+	).Scan(&s.id, &s.profile.Name, &s.profile.Display, &s.profile.JoinedAt, &s.profile.Bio, &slug, &en, &th)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, views.ErrNotFound
 	}
@@ -484,10 +484,10 @@ func (v *Views) Surveyor(ctx context.Context, name string, page int) (*views.Sur
 	}
 	desc := s.profile.Bio
 	if desc == "" {
-		desc = fmt.Sprintf("Photos by %s on Cartograph.", s.profile.Name)
+		desc = fmt.Sprintf("Photos by %s on Cartograph.", s.profile.Label())
 	}
 	path := surveyorPath(s.profile.Name)
-	out.Page = v.base(s.profile.Name, withPage(path, pg.Page), desc, path+".rss")
+	out.Page = v.base(s.profile.Label(), withPage(path, pg.Page), desc, path+".rss")
 	return out, nil
 }
 
@@ -499,16 +499,17 @@ func (v *Views) Plot(ctx context.Context, cell string) (*views.Plot, error) {
 	}
 	out := &views.Plot{Plot: views.PlotRef{Cell: cell}}
 	var place, placeTh, firstName, slug, en, th, district *string
+	var firstDisplay string
 	var claimedAt *time.Time
 	err = v.d.Pool.QueryRow(ctx, `
 		select pl.photo_count, pl.claimed_at, pl.place_name, pl.place_name_th,
-		       coalesce(s.name, pl.first_surveyor), r.slug, r.name_en, r.name_th, dr.name_en
+		       coalesce(s.name, pl.first_surveyor), coalesce(s.display_name, ''), r.slug, r.name_en, r.name_th, dr.name_en
 		from plots pl
 		left join surveyors s on s.id = pl.first_surveyor_id
 		left join regions r on r.id = pl.region_id
 		left join regions dr on dr.id = pl.district_id
 		where pl.cell = $1 and pl.photo_count > 0`, cell,
-	).Scan(&out.PhotoCount, &claimedAt, &place, &placeTh, &firstName, &slug, &en, &th, &district)
+	).Scan(&out.PhotoCount, &claimedAt, &place, &placeTh, &firstName, &firstDisplay, &slug, &en, &th, &district)
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
 	case err != nil:
@@ -518,7 +519,7 @@ func (v *Views) Plot(ctx context.Context, cell string) (*views.Plot, error) {
 		t := claimedAt.UTC()
 		out.ClaimedAt = &t
 		if firstName != nil {
-			out.FirstSurveyor = &views.SurveyorRef{Name: *firstName}
+			out.FirstSurveyor = &views.SurveyorRef{Name: *firstName, Display: firstDisplay}
 		}
 		if slug != nil {
 			out.Plot.Region = views.RegionRef{Slug: *slug, NameEn: *en, NameTh: deref(th)}
@@ -590,7 +591,7 @@ func (v *Views) Plot(ctx context.Context, cell string) (*views.Plot, error) {
 	if out.Surveyed {
 		who := ""
 		if out.FirstSurveyor != nil {
-			who = " by " + out.FirstSurveyor.Name
+			who = " by " + out.FirstSurveyor.Label()
 		}
 		out.Description = fmt.Sprintf("%s, first surveyed%s. %s.", name, who, plural(out.PhotoCount, "photo"))
 	} else {
@@ -740,8 +741,8 @@ func (v *Views) Photo(ctx context.Context, id string) (*views.Photo, error) {
 	if place == "" {
 		place = "an unnamed plot"
 	}
-	out.Page = v.base(fmt.Sprintf("%s by %s", ph.Plot.Name(), ph.Surveyor.Name), "/photo/"+ph.ID,
-		fmt.Sprintf("A photo near %s by %s. %s.", place, ph.Surveyor.Name, out.Licence.Name), "")
+	out.Page = v.base(fmt.Sprintf("%s by %s", ph.Plot.Name(), ph.Surveyor.Label()), "/photo/"+ph.ID,
+		fmt.Sprintf("A photo near %s by %s. %s.", place, ph.Surveyor.Label(), out.Licence.Name), "")
 	out.OG = views.OpenGraph{Type: "article", ImageKey: ph.Keys.Best(), ImageAlt: "Photo near " + place}
 	out.OG.ImageWidth, out.OG.ImageHeight = ph.Width, ph.Height
 	if ph.Keys.Medium != "" && ph.Width > 0 && ph.Height > 0 {
@@ -865,6 +866,6 @@ func (v *Views) SurveyorFeed(ctx context.Context, name string) (*views.Feed, err
 	if err != nil {
 		return nil, err
 	}
-	return v.feed(ctx, views.Wordmark+": "+s.profile.Name, surveyorPath(s.profile.Name), "The newest photos by "+s.profile.Name+".",
+	return v.feed(ctx, views.Wordmark+": "+s.profile.Label(), surveyorPath(s.profile.Name), "The newest photos by "+s.profile.Label()+".",
 		"where ph.surveyor_id = $1", s.id)
 }

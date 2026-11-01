@@ -611,7 +611,7 @@ func (a *Admin) featuredMissingOr(ctx context.Context, tx pgx.Tx, id int) error 
 
 // Surveyors.
 
-const adminSurveyorCols = `s.id, s.name, coalesce(s.email, ''), s.joined_at,
+const adminSurveyorCols = `s.id, s.name, coalesce(s.display_name, ''), coalesce(s.email, ''), s.joined_at,
 	(select count(*) from photos where surveyor_id = s.id),
 	(select count(*) from photos where surveyor_id = s.id and hidden_at is not null),
 	(select count(*) from sessions where surveyor_id = s.id and expires_at > $1),
@@ -620,7 +620,7 @@ const adminSurveyorCols = `s.id, s.name, coalesce(s.email, ''), s.joined_at,
 func scanAdminSurveyor(r pgx.CollectableRow) (views.AdminSurveyorItem, error) {
 	var s views.AdminSurveyorItem
 	var id uuid.UUID
-	err := r.Scan(&id, &s.Name, &s.Email, &s.JoinedAt, &s.Photos, &s.Hidden, &s.Sessions, &s.BlockedAt)
+	err := r.Scan(&id, &s.Name, &s.Display, &s.Email, &s.JoinedAt, &s.Photos, &s.Hidden, &s.Sessions, &s.BlockedAt)
 	s.JoinedAt = s.JoinedAt.UTC()
 	return s, err
 }
@@ -669,7 +669,7 @@ func (a *Admin) Surveyor(ctx context.Context, name string, now time.Time) (*view
 	out, err := pgx.CollectExactlyOneRow(rows, func(r pgx.CollectableRow) (*views.AdminSurveyor, error) {
 		x := &views.AdminSurveyor{}
 		s := &x.Surveyor
-		err := r.Scan(&id, &s.Name, &s.Email, &s.JoinedAt, &s.Photos, &s.Hidden, &s.Sessions, &s.BlockedAt,
+		err := r.Scan(&id, &s.Name, &s.Display, &s.Email, &s.JoinedAt, &s.Photos, &s.Hidden, &s.Sessions, &s.BlockedAt,
 			&x.Bio, &x.BlockedReason, &x.HiddenByBlock)
 		s.JoinedAt = s.JoinedAt.UTC()
 		return x, err
@@ -843,6 +843,34 @@ func (a *Admin) ClearBio(ctx context.Context, adminID, name, reason string) erro
 			map[string]any{"bio": old}, map[string]any{"bio": ""})
 	})
 	return finish("clear bio", err)
+}
+
+// ClearDisplayName removes a Surveyor's display name; the old one is kept
+// in the audit row.
+func (a *Admin) ClearDisplayName(ctx context.Context, adminID, name, reason string) error {
+	reason, err := checkReason(reason)
+	if err != nil {
+		return err
+	}
+	err = pgx.BeginFunc(ctx, a.d.Pool, func(tx pgx.Tx) error {
+		id, err := surveyorID(ctx, tx, name)
+		if err != nil {
+			return err
+		}
+		var old string
+		err = tx.QueryRow(ctx, `
+			update surveyors s set display_name = null from surveyors o
+			where o.id = s.id and s.id = $1 and s.display_name is not null returning o.display_name`, id).Scan(&old)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrUnchanged
+		}
+		if err != nil {
+			return err
+		}
+		return audit(ctx, tx, adminID, "surveyor.clear_display_name", "surveyor:"+id.String(), reason,
+			map[string]any{"display_name": old}, map[string]any{"display_name": nil})
+	})
+	return finish("clear display name", err)
 }
 
 // Place-name overrides.

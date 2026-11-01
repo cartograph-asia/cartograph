@@ -13,17 +13,19 @@ import (
 
 // Plain-text messages shown on the account pages.
 const (
-	msgBadEmail    = "Please enter a valid e-mail address."
-	msgBadLink     = "This sign-in link is not valid. Enter your e-mail address for a new one."
-	msgUsedLink    = "This sign-in link has expired or was already used. Enter your e-mail address for a new one."
-	msgBadName     = "A Surveyor name has 3 to 30 characters: letters A–Z, digits and hyphens."
-	msgNameTaken   = "That name is already taken. Please choose another one."
-	msgBioTooLong  = "Your bio can be at most 500 characters."
-	msgBadRegion   = "Please choose a region from the list."
-	msgTooMany     = "There were too many sign-in requests from your network. Please try again in an hour."
-	msgMailFailed  = "We could not send the e-mail just now. Please try again in a few minutes."
-	msgServerError = "Something went wrong on our side. Please try again."
-	msgNotInvited  = "Cartograph is invitation-only for now. Ask the person who told you about it for an invitation."
+	msgBadEmail     = "Please enter a valid e-mail address."
+	msgBadLink      = "This sign-in link is not valid. Enter your e-mail address for a new one."
+	msgUsedLink     = "This sign-in link has expired or was already used. Enter your e-mail address for a new one."
+	msgBadName      = "A Surveyor name has 3 to 30 characters: letters A–Z, digits and hyphens."
+	msgNameTaken    = "That name is already taken. Please choose another one."
+	msgBioTooLong   = "Your bio can be at most 500 characters."
+	msgBadRegion    = "Please choose a region from the list."
+	msgTooMany      = "There were too many sign-in requests from your network. Please try again in an hour."
+	msgMailFailed   = "We could not send the e-mail just now. Please try again in a few minutes."
+	msgServerError  = "Something went wrong on our side. Please try again."
+	msgNotInvited   = "Cartograph is invitation-only for now. Ask the person who told you about it for an invitation."
+	msgBadDisplay   = "A display name has 1 to 50 characters: letters in any script, digits, spaces and . ' -"
+	msgDisplayTaken = "That is another Surveyor's name. Please choose another display name."
 )
 
 // msgBlocked is the blocked page's message, naming contact when known.
@@ -273,20 +275,30 @@ func (a *Auth) chooseName(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	name := strings.TrimSpace(r.PostForm.Get("name"))
-	again := func(status int, msg string) {
+	rawDisplay := r.PostForm.Get("display_name")
+	againIn := func(field string, status int, msg string) {
 		a.render(w, r, status, views.PageChooseName, &views.ChooseName{
-			Page: a.page(r, "Choose your Surveyor name"), Name: name, Next: next, Error: msg,
+			Page: a.page(r, "Choose your Surveyor name"), Name: name, Display: rawDisplay, Next: next, Error: msg, ErrorField: field,
 		})
 	}
+	again := func(status int, msg string) { againIn("name", status, msg) }
 	if !validName(name) {
 		again(http.StatusBadRequest, msgBadName)
 		return
 	}
+	display, ok := cleanDisplayName(rawDisplay)
+	if !ok {
+		againIn("display", http.StatusBadRequest, msgBadDisplay)
+		return
+	}
 	inviteOnly := a.cfg.InviteOnly() && !a.cfg.IsAdmin(v.Email)
-	nv, err := a.store.ChooseName(r.Context(), sessionHashFrom(r.Context()), name, a.now(), inviteOnly)
+	nv, err := a.store.ChooseName(r.Context(), sessionHashFrom(r.Context()), name, display, a.now(), inviteOnly)
 	switch {
 	case errors.Is(err, ErrNameTaken):
 		again(http.StatusConflict, msgNameTaken)
+		return
+	case errors.Is(err, ErrDisplayTaken):
+		againIn("display", http.StatusConflict, msgDisplayTaken)
 		return
 	case errors.Is(err, ErrNotInvited):
 		slog.Info("sign-up refused", "reason", "not invited")
@@ -327,7 +339,7 @@ func (a *Auth) settingsForm(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	bio, home, err := a.store.Profile(r.Context(), v.SurveyorID)
+	p, err := a.store.Profile(r.Context(), v.SurveyorID)
 	if err != nil {
 		a.internalError(w, r, "load profile", err)
 		return
@@ -338,7 +350,7 @@ func (a *Auth) settingsForm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.render(w, r, http.StatusOK, views.PageEditProfile, &views.EditProfile{
-		Page: a.page(r, "Your profile"), Name: v.Name, Bio: bio, HomeRegion: home, Regions: regions,
+		Page: a.page(r, "Your profile"), Name: v.Name, Display: p.Display, Bio: p.Bio, HomeRegion: p.HomeRegion, Regions: regions,
 		Saved: r.URL.Query().Get("saved") == "1",
 	})
 }
@@ -359,22 +371,34 @@ func (a *Auth) saveSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rawBio := r.PostForm.Get("bio")
+	rawDisplay := r.PostForm.Get("display_name")
 	home := strings.TrimSpace(r.PostForm.Get("home_region"))
-	again := func(msg string) {
+	again := func(field, msg string) {
 		a.render(w, r, http.StatusBadRequest, views.PageEditProfile, &views.EditProfile{
-			Page: a.page(r, "Your profile"), Name: v.Name, Bio: rawBio, HomeRegion: home, Regions: regions, Error: msg,
+			Page: a.page(r, "Your profile"), Name: v.Name, Display: rawDisplay, Bio: rawBio, HomeRegion: home, Regions: regions,
+			Error: msg, ErrorField: field,
 		})
+	}
+	display, ok := cleanDisplayName(rawDisplay)
+	if !ok {
+		again("display", msgBadDisplay)
+		return
 	}
 	bio, ok := cleanBio(rawBio)
 	if !ok {
-		again(msgBioTooLong)
+		again("bio", msgBioTooLong)
 		return
 	}
 	if home != "" && !hasRegion(regions, home) {
-		again(msgBadRegion)
+		again("home_region", msgBadRegion)
 		return
 	}
-	if err := a.store.UpdateProfile(ctx, v.SurveyorID, bio, home); err != nil {
+	err = a.store.UpdateProfile(ctx, v.SurveyorID, Profile{Display: display, Bio: bio, HomeRegion: home})
+	if errors.Is(err, ErrDisplayTaken) {
+		again("display", msgDisplayTaken)
+		return
+	}
+	if err != nil {
 		a.internalError(w, r, "update profile", err)
 		return
 	}
@@ -414,6 +438,6 @@ func (a *Auth) me(w http.ResponseWriter, r *http.Request) {
 	case !v.HasName():
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "choose a Surveyor name first"})
 	default:
-		writeJSON(w, http.StatusOK, map[string]string{"name": v.Name})
+		writeJSON(w, http.StatusOK, map[string]string{"name": v.Name, "label": v.Label()})
 	}
 }

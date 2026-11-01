@@ -180,6 +180,7 @@ type AdminFeaturedList struct {
 // AdminSurveyorItem is a Surveyor as the admin area sees them.
 type AdminSurveyorItem struct {
 	Name      string
+	Display   string // display name; empty for none
 	Email     string
 	JoinedAt  time.Time
 	Photos    int // all their photos, hidden ones included

@@ -9,7 +9,7 @@
 <thead><tr><th scope="col">Surveyor</th><th scope="col">E-mail</th><th scope="col">Joined</th><th scope="col" class="n">Photos</th><th scope="col" class="n">Hidden</th><th scope="col" class="n">Sessions</th><th scope="col">State</th></tr></thead>
 <tbody>
 {{- range .Surveyors}}
-<tr><td><a href="/admin/surveyor/{{.Name}}">{{.Name}}</a></td><td>{{.Email}}</td><td class="nw">{{date .JoinedAt}}</td><td class="n">{{num .Photos}}</td><td class="n">{{num .Hidden}}</td><td class="n">{{num .Sessions}}</td><td>{{with .BlockedAt}}<span class="tag">blocked</span>{{end}}</td></tr>
+<tr><td><a href="/admin/surveyor/{{.Name}}">{{.Name}}</a>{{with .Display}}<br><span class="note">{{.}}</span>{{end}}</td><td>{{.Email}}</td><td class="nw">{{date .JoinedAt}}</td><td class="n">{{num .Photos}}</td><td class="n">{{num .Hidden}}</td><td class="n">{{num .Sessions}}</td><td>{{with .BlockedAt}}<span class="tag">blocked</span>{{end}}</td></tr>
 {{- end}}
 </tbody>
 </table></div>

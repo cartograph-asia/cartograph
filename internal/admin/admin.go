@@ -48,6 +48,7 @@ type Store interface {
 	UnblockSurveyor(ctx context.Context, adminID, name string, unhidePhotos bool) error
 	EndSessions(ctx context.Context, adminID, name string) error
 	ClearBio(ctx context.Context, adminID, name, reason string) error
+	ClearDisplayName(ctx context.Context, adminID, name, reason string) error
 	Places(ctx context.Context) (*views.AdminPlaces, error)
 	CreatePlaceOverride(ctx context.Context, adminID string, o views.PlaceOverride) error
 	UpdatePlaceOverride(ctx context.Context, adminID string, o views.PlaceOverride) error
@@ -93,6 +94,7 @@ func New(store Store, acc Accounts, render views.RenderFunc) *Handlers {
 //	POST /admin/surveyor/{name}/unblock      field unhide_photos
 //	POST /admin/surveyor/{name}/end-sessions
 //	GET  /admin/surveyor/{name}/clear-bio    confirm page; POST clears (reason)
+//	GET  /admin/surveyor/{name}/clear-display-name  confirm page; POST clears (reason)
 //	GET  /admin/places                       POST /admin/places, POST /admin/places/{country}/{name}
 //	GET  /admin/invites                      POST creates; POST /admin/invites/resend, …/revoke (field email)
 //	GET  /admin/log?page=
@@ -117,6 +119,8 @@ func (h *Handlers) Routes(r chi.Router) {
 		r.Post("/surveyor/{name}/end-sessions", h.endSessions)
 		r.Get("/surveyor/{name}/clear-bio", h.clearBioForm)
 		r.Post("/surveyor/{name}/clear-bio", h.clearBio)
+		r.Get("/surveyor/{name}/clear-display-name", h.clearDisplayForm)
+		r.Post("/surveyor/{name}/clear-display-name", h.clearDisplay)
 		r.Get("/places", h.places)
 		r.Post("/places", h.createPlace)
 		r.Post("/places/{country}/{name}", h.updatePlace)
@@ -139,6 +143,7 @@ var doneLines = map[string]string{
 	"unblocked":        "The block is lifted.",
 	"sessions-ended":   "The Surveyor is signed out everywhere.",
 	"bio-cleared":      "The bio is cleared.",
+	"display-cleared":  "The display name is cleared.",
 	"place-added":      "The place name is listed.",
 	"place-saved":      "The place name is saved.",
 	"invited":          "The invitation is sent.",
@@ -600,6 +605,46 @@ func (h *Handlers) clearBio(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.done(w, r, err, surveyorPath(name), "bio-cleared")
+}
+
+func (h *Handlers) clearDisplayConfirm(r *http.Request) (*views.AdminConfirm, error) {
+	d, err := h.store.Surveyor(r.Context(), chi.URLParam(r, "name"), h.now())
+	if err != nil {
+		return nil, err
+	}
+	if d.Surveyor.Display == "" {
+		return nil, db.ErrUnchanged
+	}
+	name := d.Surveyor.Name
+	return &views.AdminConfirm{
+		AdminPage: h.base(r, "Clear the display name of "+name, views.AdminSurveyorsSection),
+		Heading:   "Clear the display name of " + name,
+		Action:    surveyorPath(name) + "/clear-display-name",
+		Consequences: []string{
+			name + " is shown with their Surveyor name again everywhere. They can choose a new display name in their settings.",
+			"The old display name is kept in the admin log: “" + d.Surveyor.Display + "”",
+		},
+		NeedReason: true,
+		Button:     "Clear the display name",
+		Back:       surveyorPath(name),
+	}, nil
+}
+
+func (h *Handlers) clearDisplayForm(w http.ResponseWriter, r *http.Request) {
+	h.confirmed(w, r, h.clearDisplayConfirm)
+}
+
+func (h *Handlers) clearDisplay(w http.ResponseWriter, r *http.Request) {
+	if !h.acc.CheckForm(w, r) {
+		return
+	}
+	name := chi.URLParam(r, "name")
+	err := h.store.ClearDisplayName(r.Context(), viewer(r).SurveyorID, name, r.PostForm.Get("reason"))
+	if errors.Is(err, db.ErrInvalid) {
+		h.againConfirm(w, r, h.clearDisplayConfirm, err)
+		return
+	}
+	h.done(w, r, err, surveyorPath(name), "display-cleared")
 }
 
 // Place names.

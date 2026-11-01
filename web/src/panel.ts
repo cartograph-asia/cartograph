@@ -1,5 +1,5 @@
 // Side panel (bottom sheet on narrow screens): plot details, photos, upload form, lightbox.
-import { ApiError, type Api, type PlotDetail, type UploadResult } from './api';
+import { ApiError, type Api, type Me, type PlotDetail, type UploadResult } from './api';
 
 const MAX_BYTES = 25 * 1024 * 1024;
 
@@ -69,24 +69,25 @@ export class Panel {
 
   /** Uploads need a signed-in Surveyor: show the form, or the sign-in link. */
   private async loadMe(): Promise<void> {
-    let name: string | null = null;
+    let me: Me | null = null;
     try {
-      name = (await this.api.getMe())?.name ?? null;
+      me = await this.api.getMe();
     } catch {
       // treat as signed out; the upload would be refused anyway
     }
-    this.setSurveyor(name);
+    this.setSurveyor(me);
   }
 
-  private setSurveyor(name: string | null): void {
-    this.form.hidden = name === null;
-    this.signinPrompt.hidden = name !== null;
-    this.surveyingAs.textContent = name ? `Surveying as ${name}` : '';
+  /** Links use the Surveyor name; text shows the display name (label). */
+  private setSurveyor(me: Me | null): void {
+    this.form.hidden = me === null;
+    this.signinPrompt.hidden = me !== null;
+    this.surveyingAs.textContent = me ? `Surveying as ${me.label || me.name}` : '';
     // The masthead's account link, as on the pages.
-    const me = document.getElementById('me-link') as HTMLAnchorElement | null;
-    if (me) {
-      me.textContent = name ?? 'Sign in';
-      me.href = name ? `/surveyor/${encodeURIComponent(name)}` : '/signin?next=/map';
+    const link = document.getElementById('me-link') as HTMLAnchorElement | null;
+    if (link) {
+      link.textContent = me ? me.label || me.name : 'Sign in';
+      link.href = me ? `/surveyor/${encodeURIComponent(me.name)}` : '/signin?next=/map';
     }
   }
 
@@ -188,7 +189,7 @@ export class Panel {
     const pill = el('span', d ? 'tag surveyed' : 'tag blank', d ? 'Surveyed' : 'Blank');
     nodes.push(pill);
     if (d) {
-      row('First surveyor', d.first_surveyor);
+      row('First surveyor', d.first_surveyor_label || d.first_surveyor);
       row('Claimed', fmtDate(d.claimed_at));
       row('Photos', String(d.photo_count));
     }
@@ -208,7 +209,7 @@ export class Panel {
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'thumb';
-        const label = `Photo by ${p.surveyor}${p.taken_at ? `, taken ${fmtDate(p.taken_at)}` : ''}`;
+        const label = `Photo by ${p.surveyor_label || p.surveyor}${p.taken_at ? `, taken ${fmtDate(p.taken_at)}` : ''}`;
         btn.setAttribute('aria-label', `Open ${label}`);
         const img = document.createElement('img');
         img.src = p.urls.thumb;

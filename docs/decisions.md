@@ -84,6 +84,12 @@ Decisions made while building Cartograph that are not in `CLAUDE.md` or a brief.
 - 2026-11-01 – `CLAUDE.md` links `docs/PRINCIPLES.md` under a "Principles" line.
 - 2026-11-01 – While the window is being resized, the panel and map controls have no transitions (body class `resizing`, cleared 150 ms after the last resize event), so the closed panel does not fly across the map when the layout crosses the 768 px breakpoint.
 
+## Security
+
+Fixes from the security review of 2026-11-01 that matter already in alpha.
+
+- 2026-11-01 – Exact photo coordinates never leave the database, not even rounded: `photos.lat`/`lng` are stored for the record, and everything public (pages, feeds, JSON, map links, bounds) is computed from the plot's H3 cell. The Surveyor page's bounds and its "Open on the map" link come from the boundaries of the Surveyor's plots (`cellBounds` in `internal/db/views.go`); before, they were the box around the photo positions, which put a single photo within about 11 m. The API returns cells only, the RSS feeds carry no geo elements, and the plot page's small map is centred on the cell.
+
 ## Home
 
 - 2026-11-01 – Work happens on the `home` branch; tasks 1–3 run on `home-data`, `home-accounts` and `home-pages`, cut from `home` after `internal/views` and the schema are in, and are merged back by the lead.

@@ -6,7 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -127,11 +127,15 @@ func checkHTML(t *testing.T, name, body string) {
 	}
 	// The plot page's details line is the one place a cell id may appear.
 	text := tagRe.ReplaceAllString(detailsRe.ReplaceAllString(body, ""), " ")
-	if m := wordsBad.FindString(text); m != "" {
-		t.Errorf("%s: forbidden word %q in visible text", name, m)
-	}
-	if m := cellRe.FindString(text); m != "" {
-		t.Errorf("%s: bare cell id %s in visible text", name, m)
+	// /about/plots explains the grid itself: it names hexagons and squares
+	// and shows an example index on purpose.
+	if name != "/about/plots" {
+		if m := wordsBad.FindString(text); m != "" {
+			t.Errorf("%s: forbidden word %q in visible text", name, m)
+		}
+		if m := cellRe.FindString(text); m != "" {
+			t.Errorf("%s: bare cell id %s in visible text", name, m)
+		}
 	}
 	if strings.Contains(body, "<no value>") || strings.Contains(body, "ZgotmplZ") {
 		t.Errorf("%s: template artefact in output", name)
@@ -160,7 +164,7 @@ func TestEveryPageRenders(t *testing.T) {
 		}},
 		{"placeholder", views.PageSurveyor, viewstest.PlaceholderSurveyor(), []string{"<h1>beach-walker</h1>"}},
 		{"plot", views.PagePlot, viewstest.Plot(), []string{
-			"<h1>Pattaya · Chon Buri 2417", "first surveyed by", "H3 index <code>88658bd11dfffff</code>", `data-paths="/plot/chon-buri/2417,/plot/chon-buri/2418,`, "beach-walker", `href="/map?cell=88658bd11dfffff"`,
+			"<h1>Pattaya · Chon Buri 2417", "first surveyed by", "H3 index <code>88658bd11dfffff</code>", `href="/about/plots">What is a plot?`, `data-paths="/plot/chon-buri/2417,/plot/chon-buri/2418,`, "beach-walker", `href="/map?cell=88658bd11dfffff"`,
 			"Survey this plot", `data-focus="88658bd11dfffff"`, `data-surveyed="1,`, `class="s f"`,
 		}},
 		{"blank plot", views.PagePlot, viewstest.BlankPlot(), []string{"Nobody has surveyed this plot yet", `name="robots" content="noindex"`, "Survey this plot"}},
@@ -184,7 +188,7 @@ func TestEveryPageRenders(t *testing.T) {
 			checkHTML(t, p.name, body)
 			must(t, body, p.wants...)
 			must(t, body, `href="/map">Start surveying`, `href="/surveyor/adrian">adrian</a>`, `action="/signout"`,
-				`href="/principles"`, "hello@cartograph.asia", "@cartographasia", "@cartograph.asia", "ODbL")
+				`href="/principles"`, `href="/about/plots">About the plots`, "hello@cartograph.asia", "@cartographasia", "@cartograph.asia", "ODbL")
 		})
 	}
 }
@@ -205,7 +209,7 @@ func TestRoutes(t *testing.T) {
 	for _, path := range []string{
 		"/", "/latest", "/surveyors", "/regions", "/surveyor/adrian", "/surveyor/beach-walker",
 		"/plot/88658bd11dfffff", "/plot/88658bd157fffff", "/photo/" + viewstest.FeaturedPhotoID,
-		"/region/chon-buri", "/region/bangkok", "/region/rayong", "/about", "/principles", "/licence",
+		"/region/chon-buri", "/region/bangkok", "/region/rayong", "/about", "/about/plots", "/principles", "/licence",
 	} {
 		r := get(t, h, path)
 		if r.status != http.StatusOK {
@@ -504,18 +508,54 @@ func TestStaticAssets(t *testing.T) {
 	}
 }
 
-func TestPrinciplesCopyIsCurrent(t *testing.T) {
-	doc, err := os.ReadFile("../../docs/PRINCIPLES.md")
-	if err != nil {
-		t.Fatal(err)
+func TestStaticPages(t *testing.T) {
+	// Every Markdown file in docs/pages/ has a route.
+	files, err := filepath.Glob("../../docs/pages/*.md")
+	if err != nil || len(files) == 0 {
+		t.Fatalf("docs/pages: %v %v", files, err)
 	}
-	if string(doc) != principlesMD {
-		t.Fatal("internal/web/content/principles.md differs from docs/PRINCIPLES.md; copy it again")
+	routed := map[string]bool{}
+	for _, sp := range StaticPages {
+		routed[sp.File] = true
 	}
-	body := get(t, newServer(t, 0), "/principles").body
+	for _, f := range files {
+		if !routed["pages/"+filepath.Base(f)] {
+			t.Errorf("%s has no entry in StaticPages", f)
+		}
+	}
+
+	h := newServer(t, 0)
+	body := get(t, h, "/principles").body
 	must(t, body, "<h1>Principles</h1>", "<ol>", "<strong>People first, map second.</strong>", "Early-web spirit")
 	if strings.Count(body, "<li>") != 8 {
 		t.Errorf("want 8 principles")
+	}
+	body = get(t, h, "/about/plots").body
+	must(t, body, "<title>About the plots · Cartograph</title>", "<h1>About the plots</h1>", `<p class="lede">Cartograph divides`,
+		`<meta name="description" content="Cartograph divides the map into plots:`, "<h2>Why hexagons</h2>",
+		"<table>", "<th>Cells worldwide</th><td>691,776,122</td>", "<code>88658bd337fffff</code>", `<a href="https://h3geo.org/">H3</a>`,
+		`<link rel="canonical" href="https://cartograph.asia/about/plots">`)
+	mustNot(t, body, "<thead>", "**", "`")
+	body = get(t, h, "/licence").body
+	must(t, body, "<h1>Data &amp; licence</h1>", "<ul>", `<a href="/about/plots">About the plots</a>`, `href="mailto:hello@cartograph.asia"`)
+	body = get(t, h, "/about").body
+	must(t, body, "<h1>About</h1>", `<p class="lede">Cartograph is a photo survey`, "<ol>", `<a href="/map">map</a>`)
+}
+
+func TestMarkdown(t *testing.T) {
+	d := markdown("# T **x**\n\nFirst `a<b>` and [l](javascript:void).\n\n| h | i |\n|---|---|\n| 1 | 2 |\n\n- one\n- two\n1. three\n")
+	if d.Title != "T x" || d.Summary != "First a<b> and l." {
+		t.Fatalf("title %q summary %q", d.Title, d.Summary)
+	}
+	body := string(d.Body)
+	for _, want := range []string{
+		`<p class="lede">First <code>a&lt;b&gt;</code> and l.</p>`,
+		"<thead><tr><th>h</th><th>i</th></tr></thead>", "<tr><th>1</th><td>2</td></tr>",
+		"<ul>\n<li>one</li>\n<li>two</li>\n</ul>\n<ol>\n<li>three</li>\n</ol>",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("missing %q in\n%s", want, body)
+		}
 	}
 }
 

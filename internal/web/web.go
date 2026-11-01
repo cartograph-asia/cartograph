@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cartograph-asia/cartograph/docs"
 	"github.com/cartograph-asia/cartograph/internal/views"
 )
 
@@ -27,14 +28,16 @@ var templateFS embed.FS
 //go:embed static
 var staticFS embed.FS
 
-//go:embed content/principles.md
-var principlesMD string
-
-//go:embed content/about.html
-var aboutHTML template.HTML
-
-//go:embed content/licence.html
-var licenceHTML template.HTML
+// StaticPages maps each static page's path to its Markdown file in package
+// docs (docs/pages/*.md, and docs/PRINCIPLES.md). A new static page is a
+// Markdown file in docs/pages/ plus one line here; its title is the file's
+// "# " heading and its description the first paragraph.
+var StaticPages = []struct{ Path, File string }{
+	{"/about", "pages/about.md"},
+	{"/about/plots", "pages/about-plots.md"},
+	{"/principles", "PRINCIPLES.md"},
+	{"/licence", "pages/licence.md"},
+}
 
 // Config configures the renderer.
 type Config struct {
@@ -71,15 +74,8 @@ type Renderer struct {
 	log    *slog.Logger
 	pages  map[string]*template.Template
 	assets *assets
-	static map[string]template.HTML // rendered bodies of the static pages
+	static map[string]mdDoc // the static pages by path
 }
-
-// Static pages that are not views.Page* constants.
-const (
-	pageAbout      = "about"
-	pagePrinciples = "principles"
-	pageLicence    = "licence"
-)
 
 // NewRenderer parses the embedded templates.
 func NewRenderer(cfg Config) (*Renderer, error) {
@@ -127,10 +123,17 @@ func NewRenderer(cfg Config) (*Renderer, error) {
 		}
 		rd.pages[name] = t
 	}
-	rd.static = map[string]template.HTML{
-		pageAbout:      aboutHTML,
-		pagePrinciples: markdown(principlesMD),
-		pageLicence:    licenceHTML,
+	rd.static = map[string]mdDoc{}
+	for _, sp := range StaticPages {
+		src, err := fs.ReadFile(docs.FS, sp.File)
+		if err != nil {
+			return nil, fmt.Errorf("web: static page %s: %w", sp.Path, err)
+		}
+		doc := markdown(string(src))
+		if doc.Title == "" {
+			return nil, fmt.Errorf("web: static page %s: %s has no \"# \" title", sp.Path, sp.File)
+		}
+		rd.static[sp.Path] = doc
 	}
 	return rd, nil
 }
@@ -192,14 +195,19 @@ func (rd *Renderer) fill(r *http.Request, p *views.Page) {
 	}
 }
 
-// staticPage is a page whose body is fixed text (About, Principles, licence).
+// staticPage is a page rendered from Markdown in docs/ (About, Principles, …).
 type staticPage struct {
 	views.Page
 	Body template.HTML
 }
 
-func (rd *Renderer) renderStatic(w http.ResponseWriter, r *http.Request, name, title, desc string) {
-	p := &staticPage{Page: views.Page{Title: title, Canonical: "/" + name, Description: desc}, Body: rd.static[name]}
+func (rd *Renderer) renderStatic(w http.ResponseWriter, r *http.Request, path string) {
+	doc := rd.static[path]
+	desc := doc.Summary
+	if len(desc) > 200 {
+		desc = desc[:strings.LastIndex(desc[:200], " ")] + " …"
+	}
+	p := &staticPage{Page: views.Page{Title: doc.Title, Canonical: path, Description: desc}, Body: doc.Body}
 	rd.Render(w, r, http.StatusOK, "static", p)
 }
 

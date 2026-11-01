@@ -26,7 +26,7 @@ func NewHandlers(src views.Source, rd *Renderer) *Handlers {
 //
 //	/  /latest  /latest.rss  /surveyors  /regions
 //	/surveyor/{name}[.rss]  /plot/{cell}  /plot/{slug}/{number}  /photo/{id}  /region/{slug}[.rss]
-//	/about  /principles  /licence  /static/*
+//	/about  /about/plots  /principles  /licence (StaticPages)  /static/*
 //
 // The account pages (/signin, /signin/link, /signin/name, /settings, /signout) belong to
 // internal/auth, which renders through Renderer.RenderFunc.
@@ -41,9 +41,9 @@ func (h *Handlers) Routes(r chi.Router) {
 	r.Get("/plot/{slug}/{number}", h.plotByNumber)
 	r.Get("/photo/{id}", h.photo)
 	r.Get("/region/{slug}", h.region)
-	r.Get("/about", h.static(pageAbout, "About", "What Cartograph is and how to survey a plot."))
-	r.Get("/principles", h.static(pagePrinciples, "Principles", "The principles that decide what Cartograph builds."))
-	r.Get("/licence", h.static(pageLicence, "Data & licence", "Photos are CC BY-SA 4.0; map data is OpenStreetMap, ODbL."))
+	for _, sp := range StaticPages {
+		r.Get(sp.Path, h.static(sp.Path))
+	}
 	r.Handle(StaticPrefix+"*", h.rd.assets)
 }
 
@@ -52,8 +52,8 @@ func (h *Handlers) NotFound(w http.ResponseWriter, r *http.Request) {
 	h.rd.renderError(w, r, http.StatusNotFound, "There is nothing at this address.")
 }
 
-func (h *Handlers) static(name, title, desc string) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) { h.rd.renderStatic(w, r, name, title, desc) }
+func (h *Handlers) static(path string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) { h.rd.renderStatic(w, r, path) }
 }
 
 // fail renders ErrNotFound as 404 and anything else as 500.

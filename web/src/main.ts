@@ -3,11 +3,11 @@ import './styles.css';
 import { addProtocol, Map as MapLibreMap, NavigationControl, setWorkerUrl } from 'maplibre-gl';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 import { Protocol } from 'pmtiles';
-import { cellToLatLng, getHexagonAreaAvg, getResolution, isValidCell, latLngToCell, UNITS } from 'h3-js';
+import { cellToBoundary, cellToLatLng, getHexagonAreaAvg, getResolution, isValidCell, latLngToCell, UNITS } from 'h3-js';
 import { loadApi, MOCK, type UploadResult } from './api';
 import { DataStore } from './data';
 import { PLOT_RES, planView, type ViewPlan } from './grid';
-import { addLayers, pulse, renderCoverage, renderPlots, setPlotState, showMode } from './layers';
+import { addLayers, pulse, renderCoverage, renderPlots, setGroupState, setPlotState, showMode } from './layers';
 import { Panel } from './panel';
 import { baseStyle } from './style';
 
@@ -240,11 +240,30 @@ map.on('load', () => {
 map.on('move', onMove);
 map.on('moveend', onMoveEnd);
 
+/** The group of plots (coverage cell) under a point, if the view shows groups and it is one of them. */
+function groupAt(lat: number, lng: number): string | null {
+  if (plan.mode !== 'coverage') return null;
+  const cell = latLngToCell(lat, lng, plan.res);
+  return plan.cells.includes(cell) ? cell : null;
+}
+
+let hoveredGroup: string | null = null;
+function hoverGroup(cell: string | null): void {
+  if (cell === hoveredGroup) return;
+  if (hoveredGroup) setGroupState(map, hoveredGroup, { hover: false });
+  hoveredGroup = cell;
+  if (cell) setGroupState(map, cell, { hover: true });
+}
+
 map.on('mousemove', (e) => {
   if (plan.mode !== 'plots') {
-    map.getCanvas().style.cursor = plan.mode === 'coverage' ? 'zoom-in' : '';
+    // Groups: outline the one under the mouse; a click zooms to it.
+    const group = groupAt(e.lngLat.lat, e.lngLat.lng);
+    hoverGroup(group);
+    map.getCanvas().style.cursor = group ? 'pointer' : '';
     return;
   }
+  hoverGroup(null);
   const cell = latLngToCell(e.lngLat.lat, e.lngLat.lng, PLOT_RES);
   if (cell === hovered) return;
   if (hovered) setPlotState(map, hovered, { hover: false });
@@ -255,11 +274,25 @@ map.on('mousemove', (e) => {
 map.getCanvas().addEventListener('mouseleave', () => {
   if (hovered) setPlotState(map, hovered, { hover: false });
   hovered = null;
+  hoverGroup(null);
 });
+
+/** Zoom so that a group of plots fills the view, clear of the labels at the edges. */
+function zoomToGroup(cell: string): void {
+  let w = 180, s = 90, e = -180, n = -90;
+  for (const [lat, lng] of cellToBoundary(cell)) {
+    w = Math.min(w, lng); e = Math.max(e, lng);
+    s = Math.min(s, lat); n = Math.max(n, lat);
+  }
+  hoverGroup(null);
+  const pad = Math.round(Math.min(innerWidth, innerHeight) * 0.08);
+  map.fitBounds([[w, s], [e, n]], { padding: pad, duration: 700 });
+}
 
 map.on('click', (e) => {
   if (plan.mode === 'coverage') {
-    map.easeTo({ center: e.lngLat, zoom: Math.max(map.getZoom() + 3, 12) });
+    const group = groupAt(e.lngLat.lat, e.lngLat.lng);
+    if (group) zoomToGroup(group);
     return;
   }
   if (plan.mode !== 'plots') return;

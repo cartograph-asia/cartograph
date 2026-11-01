@@ -52,15 +52,26 @@ export function addLayers(map: MapLibreMap): void {
     type: 'line',
     source: 'coverage',
     paint: {
-      'line-color': ['case', ['>', ['get', 'surveyed'], 0], GREEN, GRID],
+      // The group under the mouse is outlined in ink: a click zooms to it.
+      'line-color': [
+        'case',
+        ['boolean', ['feature-state', 'hover'], false], '#2f3a3f',
+        ['>', ['get', 'surveyed'], 0], GREEN,
+        GRID,
+      ],
       // Blank parent cells only from zoom 8: further out their outlines
       // tile the whole view, sea included, and read as a pattern, not data.
       'line-opacity': [
         'interpolate', ['linear'], ['zoom'],
-        6.5, ['case', ['>', ['get', 'surveyed'], 0], 0.75, 0],
-        8, ['case', ['>', ['get', 'surveyed'], 0], 0.75, 0.45],
+        6.5, ['case', ['boolean', ['feature-state', 'hover'], false], 1, ['>', ['get', 'surveyed'], 0], 0.75, 0],
+        8, ['case', ['boolean', ['feature-state', 'hover'], false], 1, ['>', ['get', 'surveyed'], 0], 0.75, 0.45],
       ],
-      'line-width': ['case', ['>', ['get', 'surveyed'], 0], 1.2, 0.5],
+      'line-width': [
+        'case',
+        ['boolean', ['feature-state', 'hover'], false], 2,
+        ['>', ['get', 'surveyed'], 0], 1.2,
+        0.5,
+      ],
     },
   });
 
@@ -151,6 +162,10 @@ export function renderCoverage(map: MapLibreMap, res: 5 | 6, cells: string[], da
 
 export function setPlotState(map: MapLibreMap, cell: string, state: Record<string, unknown>): void {
   map.setFeatureState({ source: 'plots', id: cell }, state);
+}
+
+export function setGroupState(map: MapLibreMap, cell: string, state: Record<string, unknown>): void {
+  map.setFeatureState({ source: 'coverage', id: cell }, state);
 }
 
 /** Brief fill pulse on a freshly surveyed plot. */

@@ -289,8 +289,8 @@ func TestPGStore(t *testing.T) {
 
 	// Profile.
 	if _, err := pool.Exec(ctx, `
-		insert into regions (admin_level, country, slug, name_en, boundary, min_lat, min_lng, max_lat, max_lng)
-		values (4, 'th', 'chon-buri', 'Chon Buri', '{}', 0, 0, 0, 0)`); err != nil {
+		insert into regions (kind, admin_level, country, slug, name_en, boundary, min_lat, min_lng, max_lat, max_lng)
+		values ('province', 4, 'th', 'chon-buri', 'Chon Buri', '{}', 0, 0, 0, 0)`); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.UpdateProfile(ctx, v.SurveyorID, "Walking the coast.", "chon-buri"); err != nil {

@@ -492,7 +492,7 @@ func (f *Fake) feed(title, canonical, desc string, idx []int) *views.Feed {
 
 // LatestFeed implements views.Source.
 func (f *Fake) LatestFeed(ctx context.Context) (*views.Feed, error) {
-	return f.feed("Cartograph: latest surveys", "/latest", "The newest photos on Cartograph.", f.all()), nil
+	return f.feed(views.Wordmark+": latest surveys", "/latest", "The newest photos on Cartograph.", f.all()), nil
 }
 
 // RegionFeed implements views.Source.
@@ -501,7 +501,7 @@ func (f *Fake) RegionFeed(ctx context.Context, slug string) (*views.Feed, error)
 	if !ok {
 		return nil, views.ErrNotFound
 	}
-	return f.feed("Cartograph: "+r.ref.NameEn, "/region/"+r.ref.Slug, "The newest photos in "+r.ref.NameEn+".", f.regionPhotos(r.ref.Slug)), nil
+	return f.feed(views.Wordmark+": "+r.ref.NameEn, "/region/"+r.ref.Slug, "The newest photos in "+r.ref.NameEn+".", f.regionPhotos(r.ref.Slug)), nil
 }
 
 // SurveyorFeed implements views.Source.
@@ -511,5 +511,5 @@ func (f *Fake) SurveyorFeed(ctx context.Context, name string) (*views.Feed, erro
 		return nil, views.ErrNotFound
 	}
 	s := surveyors[si]
-	return f.feed("Cartograph: "+s.name, "/surveyor/"+url.PathEscape(s.name), "The newest photos by "+s.name+".", f.d.bySurveyor[si]), nil
+	return f.feed(views.Wordmark+": "+s.name, "/surveyor/"+url.PathEscape(s.name), "The newest photos by "+s.name+".", f.d.bySurveyor[si]), nil
 }

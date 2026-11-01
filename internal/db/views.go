@@ -798,7 +798,7 @@ func (v *Views) feed(ctx context.Context, title, canonical, desc, where string, 
 
 // LatestFeed implements views.Source.
 func (v *Views) LatestFeed(ctx context.Context) (*views.Feed, error) {
-	return v.feed(ctx, "Cartograph: latest surveys", "/latest", "The newest photos on Cartograph.", "")
+	return v.feed(ctx, views.Wordmark+": latest surveys", "/latest", "The newest photos on Cartograph.", "")
 }
 
 // RegionFeed implements views.Source.
@@ -807,7 +807,7 @@ func (v *Views) RegionFeed(ctx context.Context, slug string) (*views.Feed, error
 	if err != nil {
 		return nil, err
 	}
-	return v.feed(ctx, "Cartograph: "+r.ref.NameEn, "/region/"+r.ref.Slug, "The newest photos in "+r.ref.NameEn+".",
+	return v.feed(ctx, views.Wordmark+": "+r.ref.NameEn, "/region/"+r.ref.Slug, "The newest photos in "+r.ref.NameEn+".",
 		"where pl.region_id = $1", r.id)
 }
 
@@ -817,6 +817,6 @@ func (v *Views) SurveyorFeed(ctx context.Context, name string) (*views.Feed, err
 	if err != nil {
 		return nil, err
 	}
-	return v.feed(ctx, "Cartograph: "+s.profile.Name, surveyorPath(s.profile.Name), "The newest photos by "+s.profile.Name+".",
+	return v.feed(ctx, views.Wordmark+": "+s.profile.Name, surveyorPath(s.profile.Name), "The newest photos by "+s.profile.Name+".",
 		"where ph.surveyor_id = $1", s.id)
 }

@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -103,6 +104,7 @@ var (
 	cellRe    = regexp.MustCompile(`\b8[0-9a-f]{14}\b`)
 	detailsRe = regexp.MustCompile(`(?s)<p class="details">.*?</p>`)
 	wordsBad  = regexp.MustCompile(`(?i)\b(hex|hexagons?|squares?)\b`)
+	badMark   = regexp.MustCompile(`(?i)\bCartograph\s+Asia\b`) // handles like cartograph-asia keep their spelling
 )
 
 // checkHTML runs the structural rules every page must follow.
@@ -137,6 +139,9 @@ func checkHTML(t *testing.T, name, body string) {
 			t.Errorf("%s: bare cell id %s in visible text", name, m)
 		}
 	}
+	if m := badMark.FindString(text); m != "" {
+		t.Errorf("%s: %q instead of the wordmark Cartograph.asia", name, m)
+	}
 	if strings.Contains(body, "<no value>") || strings.Contains(body, "ZgotmplZ") {
 		t.Errorf("%s: template artefact in output", name)
 	}
@@ -152,7 +157,8 @@ func TestEveryPageRenders(t *testing.T) {
 	}{
 		{"home", views.PageHome, viewstest.Home(), []string{
 			"Latest surveys", "Plot of the week", viewstest.FeaturedText, "New Surveyors", "Regions",
-			`<b>13</b> plots surveyed`, `href="/surveyors"`, `href="/regions"`, "first survey", "Chon Buri",
+			`<b>13</b> plots surveyed`, `href="/surveyors"`, `href="/regions"`, `<abbr class="first" title="First survey of this plot">first</abbr>`, "Chon Buri", `class="lede"`, `<svg class="bar"`,
+			`title="Pattaya, Bang Lamung · Chon Buri 2417"><span class="pl">Pattaya</span><span class="pn">&#8288; · Chon Buri 2417</span></a>`,
 			`<span lang="th" class="th">ชลบุรี</span>`, `href="/latest">More surveys`, "Welcome",
 		}},
 		{"latest", views.PageLatest, viewstest.Latest(10), []string{"Latest surveys", `rel="next" href="/latest?page=2"`, "Page 1 of 3"}},
@@ -164,11 +170,11 @@ func TestEveryPageRenders(t *testing.T) {
 		}},
 		{"placeholder", views.PageSurveyor, viewstest.PlaceholderSurveyor(), []string{"<h1>beach-walker</h1>"}},
 		{"plot", views.PagePlot, viewstest.Plot(), []string{
-			"<h1>Pattaya · Chon Buri 2417", "first surveyed by", "H3 index <code>88658bd11dfffff</code>", `href="/about/plots">What is a plot?`, `data-paths="/plot/chon-buri/2417,/plot/chon-buri/2418,`, "beach-walker", `href="/map?cell=88658bd11dfffff"`,
+			"<h1>Pattaya, Bang Lamung · Chon Buri 2417", "first surveyed by", "H3 index <code>88658bd11dfffff</code>", `href="/about/plots">What is a plot?`, `data-paths="/plot/chon-buri/2417,/plot/chon-buri/2418,`, "beach-walker", `href="/map?cell=88658bd11dfffff"`,
 			"Survey this plot", `data-focus="88658bd11dfffff"`, `data-surveyed="1,`, `class="s f"`,
 		}},
 		{"blank plot", views.PagePlot, viewstest.BlankPlot(), []string{"Nobody has surveyed this plot yet", `name="robots" content="noindex"`, "Survey this plot"}},
-		{"photo", views.PagePhoto, viewstest.Photo(), []string{`<h1><a href="/plot/chon-buri/2417">Pattaya · Chon Buri 2417</a></h1>`, "CC BY-SA 4.0", `rel="prev"`, `rel="next"`, "Photo 3 of", "Full size"}},
+		{"photo", views.PagePhoto, viewstest.Photo(), []string{`<h1><a href="/plot/chon-buri/2417">Pattaya, Bang Lamung · Chon Buri 2417</a></h1>`, "CC BY-SA 4.0", `rel="prev"`, `rel="next"`, "Photo 3 of", "Full size"}},
 		{"prototype photo", views.PagePhoto, viewstest.PrototypePhoto(), []string{"first survey of this plot", `width="2000" height="1500"`}},
 		{"region", views.PageRegion, viewstest.Region(), []string{
 			"<h1>Chon Buri", "0.20%", "5,921 plots", `data-minimap="coverage"`, `data-bounds="100.68000,12.50000,101.73000,13.59000"`,
@@ -202,6 +208,25 @@ func TestAnonymousMasthead(t *testing.T) {
 	// A viewer without a name is asked to choose one.
 	body = render(t, views.PageChooseName, viewstest.ChooseName())
 	must(t, body, `href="/signin/name">Choose your name`)
+}
+
+// TestWordmark checks that the site stands as Cartograph.asia wherever it is
+// the mark: masthead, footer, title, og:site_name and feed titles.
+func TestWordmark(t *testing.T) {
+	const mark = `Cartograph<span class="tld">.asia</span>`
+	body := render(t, views.PageHome, viewstest.Home())
+	must(t, body, `<span class="wordmark">`+mark+`</span>`, `<p class="foot-mark"><a href="/">`+mark+`</a></p>`,
+		"<title>Cartograph.asia: a photo for every plot of land</title>",
+		`<meta property="og:site_name" content="Cartograph.asia">`,
+		`title="Cartograph.asia: latest surveys"`)
+	body = render(t, views.PageSurveyors, viewstest.Surveyors())
+	must(t, body, "<title>Surveyors · Cartograph.asia</title>")
+	h := newServer(t, 0)
+	for _, path := range []string{"/latest.rss", "/region/chon-buri.rss", "/surveyor/adrian.rss"} {
+		if r := get(t, h, path); !strings.Contains(r.body, "<title>Cartograph.asia: ") {
+			t.Errorf("%s: channel title is not Cartograph.asia: …", path)
+		}
+	}
 }
 
 func TestRoutes(t *testing.T) {
@@ -411,7 +436,7 @@ func TestFeedEscaping(t *testing.T) {
 	if d.Channel.Title != f.Title || !strings.Contains(d.Channel.Items[0].Title, f.Items[0].Plot.Place) {
 		t.Fatalf("round trip: %q / %q", d.Channel.Title, d.Channel.Items[0].Title)
 	}
-	if !strings.Contains(d.Channel.Items[0].Description, `alt="Photo at Ban &#34;Nong&#34; &lt;Khai&gt; &amp; Co · Chon Buri 2412 by`) {
+	if !strings.Contains(d.Channel.Items[0].Description, `alt="Photo at Ban &#34;Nong&#34; &lt;Khai&gt; &amp; Co, Bang Lamung · Chon Buri 2412 by`) {
 		t.Fatalf("description not HTML-escaped: %q", d.Channel.Items[0].Description)
 	}
 }
@@ -490,6 +515,42 @@ func TestFrontPageWeight(t *testing.T) {
 	}
 }
 
+func TestNoInlineStyles(t *testing.T) {
+	// Every page is styled from style.css only (docs/DESIGN_BRIEF.md).
+	for _, name := range []string{"home", "latest", "surveyors", "regions", "surveyor", "plot", "photo", "region",
+		"signin", "check-email", "choose-name", "edit-profile", "confirm-signin", "error", "static", "layout", "partials"} {
+		b, err := templateFS.ReadFile("templates/" + name + ".html")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if m := regexp.MustCompile(`\sstyle=|<style`).Find(b); m != nil {
+			t.Errorf("templates/%s.html: inline style %q", name, m)
+		}
+	}
+}
+
+func TestStylesheetURLs(t *testing.T) {
+	// url(...) in a stylesheet is rewritten to the referenced asset's hashed
+	// URL; a reference to a missing asset is an error.
+	a, err := loadAssets(fstest.MapFS{
+		"style.css":     {Data: []byte(`@font-face { src: url(fonts/f.woff2) format("woff2"); } .x { background: url("dot.svg"); }`)},
+		"fonts/f.woff2": {Data: []byte("font")},
+		"dot.svg":       {Data: []byte("<svg/>")},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	css := string(a.byHashed[strings.TrimPrefix(a.url("style.css"), StaticPrefix)].data)
+	for _, f := range []string{"fonts/f.woff2", "dot.svg"} {
+		if !strings.Contains(css, "url("+a.url(f)+")") {
+			t.Errorf("style.css does not refer to %s as %s: %s", f, a.url(f), css)
+		}
+	}
+	if _, err := loadAssets(fstest.MapFS{"style.css": {Data: []byte(`.x { background: url(missing.png); }`)}}); err == nil {
+		t.Error("a reference to a missing asset loaded")
+	}
+}
+
 func TestStaticAssets(t *testing.T) {
 	h := newServer(t, 0)
 	rd := newRenderer(t)
@@ -531,7 +592,7 @@ func TestStaticPages(t *testing.T) {
 		t.Errorf("want 8 principles")
 	}
 	body = get(t, h, "/about/plots").body
-	must(t, body, "<title>About the plots · Cartograph</title>", "<h1>About the plots</h1>", `<p class="lede">Cartograph divides`,
+	must(t, body, "<title>About the plots · Cartograph.asia</title>", "<h1>About the plots</h1>", `<p class="lede">Cartograph divides`,
 		`<meta name="description" content="Cartograph divides the map into plots:`, "<h2>Why hexagons</h2>",
 		"<table>", "<th>Cells worldwide</th><td>691,776,122</td>", "<code>88658bd337fffff</code>", `<a href="https://h3geo.org/">H3</a>`,
 		`<link rel="canonical" href="https://cartograph.asia/about/plots">`)
@@ -601,7 +662,7 @@ func TestPlotByNumber(t *testing.T) {
 		t.Fatalf("status %d", r.status)
 	}
 	// Same page as /plot/{cell}, which stays the canonical link.
-	must(t, r.body, "<h1>Pattaya · Chon Buri 2417", `<link rel="canonical" href="https://cartograph.asia/plot/88658bd11dfffff">`)
+	must(t, r.body, "<h1>Pattaya, Bang Lamung · Chon Buri 2417", `<link rel="canonical" href="https://cartograph.asia/plot/88658bd11dfffff">`)
 	if r := get(t, h, "/plot/CHON-BURI/2417"); r.status != http.StatusOK {
 		t.Errorf("slug case: status %d", r.status)
 	}

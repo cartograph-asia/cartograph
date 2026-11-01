@@ -76,7 +76,7 @@ func fakeSMTP(t *testing.T) (port int, got <-chan string) {
 
 func TestSMTPMailer(t *testing.T) {
 	port, got := fakeSMTP(t)
-	m := NewMailer(SMTPConfig{Host: "127.0.0.1", Port: port, User: "u", Password: "p", From: "Cartograph <hello@cartograph.asia>"})
+	m := NewMailer(SMTPConfig{Host: "127.0.0.1", Port: port, User: "u", Password: "p", From: "Cartograph.asia <hello@cartograph.asia>"})
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := m.SendSignInLink(ctx, "ada@example.org", "http://localhost:8080/signin/link?token=abc"); err != nil {

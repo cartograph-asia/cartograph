@@ -249,9 +249,10 @@ func pct(c views.Coverage) string {
 	return strconv.FormatFloat(p, 'f', 0, 64) + "%"
 }
 
-// bar is the CSS width of a coverage bar in percent.
+// bar is the length of a coverage bar in viewBox units (0-100).
 func bar(c views.Coverage) string {
-	return strconv.FormatFloat(math.Min(100, c.Percent()), 'f', 2, 64) + "%"
+	// At least 0.6 of 100 units, so a single surveyed plot stays visible.
+	return strconv.FormatFloat(math.Max(0.6, math.Min(100, c.Percent())), 'f', 2, 64)
 }
 
 // pageURL returns canonical's path with ?page=n (no query for page 1).

@@ -77,7 +77,7 @@ func (rd *Renderer) writeFeed(w io.Writer, f *views.Feed) error {
 		Self:          atomLink{Href: rd.abs(feedSelf(f)), Rel: "self", Type: "application/rss+xml"},
 	}
 	if ch.Title == "" {
-		ch.Title = "Cartograph"
+		ch.Title = views.Wordmark
 	}
 	if ch.Description == "" {
 		ch.Description = ch.Title

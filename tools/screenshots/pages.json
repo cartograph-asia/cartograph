@@ -1,0 +1,26 @@
+{
+  "pages": {
+    "home": "/",
+    "latest": "/latest",
+    "surveyors": "/surveyors",
+    "regions": "/regions",
+    "surveyor": "/surveyor/adrian",
+    "plot": "/plot/88658bd11dfffff",
+    "plot-blank": "/plot/88658bd157fffff",
+    "photo": "/photo/00000000-0000-4000-8000-000000000001",
+    "region": "/region/chon-buri",
+    "about": "/about",
+    "about-plots": "/about/plots",
+    "principles": "/principles",
+    "licence": "/licence",
+    "signin": "/signin",
+    "check-email": "/check-email",
+    "choose-name": "/signin/name",
+    "settings": "/settings",
+    "not-found": "/no-such-page"
+  },
+  "sets": {
+    "round-1": ["home"],
+    "round-2": ["home", "latest", "surveyors", "regions", "surveyor", "plot", "plot-blank", "photo", "region", "about", "about-plots", "principles", "licence", "signin", "check-email", "choose-name", "settings", "not-found"]
+  }
+}

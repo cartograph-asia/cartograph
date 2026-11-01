@@ -517,7 +517,7 @@ func TestConfigFromEnv(t *testing.T) {
 	}
 	cfg, err = ConfigFromEnv(env(map[string]string{
 		"BASE_URL": "https://cartograph.asia/", "SMTP_HOST": "smtp.example.org", "SMTP_PORT": "2525",
-		"SMTP_USER": "u", "SMTP_PASSWORD": "p", "MAIL_FROM": "Cartograph <hello@cartograph.asia>",
+		"SMTP_USER": "u", "SMTP_PASSWORD": "p", "MAIL_FROM": "Cartograph.asia <hello@cartograph.asia>",
 	}))
 	if err != nil || cfg.BaseURL != "https://cartograph.asia" || cfg.SMTP.Port != 2525 || cfg.SMTP.From == "" {
 		t.Fatalf("full: %+v %v", cfg, err)
@@ -536,17 +536,21 @@ func TestConfigFromEnv(t *testing.T) {
 }
 
 func TestBuildMessage(t *testing.T) {
-	msg, err := buildMessage("Cartograph <hello@cartograph.asia>", "ada@example.org", signInSubject,
+	msg, err := buildMessage("Cartograph.asia <hello@cartograph.asia>", "ada@example.org", signInSubject,
 		signInBody("https://cartograph.asia/signin/link?token=abc"), time.Date(2026, 11, 1, 9, 0, 0, 0, time.UTC))
 	if err != nil {
 		t.Fatal(err)
 	}
 	s := string(msg)
-	for _, w := range []string{"From: \"Cartograph\" <hello@cartograph.asia>\r\n", "To: ada@example.org\r\n",
+	for _, w := range []string{"From: \"Cartograph.asia\" <hello@cartograph.asia>\r\n", "To: ada@example.org\r\n",
 		"Subject: Your Cartograph sign-in link\r\n", "@cartograph.asia>\r\n", "\r\n\r\nHello,\r\n", "token=3Dabc"} {
 		if !strings.Contains(s, w) {
 			t.Errorf("message lacks %q:\n%s", w, s)
 		}
+	}
+	// The signature carries the wordmark; the body text says "Cartograph".
+	if b := signInBody("x"); !strings.HasSuffix(b, "\n\nCartograph.asia – a photo for every plot of land\n") {
+		t.Errorf("signature is not the wordmark:\n%s", b)
 	}
 	if _, err := buildMessage("hello@cartograph.asia", "a@example.org\r\nBcc: b@example.org", "s", "b", time.Now()); err == nil {
 		t.Error("header injection accepted")

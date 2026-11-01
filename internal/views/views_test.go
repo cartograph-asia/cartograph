@@ -99,3 +99,27 @@ func TestPlotRefName(t *testing.T) {
 		}
 	}
 }
+
+func TestPlotRefShortName(t *testing.T) {
+	cb := RegionRef{Slug: "chon-buri", NameEn: "Chon Buri"}
+	bkk := RegionRef{Slug: "bangkok", NameEn: "Bangkok"}
+	for _, c := range []struct {
+		p           PlotRef
+		short       string
+		place, prov string
+	}{
+		{PlotRef{Place: "Pattaya", District: "Bang Lamung", Region: cb, Number: 2412}, "Pattaya · Chon Buri 2412", "Pattaya", "Chon Buri 2412"},
+		{PlotRef{Place: "Hua Mak", District: "Bang Kapi", Region: bkk, Number: 1000}, "Hua Mak · Bangkok 1000", "Hua Mak", "Bangkok 1000"},
+		{PlotRef{Place: "Bangkok", District: "Bang Kapi", Region: bkk, Number: 1000}, "Bang Kapi · Bangkok 1000", "Bang Kapi", "Bangkok 1000"},
+		{PlotRef{Place: "Chon Buri", Region: cb, Number: 17}, "Chon Buri 17", "", "Chon Buri 17"},
+		{PlotRef{Place: "Pattaya"}, "Pattaya", "Pattaya", ""},
+		{PlotRef{}, "A plot", "", ""},
+	} {
+		if got := c.p.ShortName(); got != c.short {
+			t.Errorf("ShortName(%+v) = %q, want %q", c.p, got, c.short)
+		}
+		if n := c.p.ShortParts(); n.Place != c.place || n.Province != c.prov {
+			t.Errorf("ShortParts(%+v) = %+v", c.p, n)
+		}
+	}
+}

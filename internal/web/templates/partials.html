@@ -2,14 +2,24 @@
 {{define "csrf"}}<input type="hidden" name="{{csrfField}}" value="{{.CSRF}}">{{end}}
 
 {{/* A grid of photo thumbnails, chronological as given. */}}
+{{define "wordmark"}}Cartograph<span class="tld">.asia</span>{{end}}
+
 {{define "grid" -}}
 <ul class="grid">
 {{- range $i, $p := .Photos}}
 <li><a class="ph" href="/photo/{{$p.ID}}"><img src="{{img $p.Keys.Thumb}}" width="480" height="360" alt="Photo at {{$p.Plot.Name}} by {{$p.Surveyor.Name}}" {{if and $.Eager (eq $i 0)}}fetchpriority="high"{{else}}loading="lazy"{{end}} decoding="async"></a>
-<p><a href="{{$p.Plot.Path}}">{{$p.Plot.Name}}</a><br>
-<a href="/surveyor/{{$p.Surveyor.Name}}">{{$p.Surveyor.Name}}</a> · {{when $.Now $p.UploadedAt}}{{if $p.FirstSurvey}} <span class="first">first survey</span>{{end}}</p></li>
+<p class="cap"><a class="plot" href="{{$p.Plot.Path}}" title="{{$p.Plot.Name}}">{{template "short-name" $p.Plot}}</a>
+<span class="line"><a href="/surveyor/{{$p.Surveyor.Name}}">{{$p.Surveyor.Name}}</a> · {{when $.Now $p.UploadedAt}}{{if $p.FirstSurvey}} <abbr class="first" title="First survey of this plot">first</abbr>{{end}}</span></p></li>
 {{- end}}
 </ul>
+{{- end}}
+
+{{/* A plot's short name in two parts: only the place is cut when the
+   line is too narrow, so the province and number always show. The word
+   joiner (&#8288;) keeps the space before the dot, which a flex item would
+   drop; a no-break space is twice as wide in Charter. */}}
+{{define "short-name" -}}
+{{$n := .ShortParts}}{{with $n.Place}}<span class="pl">{{.}}</span>{{end}}{{with $n.Province}}<span class="pn">{{if $n.Place}}&#8288; · {{end}}{{.}}</span>{{end}}
 {{- end}}
 
 {{define "pagination" -}}
@@ -23,9 +33,15 @@
 {{/* One region row: name, coverage, bar, most active Surveyors. */}}
 {{define "region-row" -}}
 <li><h3><a href="/region/{{.Region.Slug}}">{{.Region.NameEn}}</a>{{with .Region.NameTh}} <span lang="th" class="th">{{.}}</span>{{end}}</h3>
-<p class="cov"><span class="pct">{{pct .Coverage}}</span> <span class="bar" role="presentation">{{if .Coverage.Claimed}}<span style="width:{{bar .Coverage}}"></span>{{end}}</span> <span class="of">{{num .Coverage.Claimed}} of {{num .Coverage.Land}} plots</span></p>
+{{template "covbar" .Coverage}}
+<p class="cov"><span class="pct">{{pct .Coverage}}</span> <span class="of">{{num .Coverage.Claimed}} of {{num .Coverage.Land}} plots</span></p>
 {{if .TopSurveyors}}<p class="who">Most active: {{range $i, $s := .TopSurveyors}}{{if $i}}, {{end}}<a href="/surveyor/{{$s.Surveyor.Name}}">{{$s.Surveyor.Name}}</a>{{end}}</p>{{end}}
 </li>
+{{- end}}
+
+{{/* A coverage bar; its length is data, so it is an SVG attribute, not a style. */}}
+{{define "covbar" -}}
+<svg class="bar" viewBox="0 0 100 1" preserveAspectRatio="none" aria-hidden="true" focusable="false"><rect class="track" width="100" height="1"/>{{if .Claimed}}<rect class="fill" width="{{bar .}}" height="1"/>{{end}}</svg>
 {{- end}}
 
 {{/* Lists of Surveyors with their photo counts in a window. */}}

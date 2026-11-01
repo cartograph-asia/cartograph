@@ -4,17 +4,17 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{{if .Title}}{{.Title}} · Cartograph{{else}}Cartograph: a photo for every plot of land{{end}}</title>
+<title>{{if .Title}}{{.Title}} · Cartograph.asia{{else}}Cartograph.asia: a photo for every plot of land{{end}}</title>
 {{with .Description}}<meta name="description" content="{{.}}">
 {{end}}{{if .NoIndex}}<meta name="robots" content="noindex">
 {{end}}{{with .Canonical}}<link rel="canonical" href="{{abs .}}">
-{{end}}{{with .Feed}}<link rel="alternate" type="application/rss+xml" title="{{if $.Title}}Cartograph: {{$.Title}}{{else}}Cartograph: latest surveys{{end}}" href="{{abs .}}">
+{{end}}{{with .Feed}}<link rel="alternate" type="application/rss+xml" title="{{if $.Title}}Cartograph.asia: {{$.Title}}{{else}}Cartograph.asia: latest surveys{{end}}" href="{{abs .}}">
 {{end}}<link rel="stylesheet" href="{{asset "style.css"}}">
 <link rel="icon" type="image/svg+xml" href="{{asset "logo.svg"}}">
 <link rel="apple-touch-icon" href="{{asset "apple-touch-icon.png"}}">
 <meta name="theme-color" content="#F6F2EA">
-<meta property="og:site_name" content="Cartograph">
-<meta property="og:title" content="{{if .Title}}{{.Title}}{{else}}Cartograph{{end}}">
+<meta property="og:site_name" content="Cartograph.asia">
+<meta property="og:title" content="{{if .Title}}{{.Title}}{{else}}Cartograph.asia{{end}}">
 {{with .Description}}<meta property="og:description" content="{{.}}">
 {{end}}{{with .Canonical}}<meta property="og:url" content="{{abs .}}">
 {{end}}<meta property="og:type" content="{{or .OG.Type "website"}}">
@@ -28,10 +28,12 @@
 <body>
 <a class="skip" href="#main">Skip to content</a>
 <header class="mast">
-<a class="brand" href="/"><img src="{{asset "logo.svg"}}" alt="" width="36" height="36"><span class="name">Cartograph</span></a>
+<div class="brand">
+<a class="mark" href="/"><img src="{{asset "logo.svg"}}" alt="" width="56" height="56"><span class="wordmark">{{template "wordmark"}}</span></a>
 <p class="claim">A photo for every plot of land in Asia.</p>
+</div>
 <nav class="acts" aria-label="Account">
-<a class="go" href="/map">Start surveying</a>
+<a class="go" href="/map">Start surveying <span aria-hidden="true">→</span></a>
 {{- with .Viewer}}
 {{if .HasName}}<a href="/surveyor/{{.Name}}">{{.Name}}</a>{{else}}<a href="/signin/name">Choose your name</a>{{end}}
 <form method="post" action="/signout">{{template "csrf" $}}<button class="link" type="submit">Sign out</button></form>
@@ -44,9 +46,12 @@
 {{template "content" .}}
 </main>
 <footer class="foot">
+<p class="foot-mark"><a href="/">{{template "wordmark"}}</a></p>
 <nav aria-label="About Cartograph"><a href="/about">About</a> <a href="/about/plots">About the plots</a> <a href="/principles">Principles</a> <a href="/licence">Data &amp; licence</a> <a href="/latest.rss">RSS</a> <a href="https://github.com/cartograph-asia">GitHub</a> <a href="mailto:hello@cartograph.asia">Contact</a></nav>
+<div class="foot-meta">
 <p>hello@cartograph.asia · X @cartographasia · Instagram @cartograph.asia · GitHub cartograph-asia</p>
 <p>Photos by their Surveyors, <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a>. Map data © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, ODbL.</p>
+</div>
 </footer>
 </body>
 </html>

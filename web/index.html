@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#f6f5f2" />
+    <meta name="description" content="Cartograph: a photo for every plot of land." />
+    <title>Cartograph</title>
+  </head>
+  <body>
+    <header class="topbar">
+      <h1 class="brand">Cartograph</h1>
+      <span class="mock-badge" aria-hidden="true">mock data</span>
+    </header>
+
+    <main id="map" aria-label="Map of plots"></main>
+
+    <p id="map-status" class="map-status" role="status" aria-live="polite" hidden></p>
+
+    <button id="open-upload" class="primary fab" type="button">Upload photo</button>
+
+    <aside id="panel" class="panel" aria-labelledby="panel-title" aria-hidden="true" inert>
+      <div class="panel-head">
+        <span class="grabber" aria-hidden="true"></span>
+        <h2 id="panel-title" tabindex="-1">Plot</h2>
+        <button id="panel-close" class="icon" type="button" aria-label="Close panel">
+          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+            <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+          </svg>
+        </button>
+      </div>
+      <div class="panel-body">
+        <section id="plot-info" class="plot-info" aria-live="polite"></section>
+
+        <form id="upload-form" class="upload" novalidate>
+          <h3 id="upload-title">Add a photo</h3>
+          <div class="field">
+            <label for="photo-input">Photo</label>
+            <input id="photo-input" name="photo" type="file" accept="image/jpeg,image/png" required />
+            <p class="hint">JPEG or PNG, up to 25 MB. The plot is taken from the photo's location.</p>
+          </div>
+          <div class="field">
+            <label for="surveyor-input">Your name</label>
+            <input id="surveyor-input" name="surveyor" type="text" maxlength="80" autocomplete="nickname" required />
+          </div>
+          <div class="field location">
+            <div class="location-row">
+              <button id="use-location" class="secondary" type="button">Use my location</button>
+              <button id="clear-location" class="link" type="button" hidden>Clear</button>
+            </div>
+            <p id="location-text" class="hint" aria-live="polite"></p>
+            <p class="hint">Only used if the photo has no GPS location.</p>
+          </div>
+          <button id="upload-submit" class="primary" type="submit">Upload photo</button>
+          <p id="form-status" class="form-status" role="status" aria-live="polite"></p>
+        </form>
+      </div>
+    </aside>
+
+    <dialog id="lightbox" class="lightbox" aria-label="Photo">
+      <button id="lightbox-close" class="icon" type="button" aria-label="Close photo">
+        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+          <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+        </svg>
+      </button>
+      <figure>
+        <img id="lightbox-img" alt="" />
+        <figcaption id="lightbox-caption"></figcaption>
+      </figure>
+    </dialog>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

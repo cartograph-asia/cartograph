@@ -35,6 +35,13 @@ done
 [ -n "$rev" ] || exit 0
 [ "$rev" != 0000000000000000000000000000000000000000 ] || exit 0
 
+# Give up on a step that hangs (e.g. a dependency that never becomes ready).
+limit() {
+	local seconds=$1
+	shift
+	if command -v timeout >/dev/null; then timeout "$seconds" "$@"; else "$@"; fi
+}
+
 REPO=$(pwd)
 BUILD=$(mktemp -d)
 cleanup() {
@@ -66,7 +73,10 @@ compose() {
 	API_TAG=$tag WEB_TAG=$tag docker compose --project-name "$PROJECT" --project-directory "$BUILD/deploy" \
 		-f "$BUILD/deploy/docker-compose.yml" -f "$BUILD/deploy/compose.prod.yaml" "$@"
 }
-compose up -d --no-build postgres garage garage-init
+if ! limit 300 compose up -d --no-build postgres garage garage-init; then
+	echo "ERROR: the database or the photo store did not start; see: deploy/prod.sh logs garage postgres"
+	exit 1
+fi
 compose run -d --no-deps --name "$PROBE" -p "127.0.0.1:${PROBE_PORT}:8000" api >/dev/null
 ok=""
 for _ in $(seq 1 60); do
@@ -98,7 +108,10 @@ rsync -a --delete \
 	"$BUILD/" "$RUNTIME/"
 printf 'API_TAG=%s\nWEB_TAG=%s\n' "$tag" "$tag" > "$RUNTIME/deploy/release.new"
 mv "$RUNTIME/deploy/release.new" "$RUNTIME/deploy/release"
-"$RUNTIME/deploy/prod.sh" up -d --no-build --remove-orphans
+if ! limit 600 "$RUNTIME/deploy/prod.sh" up -d --no-build --remove-orphans; then
+	echo "ERROR: switching the stack did not finish; see: deploy/prod.sh ps"
+	exit 1
+fi
 # rsync replaced the Caddyfile; the bind mount still shows the old file
 # until the container is recreated.
 new_caddyfile=$(checksum "$RUNTIME/deploy/Caddyfile")

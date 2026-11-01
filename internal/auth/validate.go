@@ -8,6 +8,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"golang.org/x/text/unicode/norm"
+
 	"github.com/cartograph-asia/cartograph/internal/views"
 )
 
@@ -70,4 +72,33 @@ func cleanBio(s string) (string, bool) {
 	}, s)
 	s = strings.TrimSpace(s)
 	return s, utf8.RuneCountInString(s) <= views.BioMaxLen
+}
+
+// cleanDisplayName normalises a display name (docs/DISPLAY_NAME_BRIEF.md):
+// NFC, surrounding space trimmed, runs of white space collapsed to one
+// space. It allows letters and marks of any script, digits, spaces and
+// . ' ’ -, needs at least one letter and at most views.DisplayNameMax
+// characters. "" with ok true means no display name.
+func cleanDisplayName(s string) (string, bool) {
+	if !utf8.ValidString(s) {
+		return "", false
+	}
+	s = strings.Join(strings.Fields(norm.NFC.String(s)), " ")
+	if s == "" {
+		return "", true
+	}
+	if utf8.RuneCountInString(s) > views.DisplayNameMax {
+		return "", false
+	}
+	letter := false
+	for _, r := range s {
+		switch {
+		case unicode.IsLetter(r):
+			letter = true
+		case unicode.Is(unicode.M, r), unicode.IsDigit(r), r == ' ', r == '.', r == '\'', r == '’', r == '-':
+		default:
+			return "", false
+		}
+	}
+	return s, letter
 }

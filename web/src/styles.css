@@ -336,6 +336,23 @@ body.panel-open .fab {
   border-top: 1px solid var(--line);
 }
 
+.upload[hidden],
+.signin-prompt[hidden] {
+  display: none;
+}
+
+.signin-prompt {
+  margin: 0;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.signin-prompt a {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+
 .upload h3 {
   margin: 0;
   font-size: 1rem;

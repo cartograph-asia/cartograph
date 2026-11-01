@@ -46,9 +46,14 @@ export interface UploadResult {
   urls: PhotoUrls;
 }
 
+/** 200 of GET /api/me: the signed-in Surveyor. */
+export interface Me {
+  name: string;
+}
+
+/** The Surveyor comes from the session; there is no name field. */
 export interface UploadInput {
   photo: File;
-  surveyor: string;
   lat?: number;
   lng?: number;
 }
@@ -61,6 +66,8 @@ export interface Api {
   /** At most COVERAGE_BATCH cells per call. */
   getCoverage(res: 5 | 6, cells: string[]): Promise<CoverageCell[]>;
   uploadPhoto(input: UploadInput): Promise<UploadResult>;
+  /** The signed-in Surveyor, or null when signed out or no name is chosen yet (401). */
+  getMe(): Promise<Me | null>;
 }
 
 export class ApiError extends Error {

@@ -3,6 +3,7 @@ import {
   ApiError,
   type Api,
   type CoverageCell,
+  type Me,
   type PlotDetail,
   type PlotSummary,
   type UploadInput,
@@ -56,7 +57,6 @@ export const httpApi: Api = {
   async uploadPhoto(input: UploadInput): Promise<UploadResult> {
     const form = new FormData();
     form.append('photo', input.photo);
-    form.append('surveyor', input.surveyor);
     if (input.lat !== undefined && input.lng !== undefined) {
       form.append('lat', String(input.lat));
       form.append('lng', String(input.lng));
@@ -64,5 +64,12 @@ export const httpApi: Api = {
     const res = await fetch('/api/photos', { method: 'POST', body: form });
     if (!res.ok) throw await errorFrom(res);
     return (await res.json()) as UploadResult;
+  },
+
+  async getMe(): Promise<Me | null> {
+    const res = await fetch('/api/me', { headers: { Accept: 'application/json' } });
+    if (res.status === 401) return null;
+    if (!res.ok) throw await errorFrom(res);
+    return (await res.json()) as Me;
   },
 };

@@ -84,11 +84,7 @@ func (rd *Renderer) writeFeed(w io.Writer, f *views.Feed) error {
 	}
 	for _, p := range f.Items {
 		link := rd.abs("/photo/" + p.ID)
-		title := "Near " + p.Plot.Place
-		if p.Plot.Region.NameEn != "" && p.Plot.Region.NameEn != p.Plot.Place {
-			title += ", " + p.Plot.Region.NameEn
-		}
-		title += " by " + p.Surveyor.Name
+		title := p.Plot.Name() + " by " + p.Surveyor.Name
 		if p.FirstSurvey {
 			title += " (first survey)"
 		}
@@ -101,7 +97,7 @@ func (rd *Renderer) writeFeed(w io.Writer, f *views.Feed) error {
 			// HTML in description is entity-escaped by the XML encoder.
 			Description: fmt.Sprintf(`<a href="%s"><img src="%s" width="%d" height="%d" alt="%s"></a>`,
 				html.EscapeString(link), html.EscapeString(rd.absImg(p.Keys.Thumb)), d.W, d.H,
-				html.EscapeString("Photo near "+p.Plot.Place+" by "+p.Surveyor.Name)),
+				html.EscapeString("Photo at "+p.Plot.Name()+" by "+p.Surveyor.Name)),
 		})
 	}
 	if _, err := io.WriteString(w, xml.Header); err != nil {

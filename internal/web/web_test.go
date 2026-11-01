@@ -98,10 +98,11 @@ func mustNot(t *testing.T, body string, nots ...string) {
 }
 
 var (
-	imgTag   = regexp.MustCompile(`<img\b[^>]*>`)
-	tagRe    = regexp.MustCompile(`(?s)<script.*?</script>|<[^>]+>`)
-	cellRe   = regexp.MustCompile(`\b8[0-9a-f]{14}\b`)
-	wordsBad = regexp.MustCompile(`(?i)\b(hex|hexagons?|squares?)\b`)
+	imgTag    = regexp.MustCompile(`<img\b[^>]*>`)
+	tagRe     = regexp.MustCompile(`(?s)<script.*?</script>|<[^>]+>`)
+	cellRe    = regexp.MustCompile(`\b8[0-9a-f]{14}\b`)
+	detailsRe = regexp.MustCompile(`(?s)<p class="details">.*?</p>`)
+	wordsBad  = regexp.MustCompile(`(?i)\b(hex|hexagons?|squares?)\b`)
 )
 
 // checkHTML runs the structural rules every page must follow.
@@ -124,7 +125,8 @@ func checkHTML(t *testing.T, name, body string) {
 	if high > 1 {
 		t.Errorf("%s: %d images with fetchpriority=high", name, high)
 	}
-	text := tagRe.ReplaceAllString(body, " ")
+	// The plot page's details line is the one place a cell id may appear.
+	text := tagRe.ReplaceAllString(detailsRe.ReplaceAllString(body, ""), " ")
 	if m := wordsBad.FindString(text); m != "" {
 		t.Errorf("%s: forbidden word %q in visible text", name, m)
 	}
@@ -158,11 +160,11 @@ func TestEveryPageRenders(t *testing.T) {
 		}},
 		{"placeholder", views.PageSurveyor, viewstest.PlaceholderSurveyor(), []string{"<h1>beach-walker</h1>"}},
 		{"plot", views.PagePlot, viewstest.Plot(), []string{
-			"A plot near Pattaya", "first surveyed by", "beach-walker", `href="/map?cell=88658bd11dfffff"`,
+			"<h1>Pattaya · Chon Buri 2417", "first surveyed by", "H3 index <code>88658bd11dfffff</code>", `href="/plot/chon-buri/2417"`, "beach-walker", `href="/map?cell=88658bd11dfffff"`,
 			"Survey this plot", `data-focus="88658bd11dfffff"`, `data-surveyed="1,`, `class="s f"`,
 		}},
 		{"blank plot", views.PagePlot, viewstest.BlankPlot(), []string{"Nobody has surveyed this plot yet", `name="robots" content="noindex"`, "Survey this plot"}},
-		{"photo", views.PagePhoto, viewstest.Photo(), []string{"Near Pattaya", "CC BY-SA 4.0", `rel="prev"`, `rel="next"`, "Photo 3 of", "Full size"}},
+		{"photo", views.PagePhoto, viewstest.Photo(), []string{">Pattaya · Chon Buri 2417</a></h1>", "CC BY-SA 4.0", `rel="prev"`, `rel="next"`, "Photo 3 of", "Full size"}},
 		{"prototype photo", views.PagePhoto, viewstest.PrototypePhoto(), []string{"first survey of this plot", `width="2000" height="1500"`}},
 		{"region", views.PageRegion, viewstest.Region(), []string{
 			"<h1>Chon Buri", "0.20%", "5,921 plots", `data-minimap="coverage"`, `data-bounds="100.68000,12.50000,101.73000,13.59000"`,
@@ -405,7 +407,7 @@ func TestFeedEscaping(t *testing.T) {
 	if d.Channel.Title != f.Title || !strings.Contains(d.Channel.Items[0].Title, f.Items[0].Plot.Place) {
 		t.Fatalf("round trip: %q / %q", d.Channel.Title, d.Channel.Items[0].Title)
 	}
-	if !strings.Contains(d.Channel.Items[0].Description, `alt="Photo near Ban &#34;Nong&#34; &lt;Khai&gt; &amp; Co by`) {
+	if !strings.Contains(d.Channel.Items[0].Description, `alt="Photo at Ban &#34;Nong&#34; &lt;Khai&gt; &amp; Co · Chon Buri 2412 by`) {
 		t.Fatalf("description not HTML-escaped: %q", d.Channel.Items[0].Description)
 	}
 }
@@ -549,5 +551,23 @@ func TestNewRendererConfig(t *testing.T) {
 	}
 	if got := rd.absImg("photos/a.jpg"); got != testBase+"/img/photos/a.jpg" {
 		t.Fatal(got)
+	}
+}
+
+func TestPlotByNumber(t *testing.T) {
+	h := newServer(t, 0)
+	r := get(t, h, "/plot/chon-buri/2417")
+	if r.status != http.StatusOK {
+		t.Fatalf("status %d", r.status)
+	}
+	// Same page as /plot/{cell}, which stays the canonical link.
+	must(t, r.body, "<h1>Pattaya · Chon Buri 2417", `<link rel="canonical" href="https://cartograph.asia/plot/88658bd11dfffff">`)
+	if r := get(t, h, "/plot/CHON-BURI/2417"); r.status != http.StatusOK {
+		t.Errorf("slug case: status %d", r.status)
+	}
+	for _, path := range []string{"/plot/chon-buri/1", "/plot/chon-buri/02417", "/plot/chon-buri/0", "/plot/chon-buri/x", "/plot/rayong/2417"} {
+		if r := get(t, h, path); r.status != http.StatusNotFound {
+			t.Errorf("%s: status %d, want 404", path, r.status)
+		}
 	}
 }

@@ -1,7 +1,7 @@
 {{define "content" -}}
 {{$pl := .Plot}}
 <header class="head">
-<h1>A plot near {{$pl.Place}}{{with $pl.PlaceTh}} <span lang="th" class="th">{{.}}</span>{{end}}</h1>
+<h1>{{$pl.Name}}{{with $pl.PlaceTh}} <span lang="th" class="th">{{.}}</span>{{end}}</h1>
 <p class="meta">{{with $pl.Region.Slug}}<a href="/region/{{.}}">{{$pl.Region.NameEn}}</a>{{end}}
 {{- if .Surveyed}} · first surveyed by <a href="/surveyor/{{.FirstSurveyor.Name}}">{{.FirstSurveyor.Name}}</a> on {{date .ClaimedAt}} · {{count .PhotoCount "photo" "photos"}}{{end}}</p>
 {{if .Surveyed}}<p><a class="go" href="/map?cell={{$pl.Cell}}">Survey this plot</a></p>
@@ -14,6 +14,8 @@
 <p class="note">Oldest first: the story of this plot.</p>
 {{template "grid" (grid .Now .Photos true)}}
 </section>{{end}}
+
+<p class="details">Details: H3 index <code>{{$pl.Cell}}</code>{{if $pl.Number}} · also at <a href="{{$pl.Path}}">{{$pl.Path}}</a>{{end}}</p>
 
 <section class="minimap" aria-labelledby="map-h">
 <h2 id="map-h">Around this plot</h2>

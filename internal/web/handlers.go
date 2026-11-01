@@ -25,7 +25,7 @@ func NewHandlers(src views.Source, rd *Renderer) *Handlers {
 // Routes mounts every page, feed and the static assets on r:
 //
 //	/  /latest  /latest.rss  /surveyors  /regions
-//	/surveyor/{name}[.rss]  /plot/{cell}  /photo/{id}  /region/{slug}[.rss]
+//	/surveyor/{name}[.rss]  /plot/{cell}  /plot/{slug}/{number}  /photo/{id}  /region/{slug}[.rss]
 //	/about  /principles  /licence  /static/*
 //
 // The account pages (/signin, /signin/link, /signin/name, /settings, /signout) belong to
@@ -38,6 +38,7 @@ func (h *Handlers) Routes(r chi.Router) {
 	r.Get("/regions", h.regions)
 	r.Get("/surveyor/{name}", h.surveyor)
 	r.Get("/plot/{cell}", h.plot)
+	r.Get("/plot/{slug}/{number}", h.plotByNumber)
 	r.Get("/photo/{id}", h.photo)
 	r.Get("/region/{slug}", h.region)
 	r.Get("/about", h.static(pageAbout, "About", "What Cartograph is and how to survey a plot."))
@@ -155,6 +156,29 @@ func (h *Handlers) surveyor(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) plot(w http.ResponseWriter, r *http.Request) {
 	d, err := h.src.Plot(r.Context(), chi.URLParam(r, "cell"))
 	h.show(w, r, views.PagePlot, d, err)
+}
+
+// plotByNumber serves a plot under its friendly path /plot/{slug}/{number}.
+// The page is the same as at /plot/{cell}, whose path stays the canonical
+// link, so the friendly URL keeps showing in the address bar.
+func (h *Handlers) plotByNumber(w http.ResponseWriter, r *http.Request) {
+	raw := chi.URLParam(r, "number")
+	n, err := strconv.Atoi(raw)
+	if err != nil || n < 1 || raw != strconv.Itoa(n) {
+		h.NotFound(w, r)
+		return
+	}
+	cell, err := h.src.PlotCell(r.Context(), chi.URLParam(r, "slug"), n)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	d, err := h.src.Plot(r.Context(), cell)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	h.rd.Render(w, r, http.StatusOK, views.PagePlot, d)
 }
 
 func (h *Handlers) photo(w http.ResponseWriter, r *http.Request) {

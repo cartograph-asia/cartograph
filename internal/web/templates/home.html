@@ -12,9 +12,9 @@
 <section class="featured" aria-labelledby="featured-h">
 <h2 id="featured-h">{{if .Editorial}}Plot of the week{{else}}Newest plot{{end}}</h2>
 <figure>
-<a href="/photo/{{$p.ID}}"><img src="{{img $p.Keys.Thumb}}" srcset="{{srcset $p.Keys 1200}}" sizes="(min-width: 64rem) 40rem, 100vw" width="{{$d.W}}" height="{{$d.H}}" alt="Photo near {{$p.Plot.Place}} by {{$p.Surveyor.Name}}" loading="lazy" decoding="async"></a>
+<a href="/photo/{{$p.ID}}"><img src="{{img $p.Keys.Thumb}}" srcset="{{srcset $p.Keys 1200}}" sizes="(min-width: 64rem) 40rem, 100vw" width="{{$d.W}}" height="{{$d.H}}" alt="Photo at {{$p.Plot.Name}} by {{$p.Surveyor.Name}}" loading="lazy" decoding="async"></a>
 <figcaption>
-<p class="place"><a href="/plot/{{$p.Plot.Cell}}">{{$p.Plot.Place}}</a>, <a class="quiet" href="/region/{{$p.Plot.Region.Slug}}">{{$p.Plot.Region.NameEn}}</a></p>
+<p class="place"><a href="/plot/{{$p.Plot.Cell}}">{{$p.Plot.Name}}</a></p>
 {{if .Text}}<p>{{.Text}}</p>{{else}}<p>The most recently claimed plot. An editor picks a plot of the week from time to time.</p>{{end}}
 <p class="by">Photo by <a href="/surveyor/{{$p.Surveyor.Name}}">{{$p.Surveyor.Name}}</a> · {{when $.Now $p.UploadedAt}}</p>
 </figcaption>
@@ -33,8 +33,8 @@
 <h2 id="new-h">New Surveyors</h2>
 <p class="note">Welcome to the survey.</p>
 <ul class="newcomers">{{range .NewSurveyors}}{{$p := .FirstPhoto}}
-<li><a class="ph" href="/photo/{{$p.ID}}"><img src="{{img $p.Keys.Thumb}}" width="480" height="360" alt="First photo by {{.Surveyor.Name}}, near {{$p.Plot.Place}}" loading="lazy" decoding="async"></a>
-<p><a href="/surveyor/{{.Surveyor.Name}}">{{.Surveyor.Name}}</a><br><span class="quiet">joined {{when $.Now .JoinedAt}}, first photo near {{$p.Plot.Place}}</span></p></li>{{end}}
+<li><a class="ph" href="/photo/{{$p.ID}}"><img src="{{img $p.Keys.Thumb}}" width="480" height="360" alt="First photo by {{.Surveyor.Name}}, at {{$p.Plot.Name}}" loading="lazy" decoding="async"></a>
+<p><a href="/surveyor/{{.Surveyor.Name}}">{{.Surveyor.Name}}</a><br><span class="quiet">joined {{when $.Now .JoinedAt}}, first photo at {{$p.Plot.Name}}</span></p></li>{{end}}
 </ul>
 </section>{{end}}
 

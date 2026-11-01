@@ -5,8 +5,8 @@
 {{define "grid" -}}
 <ul class="grid">
 {{- range $i, $p := .Photos}}
-<li><a class="ph" href="/photo/{{$p.ID}}"><img src="{{img $p.Keys.Thumb}}" width="480" height="360" alt="Photo near {{$p.Plot.Place}} by {{$p.Surveyor.Name}}" {{if and $.Eager (eq $i 0)}}fetchpriority="high"{{else}}loading="lazy"{{end}} decoding="async"></a>
-<p><a href="/plot/{{$p.Plot.Cell}}">{{$p.Plot.Place}}</a>{{with $p.Plot.Region.Slug}}, <a class="quiet" href="/region/{{.}}">{{$p.Plot.Region.NameEn}}</a>{{end}}<br>
+<li><a class="ph" href="/photo/{{$p.ID}}"><img src="{{img $p.Keys.Thumb}}" width="480" height="360" alt="Photo at {{$p.Plot.Name}} by {{$p.Surveyor.Name}}" {{if and $.Eager (eq $i 0)}}fetchpriority="high"{{else}}loading="lazy"{{end}} decoding="async"></a>
+<p><a href="/plot/{{$p.Plot.Cell}}">{{$p.Plot.Name}}</a><br>
 <a href="/surveyor/{{$p.Surveyor.Name}}">{{$p.Surveyor.Name}}</a> · {{when $.Now $p.UploadedAt}}{{if $p.FirstSurvey}} <span class="first">first survey</span>{{end}}</p></li>
 {{- end}}
 </ul>

@@ -34,6 +34,8 @@ p { margin: 0 0 0.75rem; }
 b { font-variant-numeric: tabular-nums lining-nums; }
 .th { font-weight: 400; color: var(--muted); }
 .note, .meta { color: var(--muted); font-size: 0.9375rem; }
+.details { color: var(--muted); font-size: 0.8125rem; margin-top: 2rem; }
+.details code { font-size: inherit; }
 .sr, .skip:not(:focus) {
   position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
 }

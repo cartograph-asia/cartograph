@@ -4,18 +4,15 @@
 #   cp .env.example .env      # optional: every variable has a default below
 #   docker compose up --build
 #
-# Then open http://localhost:8080. MinIO console: http://localhost:9001.
-# Only two host ports are published: 8080 (caddy) and 9001 (MinIO console).
+# Then open http://localhost:8080. Only one host port is published: 8080
+# (caddy).
 
 name: cartograph
 
 services:
   postgres:
-    # The postgis/postgis images are published for amd64 only. On Apple
-    # Silicon this runs under emulation (Rosetta), which is fine for the
-    # prototype. PostGIS itself is not used yet.
-    image: postgis/postgis:16-3.6
-    platform: linux/amd64
+    # Plain PostgreSQL; PostGIS is not used by the prototype.
+    image: postgres:16.15-alpine3.24
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-cartograph}
@@ -28,45 +25,37 @@ services:
       interval: 5s
       timeout: 5s
       retries: 20
-      start_period: 20s
-
-  minio:
-    # Upstream MinIO no longer publishes container images; pgsty/minio is the
-    # community-maintained build of the same server.
-    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
-    restart: unless-stopped
-    command: ["server", "/data", "--console-address", ":9001"]
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-cartograph-admin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-cartograph-admin-secret}
-    ports:
-      - "127.0.0.1:9001:9001" # console, for debugging only
-    volumes:
-      - minio-data:/data
-    healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:9000/minio/health/live"]
-      interval: 5s
-      timeout: 5s
-      retries: 20
       start_period: 10s
 
-  # One-shot: creates the bucket, makes photos/* anonymously readable and
-  # creates the bucket-scoped access key the api uses. Idempotent.
-  minio-init:
-    image: pgsty/mc:RELEASE.2026-10-18T00-00-00Z
-    depends_on:
-      minio:
-        condition: service_healthy
-    entrypoint: ["/bin/sh", "/minio-init.sh"]
+  garage:
+    # Single-node Garage as the local S3 store (config in garage.toml). The
+    # image has no shell, so there is no healthcheck; garage-init waits for it.
+    image: dxflrs/garage:v2.5.0
+    restart: unless-stopped
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-cartograph-admin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-cartograph-admin-secret}
-      S3_BUCKET: ${S3_BUCKET:-cartograph}
-      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-cartograph-app}
-      S3_SECRET_KEY: ${S3_SECRET_KEY:-cartograph-app-secret}
-      MC_CONFIG_DIR: /tmp/.mc
+      GARAGE_RPC_SECRET: ${GARAGE_RPC_SECRET:-dda494800248dc844572c3cb46c426b8ef2b3f1e6b83aa2ab47b47ee5a859c44}
+      GARAGE_ADMIN_TOKEN: ${GARAGE_ADMIN_TOKEN:-PAT5VqzxsIBdt0Y4PsJWopnlIQovuzPVD9jpjV8}
     volumes:
-      - ./minio-init.sh:/minio-init.sh:ro
+      - ./garage.toml:/etc/garage.toml:ro
+      - garage-meta:/var/lib/garage/meta
+      - garage-data:/var/lib/garage/data
+
+  # One-shot: assigns the node's layout, creates the bucket with website
+  # access (served read-only via caddy /img/*) and imports the api's key.
+  # Idempotent.
+  garage-init:
+    image: curlimages/curl:8.22.0
+    depends_on:
+      garage:
+        condition: service_started
+    entrypoint: ["/bin/sh", "/garage-init.sh"]
+    environment:
+      GARAGE_ADMIN_TOKEN: ${GARAGE_ADMIN_TOKEN:-PAT5VqzxsIBdt0Y4PsJWopnlIQovuzPVD9jpjV8}
+      S3_BUCKET: ${S3_BUCKET:-cartograph}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-GKd530ae12b21f90f857abc4d8}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-072f12d29227eaaa0abc440478fc241b2680b11feb3f38d6a62b740a57d3eedf}
+    volumes:
+      - ./garage-init.sh:/garage-init.sh:ro
     restart: "no"
 
   api:
@@ -77,22 +66,27 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      minio-init:
+      garage-init:
         condition: service_completed_successfully
     environment:
       API_ADDR: ${API_ADDR:-:8000}
       DATABASE_URL: ${DATABASE_URL:-postgres://cartograph:cartograph@postgres:5432/cartograph?sslmode=disable}
-      S3_ENDPOINT: ${S3_ENDPOINT:-minio:9000}
+      S3_ENDPOINT: ${S3_ENDPOINT:-garage:3900}
       S3_BUCKET: ${S3_BUCKET:-cartograph}
-      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-cartograph-app}
-      S3_SECRET_KEY: ${S3_SECRET_KEY:-cartograph-app-secret}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-GKd530ae12b21f90f857abc4d8}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-072f12d29227eaaa0abc440478fc241b2680b11feb3f38d6a62b740a57d3eedf}
       S3_REGION: ${S3_REGION:-us-east-1}
       S3_USE_PATH_STYLE: ${S3_USE_PATH_STYLE:-true}
       S3_USE_SSL: ${S3_USE_SSL:-false}
       IMG_BASE_URL: ${IMG_BASE_URL:-http://localhost:8080/img}
       MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-25}
-    # No healthcheck: the distroless image has no shell or curl.
-    # caddy proxies GET /healthz to it.
+    healthcheck:
+      # The binary probes its own /healthz; distroless has no shell or curl.
+      test: ["CMD", "/usr/local/bin/api", "-healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
 
   web:
     build:
@@ -105,11 +99,11 @@ services:
     restart: unless-stopped
     depends_on:
       api:
-        condition: service_started
+        condition: service_healthy
       web:
         condition: service_started
-      minio:
-        condition: service_healthy
+      garage-init:
+        condition: service_completed_successfully
     environment:
       S3_BUCKET: ${S3_BUCKET:-cartograph}
     ports:
@@ -121,5 +115,6 @@ services:
 
 volumes:
   postgres-data:
-  minio-data:
+  garage-meta:
+  garage-data:
   caddy-data:

@@ -1,0 +1,28 @@
+# Garage (local S3) for the prototype: one node, no replication.
+# Secrets are not in this file: GARAGE_RPC_SECRET and GARAGE_ADMIN_TOKEN come
+# from the environment (see .env.example).
+
+metadata_dir = "/var/lib/garage/meta"
+data_dir = "/var/lib/garage/data"
+db_engine = "sqlite"
+replication_factor = 1
+
+rpc_bind_addr = "[::]:3901"
+rpc_public_addr = "127.0.0.1:3901"
+
+# S3 API used by the api service (path-style, S3_ENDPOINT=garage:3900).
+[s3_api]
+s3_region = "us-east-1"
+api_bind_addr = "[::]:3900"
+root_domain = ".s3.garage.localhost"
+
+# Website endpoint: serves a bucket's objects read-only to anyone, selected by
+# the Host header <bucket>.web.garage.localhost. caddy uses it for /img/*.
+[s3_web]
+bind_addr = "[::]:3902"
+root_domain = ".web.garage.localhost"
+index = "index.html"
+
+# Admin API, used only by garage-init.
+[admin]
+api_bind_addr = "[::]:3903"

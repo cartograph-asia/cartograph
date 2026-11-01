@@ -2,7 +2,7 @@
 #
 #   /api/*, /healthz  -> api:8000
 #   /tiles/*.pmtiles  -> static files from the map/ bind mount (range requests + CORS)
-#   /img/<key>        -> MinIO /<bucket>/<key> (anonymous read on photos/* only)
+#   /img/photos/<key> -> Garage website endpoint for the bucket (read-only)
 #   everything else   -> web:80 (static frontend build)
 {
 	auto_https off
@@ -47,18 +47,16 @@
 	handle_path /img/* {
 		@readonly method GET HEAD
 		handle @readonly {
-			rewrite * /{$S3_BUCKET:cartograph}{uri}
-			reverse_proxy minio:9000 {
-				header_up Host {upstream_hostport}
-				header_up -Authorization
+			# Website access exposes the whole bucket; only photos/ is public.
+			@notPhoto not path /photos/*
+			respond @notPhoto 404
 
-				# Object keys contain the photo uuid and never change, so
-				# successful responses can be cached forever. Errors are not.
-				@found status 2xx 304
-				handle_response @found {
-					header Cache-Control "public, max-age=31536000, immutable"
-					copy_response
-				}
+			# Garage picks the bucket from the Host header (see garage.toml).
+			reverse_proxy garage:3902 {
+				header_up Host {$S3_BUCKET:cartograph}.web.garage.localhost
+				header_up -Authorization
+				# Cache-Control comes from the object itself: the api stores
+				# photos as "public, max-age=31536000, immutable".
 			}
 		}
 		respond 405

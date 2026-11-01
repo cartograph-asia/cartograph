@@ -55,10 +55,20 @@ body {
 }
 
 .brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin: 0;
   font-size: 1rem;
   font-weight: 650;
   letter-spacing: 0.01em;
+}
+
+.brand-logo {
+  display: block;
+  width: 24px;
+  height: 24px;
+  margin-left: -6px;
 }
 
 .mock-badge {

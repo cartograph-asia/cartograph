@@ -1,3 +1,5 @@
+<img src="web/public/logo.svg" alt="" width="96" height="96" />
+
 # Cartograph
 
 Cartograph is a community game: a photo for every plot of land in South, Southeast and East Asia. The map is divided into plots of about 0.74 km², and the first Surveyor to upload a geotagged photo into a plot claims it. More about the idea on the [organisation profile](https://github.com/cartograph-asia).

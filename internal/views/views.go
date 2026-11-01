@@ -50,9 +50,6 @@ type Page struct {
 	Feed        string    // path of the page's RSS feed for <link rel="alternate">; empty if none
 	NoIndex     bool      // ask robots not to index (blank plots, account pages, errors)
 	OG          OpenGraph // extra Open Graph fields; zero value means a plain website card
-	// Type is the typographic direction on <html data-type>, set by the
-	// renderer (design round 1 compares directions; see docs/DESIGN_BRIEF.md).
-	Type string
 }
 
 // Base returns the page base so a render helper can set Viewer, CSRF and Now

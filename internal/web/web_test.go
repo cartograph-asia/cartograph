@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -483,15 +484,10 @@ func TestFrontPageWeight(t *testing.T) {
 	body := render(t, views.PageHome, viewstest.Home())
 	rd := newRenderer(t)
 	css := rd.assets.size("style.css")
-	// A page uses at most one display face (one typographic direction).
-	font := max(rd.assets.size("fonts/fraunces-latin-600.woff2"), rd.assets.size("fonts/inter-tight-latin-600.woff2"))
-	total := len(body) + css + font
-	t.Logf("front page: %d bytes HTML + %d bytes CSS + %d bytes font = %d bytes", len(body), css, font, total)
+	total := len(body) + css
+	t.Logf("front page: %d bytes HTML + %d bytes CSS = %d bytes", len(body), css, total)
 	if total >= 100*1024 {
 		t.Fatalf("front page is %d bytes, budget is 100 KB", total)
-	}
-	if font > 40*1024 {
-		t.Fatalf("display face is %d bytes, budget is 40 KB", font)
 	}
 }
 
@@ -509,32 +505,25 @@ func TestNoInlineStyles(t *testing.T) {
 	}
 }
 
-func TestStylesheetFontURLs(t *testing.T) {
-	// url(fonts/…) in style.css is rewritten to the fonts' hashed URLs.
-	rd := newRenderer(t)
-	css := string(rd.assets.byHashed[strings.TrimPrefix(rd.assets.url("style.css"), StaticPrefix)].data)
-	for _, f := range []string{"fonts/fraunces-latin-600.woff2", "fonts/inter-tight-latin-600.woff2"} {
-		if !strings.Contains(css, "url("+rd.assets.url(f)+")") {
-			t.Errorf("style.css does not refer to %s as %s", f, rd.assets.url(f))
+func TestStylesheetURLs(t *testing.T) {
+	// url(...) in a stylesheet is rewritten to the referenced asset's hashed
+	// URL; a reference to a missing asset is an error.
+	a, err := loadAssets(fstest.MapFS{
+		"style.css":     {Data: []byte(`@font-face { src: url(fonts/f.woff2) format("woff2"); } .x { background: url("dot.svg"); }`)},
+		"fonts/f.woff2": {Data: []byte("font")},
+		"dot.svg":       {Data: []byte("<svg/>")},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	css := string(a.byHashed[strings.TrimPrefix(a.url("style.css"), StaticPrefix)].data)
+	for _, f := range []string{"fonts/f.woff2", "dot.svg"} {
+		if !strings.Contains(css, "url("+a.url(f)+")") {
+			t.Errorf("style.css does not refer to %s as %s: %s", f, a.url(f), css)
 		}
 	}
-	if strings.Contains(css, "url(fonts/") {
-		t.Error("style.css still has a relative font URL")
-	}
-}
-
-func TestTypeSwitch(t *testing.T) {
-	rd := newRenderer(t)
-	for _, tc := range []struct{ ask, want string }{{"", DefaultType}, {"b1", "b1"}, {"b2", "b2"}, {"zz", DefaultType}} {
-		r := httptest.NewRequest(http.MethodGet, "/", nil)
-		if tc.ask != "" {
-			r = r.WithContext(WithType(r.Context(), tc.ask))
-		}
-		w := httptest.NewRecorder()
-		rd.Render(w, r, http.StatusOK, views.PageHome, viewstest.Home())
-		if !strings.Contains(w.Body.String(), `<html lang="en" data-type="`+tc.want+`">`) {
-			t.Errorf("type %q: want data-type %q", tc.ask, tc.want)
-		}
+	if _, err := loadAssets(fstest.MapFS{"style.css": {Data: []byte(`.x { background: url(missing.png); }`)}}); err == nil {
+		t.Error("a reference to a missing asset loaded")
 	}
 }
 

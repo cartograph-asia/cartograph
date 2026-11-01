@@ -55,6 +55,7 @@ function addPhoto(
   const photo: PhotoInfo = {
     id,
     surveyor,
+    surveyor_label: surveyor,
     taken_at: when.toISOString(),
     uploaded_at: when.toISOString(),
     urls,
@@ -98,6 +99,7 @@ function summary(p: MockPlot): PlotSummary {
     cell: p.cell,
     photo_count: p.photos.length,
     first_surveyor: p.first_surveyor,
+    first_surveyor_label: p.first_surveyor,
     claimed_at: p.claimed_at,
     thumb: p.photos[0].urls.thumb,
   };
@@ -177,6 +179,7 @@ export const mockApi: Api = {
       cell: p.cell,
       photo_count: p.photos.length,
       first_surveyor: p.first_surveyor,
+      first_surveyor_label: p.first_surveyor,
       claimed_at: p.claimed_at,
       name: 'Pattaya · Chon Buri 17',
       path: '/plot/chon-buri/17',
@@ -220,6 +223,6 @@ export const mockApi: Api = {
   },
 
   async getMe() {
-    return delay({ name: MOCK_SURVEYOR });
+    return delay({ name: MOCK_SURVEYOR, label: MOCK_SURVEYOR });
   },
 };

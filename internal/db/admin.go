@@ -44,12 +44,12 @@ func (d *DB) Admin() *Admin { return &Admin{d: d} }
 // adminPhotoFrom is photoFrom on every photo, hidden ones included.
 var adminPhotoFrom = strings.Replace(photoFrom, "visible_photos", "photos", 1)
 
-const adminPhotoCols = photoCols + `, ph.hidden_at, coalesce(ph.hidden_reason, '')`
+const adminPhotoCols = photoCols + `, ph.hidden_at, coalesce(ph.hidden_reason, ''), ph.files_removed_at`
 
 func scanAdminPhoto(row pgx.CollectableRow) (views.AdminPhoto, error) {
 	var p views.AdminPhoto
 	var id uuid.UUID
-	err := row.Scan(append(photoDest(&p.PhotoItem, &id), &p.HiddenAt, &p.HiddenReason)...)
+	err := row.Scan(append(photoDest(&p.PhotoItem, &id), &p.HiddenAt, &p.HiddenReason, &p.FilesRemovedAt)...)
 	finishPhoto(&p.PhotoItem, id)
 	return p, err
 }
@@ -187,9 +187,13 @@ func unhideInTx(ctx context.Context, tx pgx.Tx, adminID string, photoID uuid.UUI
 	var hiddenAt time.Time
 	err := tx.QueryRow(ctx, `
 		update photos p set hidden_at = null, hidden_reason = null
-		from photos old where old.id = p.id and p.id = $1 and p.hidden_at is not null
+		from photos old where old.id = p.id and p.id = $1 and p.hidden_at is not null and p.files_removed_at is null
 		returning p.cell, old.hidden_at, old.hidden_reason`, photoID).Scan(&cell, &hiddenAt, &reason)
 	if errors.Is(err, pgx.ErrNoRows) {
+		var removed bool
+		if err := tx.QueryRow(ctx, `select files_removed_at is not null from photos where id = $1`, photoID).Scan(&removed); err == nil && removed {
+			return invalid("Its image files were removed; it cannot be shown again.")
+		}
 		return photoMissingOr(ctx, tx, photoID)
 	}
 	if err != nil {
@@ -267,6 +271,60 @@ func (a *Admin) UnhidePhoto(ctx context.Context, adminID, photoID string) error 
 	}
 	err = pgx.BeginFunc(ctx, a.d.Pool, func(tx pgx.Tx) error { return unhideInTx(ctx, tx, adminID, id) })
 	return finish("unhide photo", err)
+}
+
+// RemovePhotoFiles deletes the image files of a photo hidden for at least
+// views.RemoveFilesAfter, through del (the store's Delete), and records it.
+// The row, its hidden state and the audit trail stay. The objects are
+// deleted inside the transaction, before the commit: if a delete fails,
+// nothing is recorded and the action can be repeated (deleting twice is
+// fine).
+func (a *Admin) RemovePhotoFiles(ctx context.Context, adminID, photoID, reason string, now time.Time,
+	del func(ctx context.Context, key string) error) error {
+	id, err := parsePhotoID(photoID)
+	if err != nil {
+		return err
+	}
+	if reason, err = checkReason(reason); err != nil {
+		return err
+	}
+	err = pgx.BeginFunc(ctx, a.d.Pool, func(tx pgx.Tx) error {
+		var hiddenAt, removed *time.Time
+		var large, thumb string
+		var medium *string
+		err := tx.QueryRow(ctx, `
+			select hidden_at, files_removed_at, key_large, key_medium, key_thumb
+			from photos where id = $1 for update`, id).Scan(&hiddenAt, &removed, &large, &medium, &thumb)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return views.ErrNotFound
+		}
+		if err != nil {
+			return err
+		}
+		switch {
+		case removed != nil:
+			return ErrUnchanged
+		case hiddenAt == nil:
+			return invalid("Hide the photo first.")
+		case now.Before(hiddenAt.Add(views.RemoveFilesAfter)):
+			return invalid("The files can be removed 24 hours after the photo was hidden.")
+		}
+		keys := []string{large, thumb}
+		if medium != nil && *medium != "" {
+			keys = append(keys, *medium)
+		}
+		for _, k := range keys {
+			if err := del(ctx, k); err != nil {
+				return fmt.Errorf("delete %s: %w", k, err)
+			}
+		}
+		if _, err := tx.Exec(ctx, `update photos set files_removed_at = $2 where id = $1`, id, now); err != nil {
+			return err
+		}
+		return audit(ctx, tx, adminID, "photo.remove_files", "photo:"+id.String(), reason, nil,
+			map[string]any{"keys": keys, "files_removed_at": now})
+	})
+	return finish("remove photo files", err)
 }
 
 // HideEffect says what hiding the photo would do to its plot and the front page.

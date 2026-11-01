@@ -14,6 +14,8 @@ type Store interface {
 	Put(ctx context.Context, key, contentType string, r io.Reader) error
 	// URL returns the public URL for key.
 	URL(key string) string
+	// Delete removes the object under key; a missing object is not an error.
+	Delete(ctx context.Context, key string) error
 }
 
 // PublicURL joins base and key with exactly one slash.

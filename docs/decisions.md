@@ -1,6 +1,6 @@
 # Decisions
 
-Decisions made while building the prototype that are not in `CLAUDE.md`. One line each, newest at the bottom.
+Decisions made while building Cartograph that are not in `CLAUDE.md` or a brief. One line each, newest at the bottom.
 
 ## Lead agent
 
@@ -83,3 +83,17 @@ Decisions made while building the prototype that are not in `CLAUDE.md`. One lin
 - 2026-11-01 – The brief's API contract now lists `claimed_at` in `GET /api/plots/{cell}` and states that `/api/coverage` returns only parents with at least one surveyed plot.
 - 2026-11-01 – `CLAUDE.md` links `docs/PRINCIPLES.md` under a "Principles" line.
 - 2026-11-01 – While the window is being resized, the panel and map controls have no transitions (body class `resizing`, cleared 150 ms after the last resize event), so the closed panel does not fly across the map when the layout crosses the 768 px breakpoint.
+
+## Home
+
+- 2026-11-01 – Work happens on the `home` branch; tasks 1–3 run on `home-data`, `home-accounts` and `home-pages`, cut from `home` after `internal/views` and the schema are in, and are merged back by the lead.
+- 2026-11-01 – Task 1 owns every migration of the Home brief (accounts, sessions, places, regions, featured, medium variant), so migration numbers never clash between parallel branches.
+- 2026-11-01 – OSM data is read in Go with `github.com/paulmach/osm` and geometry is done with `github.com/paulmach/orb` (approved by Adrian), not with osmium in Docker.
+- 2026-11-01 – Photos are licensed CC BY-SA 4.0, retroactively including the prototype photos (Adrian's choice: share-alike keeps the archive open and matches Geograph, OSM and Wikimedia Commons).
+- 2026-11-01 – Automated tests use small synthetic JPEGs with GPS tags, committed to the repo; the acceptance run and screenshots use Adrian's own photos in `testdata/`, released under CC BY-SA 4.0.
+- 2026-11-01 – Footer contact: hello@cartograph.asia (mailbox still to be set up), X @cartographasia, Instagram @cartograph.asia, GitHub cartograph-asia.
+- 2026-11-01 – In coastal provinces a res-8 cell whose centre lies inside an OSM water polygon (`water-polygons-split-3857`, already used for the map) does not count as land.
+- 2026-11-01 – Region names and slugs come from `name:en`; the Thai name is shown as a second name.
+- 2026-11-01 – A placeholder account is claimed by setting its e-mail in SQL; after that the normal magic link works.
+- 2026-11-01 – Prototype surveyor names that do not fit 3–30 characters of letters, digits and hyphens are slugified, with a numeric suffix on collision.
+- 2026-11-01 – Before the prototype stack was reset, its database (`pg_dump -Fc`) and Garage volumes (tar) were saved to the git-ignored `backup/`.

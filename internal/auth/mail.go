@@ -35,10 +35,10 @@ type Mailer interface {
 }
 
 // NewMailer returns an SMTP mailer, or the dev-mode logging mailer when
-// cfg.Host is empty.
+// cfg.Host is empty (ConfigFromEnv allows that only with MAIL_DEV_LOG=1).
 func NewMailer(cfg SMTPConfig) Mailer {
 	if cfg.Host == "" {
-		slog.Info("SMTP_HOST is empty: sign-in links are logged, not sent")
+		slog.Warn("MAIL_DEV_LOG=1 and no SMTP_HOST: sign-in links are logged, not sent")
 		return LogMailer{}
 	}
 	return &SMTPMailer{cfg: cfg}

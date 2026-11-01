@@ -20,9 +20,15 @@ const (
 	ThumbSide     = 480
 	ThumbQuality  = 80
 
-	// MaxPixels guards against decompression bombs. A 48 MP phone photo is
-	// about 49 million pixels.
-	MaxPixels = 100_000_000
+	// The pixel limits guard against decompression bombs: a file of a few
+	// hundred KB can declare an image that decodes to gigabytes, so the
+	// header is checked before anything is decoded. A 48 MP phone photo is
+	// about 49 million pixels; photos are rarely PNG. Each limit keeps the
+	// decoded image at or below about 240 MB.
+	MaxJPEGPixels = 60_000_000
+	MaxPNGPixels  = 30_000_000
+	// PNGs with 16 bits per channel decode to twice the memory per pixel.
+	MaxPNG16Pixels = MaxPNGPixels / 2
 )
 
 // ErrInvalidImage is returned when a file claims to be JPEG/PNG but cannot be
@@ -41,16 +47,17 @@ type Variants struct {
 // Process decodes b (JPEG or PNG), applies the EXIF orientation and returns
 // the large, medium and thumb JPEG variants. Re-encoding drops all metadata.
 func Process(b []byte) (*Variants, error) {
-	if _, err := Sniff(b); err != nil {
+	format, err := Sniff(b)
+	if err != nil {
 		return nil, err
 	}
 	cfg, _, err := image.DecodeConfig(bytes.NewReader(b))
 	if err != nil {
 		return nil, ErrInvalidImage
 	}
-	if cfg.Width <= 0 || cfg.Height <= 0 || int64(cfg.Width)*int64(cfg.Height) > MaxPixels {
-		return nil, fmt.Errorf("%w: image dimensions %dx%d exceed the limit of %d megapixels",
-			ErrInvalidImage, cfg.Width, cfg.Height, MaxPixels/1_000_000)
+	if limit := maxPixels(format, cfg.ColorModel); cfg.Width <= 0 || cfg.Height <= 0 || int64(cfg.Width)*int64(cfg.Height) > limit {
+		return nil, fmt.Errorf("%w: image dimensions %dx%d exceed the limit of %d megapixels for this kind of file",
+			ErrInvalidImage, cfg.Width, cfg.Height, limit/1_000_000)
 	}
 
 	img, err := imaging.Decode(bytes.NewReader(b), imaging.AutoOrientation(true))
@@ -77,6 +84,19 @@ func Process(b []byte) (*Variants, error) {
 		return nil, err
 	}
 	return v, nil
+}
+
+// maxPixels is the largest image Process decodes for a format and colour
+// model (as image.DecodeConfig reports them).
+func maxPixels(f Format, m color.Model) int64 {
+	if f == JPEG {
+		return MaxJPEGPixels
+	}
+	switch m {
+	case color.Gray16Model, color.RGBA64Model, color.NRGBA64Model:
+		return MaxPNG16Pixels
+	}
+	return MaxPNGPixels
 }
 
 // flatten composites images with transparency onto white, since JPEG has no

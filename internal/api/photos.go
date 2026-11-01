@@ -10,19 +10,21 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/google/uuid"
 
 	"github.com/cartograph-asia/cartograph/internal/db"
 	"github.com/cartograph-asia/cartograph/internal/h3"
 	"github.com/cartograph-asia/cartograph/internal/photos"
+	"github.com/cartograph-asia/cartograph/internal/views"
 )
 
-const (
-	maxSurveyorLen = 100 // characters
-	maxFieldBytes  = 1 << 10
-)
+const maxFieldBytes = 1 << 10
+
+// crossOrigin refuses uploads that a browser sends from another origin
+// (Sec-Fetch-Site / Origin). With the session cookie this is the endpoint's
+// CSRF protection: the map page posts multipart from the same origin.
+var crossOrigin = http.NewCrossOriginProtection()
 
 type photoURLs struct {
 	Large string `json:"large"`
@@ -38,14 +40,26 @@ type createPhotoResponse struct {
 
 type uploadForm struct {
 	photo    []byte
-	surveyor string
 	lat, lng string
 }
 
 var errTooLarge = errors.New("too large")
 
 // createPhoto handles POST /api/photos.
+// The Surveyor is the signed-in viewer (internal/auth's middleware); a
+// "surveyor" form field is ignored.
 func (s *Server) createPhoto(w http.ResponseWriter, r *http.Request) {
+	if err := crossOrigin.Check(r); err != nil {
+		writeError(w, http.StatusForbidden, "cross-origin uploads are not allowed")
+		return
+	}
+	viewer := views.ViewerFrom(r.Context())
+	if !viewer.HasName() {
+		writeError(w, http.StatusUnauthorized, "sign in to survey")
+		return
+	}
+	surveyor := viewer.Name
+
 	maxBytes := int64(s.cfg.MaxUploadMB) << 20
 	tooLarge := fmt.Sprintf("file is larger than %d MB", s.cfg.MaxUploadMB)
 
@@ -64,15 +78,6 @@ func (s *Server) createPhoto(w http.ResponseWriter, r *http.Request) {
 
 	if form.photo == nil {
 		writeError(w, http.StatusBadRequest, "photo is required")
-		return
-	}
-	surveyor := strings.TrimSpace(form.surveyor)
-	if surveyor == "" {
-		writeError(w, http.StatusBadRequest, "surveyor is required")
-		return
-	}
-	if !utf8.ValidString(surveyor) || utf8.RuneCountInString(surveyor) > maxSurveyorLen {
-		writeError(w, http.StatusBadRequest, fmt.Sprintf("surveyor must be valid text of at most %d characters", maxSurveyorLen))
 		return
 	}
 
@@ -132,7 +137,7 @@ func (s *Server) createPhoto(w http.ResponseWriter, r *http.Request) {
 	id := uuid.New()
 	now := s.now().UTC()
 	prefix := fmt.Sprintf("photos/%04d/%02d/%s", now.Year(), int(now.Month()), id)
-	keyLarge, keyThumb := prefix+"_large.jpg", prefix+"_thumb.jpg"
+	keyLarge, keyMedium, keyThumb := prefix+"_large.jpg", prefix+"_medium.jpg", prefix+"_thumb.jpg"
 
 	ctx := r.Context()
 	if err := s.store.Put(ctx, keyLarge, "image/jpeg", bytes.NewReader(variants.Large)); err != nil {
@@ -140,27 +145,46 @@ func (s *Server) createPhoto(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not store photo")
 		return
 	}
+	if err := s.store.Put(ctx, keyMedium, "image/jpeg", bytes.NewReader(variants.Medium)); err != nil {
+		slog.Error("store photo", "key", keyMedium, "err", err, "orphaned_keys", []string{keyLarge})
+		writeError(w, http.StatusInternalServerError, "could not store photo")
+		return
+	}
 	if err := s.store.Put(ctx, keyThumb, "image/jpeg", bytes.NewReader(variants.Thumb)); err != nil {
-		slog.Error("store photo", "key", keyThumb, "err", err, "orphaned_keys", []string{keyLarge})
+		slog.Error("store photo", "key", keyThumb, "err", err, "orphaned_keys", []string{keyLarge, keyMedium})
 		writeError(w, http.StatusInternalServerError, "could not store photo")
 		return
 	}
 
+	// The triggers of migration 0051 would fill the ids from the name too;
+	// they only act when SurveyorID is null.
+	surveyorID, _ := uuid.Parse(viewer.SurveyorID)
 	claimed, err := s.repo.ClaimPhoto(ctx, db.NewPhoto{
-		ID:         id,
-		Cell:       cell,
-		Parent5:    parent5,
-		Parent6:    parent6,
-		Surveyor:   surveyor,
-		KeyLarge:   keyLarge,
-		KeyThumb:   keyThumb,
-		Lat:        lat,
-		Lng:        lng,
-		TakenAt:    meta.TakenAt,
-		UploadedAt: now,
+		ID:             id,
+		Cell:           cell,
+		Parent5:        parent5,
+		Parent6:        parent6,
+		Surveyor:       surveyor,
+		SurveyorID:     surveyorID,
+		KeyLarge:       keyLarge,
+		KeyMedium:      keyMedium,
+		KeyThumb:       keyThumb,
+		Width:          variants.LargeWidth,
+		Height:         variants.LargeHeight,
+		Lat:            lat,
+		Lng:            lng,
+		TakenAt:        meta.TakenAt,
+		TakenLocal:     meta.TakenLocal,
+		TakenUTCOffset: meta.TakenOffset,
+		UploadedAt:     now,
 	})
+	if errors.Is(err, db.ErrOutsideRegions) {
+		slog.Info("photo outside every region", "cell", cell, "orphaned_keys", []string{keyLarge, keyMedium, keyThumb})
+		writeError(w, http.StatusBadRequest, "this photo was taken outside the area Cartograph covers so far (Thailand)")
+		return
+	}
 	if err != nil {
-		slog.Error("claim photo", "err", err, "orphaned_keys", []string{keyLarge, keyThumb})
+		slog.Error("claim photo", "err", err, "orphaned_keys", []string{keyLarge, keyMedium, keyThumb})
 		writeError(w, http.StatusInternalServerError, "could not save photo")
 		return
 	}
@@ -211,7 +235,7 @@ func readUploadForm(r *http.Request, maxFile int64) (*uploadForm, error) {
 				return nil, errors.New("photo is empty")
 			}
 			f.photo = buf.Bytes()
-		case "surveyor", "lat", "lng":
+		case "lat", "lng":
 			b, err := io.ReadAll(io.LimitReader(part, maxFieldBytes+1))
 			if err != nil {
 				return nil, bodyErr(err)
@@ -220,8 +244,6 @@ func readUploadForm(r *http.Request, maxFile int64) (*uploadForm, error) {
 				return nil, fmt.Errorf("field %s is too long", part.FormName())
 			}
 			switch part.FormName() {
-			case "surveyor":
-				f.surveyor = string(b)
 			case "lat":
 				f.lat = string(b)
 			case "lng":

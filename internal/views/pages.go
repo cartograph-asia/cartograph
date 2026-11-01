@@ -1,0 +1,198 @@
+package views
+
+import "time"
+
+// Home is the front page (/).
+type Home struct {
+	Page
+	Counters     Counters
+	Latest       []PhotoItem     // the HomeLatest newest photos, newest first
+	Featured     *Featured       // plot of the week; nil only when there is no photo at all
+	Regions      []RegionSummary // regions with at least one surveyed plot, most recent activity first
+	NewSurveyors []NewSurveyor   // the HomeNewSurveyors most recently joined Surveyors with a photo
+}
+
+// Featured is the "Plot of the week" block.
+type Featured struct {
+	Photo     PhotoItem
+	Text      string // editorial text, plain; empty for the fallback
+	Editorial bool   // set by hand in the featured table; false = fallback to the latest first survey
+}
+
+// RegionSummary is one row of the regions block on the front page and of /regions.
+type RegionSummary struct {
+	Region         RegionRef
+	Coverage       Coverage
+	LastSurveyedAt *time.Time         // newest photo in the region; nil if none
+	TopSurveyors   []SurveyorActivity // up to TopSurveyors, most photos in the last ActiveDays first
+}
+
+// NewSurveyor is one entry of "New Surveyors".
+type NewSurveyor struct {
+	Surveyor   SurveyorRef
+	JoinedAt   time.Time
+	FirstPhoto PhotoItem // their oldest photo
+}
+
+// Latest is /latest: all photos, newest first, paginated.
+type Latest struct {
+	Page
+	Photos     []PhotoItem
+	Pagination Pagination
+}
+
+// SurveyorList is /surveyors: all Surveyors, most recently joined first,
+// paginated. The front page's Surveyors counter links here.
+type SurveyorList struct {
+	Page
+	Surveyors  []SurveyorListItem
+	Pagination Pagination
+}
+
+// SurveyorListItem is one Surveyor on /surveyors.
+type SurveyorListItem struct {
+	Surveyor  SurveyorRef
+	JoinedAt  time.Time
+	Plots     int // plots claimed
+	Photos    int
+	LastPhoto *PhotoItem // newest photo; nil if none
+}
+
+// RegionList is /regions: every region, most recent activity first, then by
+// name. The front page's regions counter links here.
+type RegionList struct {
+	Page
+	Regions []RegionSummary
+}
+
+// Surveyor is the profile page (/surveyor/{name}).
+type Surveyor struct {
+	Page
+	Profile    SurveyorProfile
+	Stats      SurveyorStats
+	PlotCells  []string          // res-8 cells of every plot with a photo by them, for the lazy map (data, not text)
+	PlotPaths  map[string]string // friendly path per cell in PlotCells; cells without a number are missing
+	Bounds     *Bounds           // box around PlotCells; nil if they have no photos
+	Photos     []PhotoItem       // newest first, paginated
+	Pagination Pagination
+}
+
+// SurveyorProfile is what a Surveyor says about themselves.
+type SurveyorProfile struct {
+	Name       string // canonical spelling; handlers redirect other spellings to it
+	JoinedAt   time.Time
+	Bio        string     // plain text, at most BioMaxLen characters; may be empty
+	HomeRegion *RegionRef // self-chosen; nil if not set
+}
+
+// SurveyorStats are the counters on a profile.
+type SurveyorStats struct {
+	Plots   int // plots they claimed (first survey)
+	Photos  int
+	Regions int // regions with at least one of their photos
+}
+
+// Plot is the plot page (/plot/{cell}). A valid res-8 cell inside a region
+// that has no photo yet renders as a blank plot (Surveyed false, NoIndex).
+type Plot struct {
+	Page
+	Plot          PlotRef
+	Surveyed      bool
+	FirstSurveyor *SurveyorRef // nil for a blank plot
+	ClaimedAt     *time.Time   // nil for a blank plot
+	PhotoCount    int
+	Photos        []PhotoItem  // all photos, oldest first (chronological story of the plot)
+	Lat, Lng      float64      // centre of the cell, for the small map
+	Neighbours    []CellStatus // the ring of cells around the plot, for the small map
+	// Paths is the friendly path per cell on the small map (the plot and its
+	// neighbours); cells without a number are missing.
+	Paths map[string]string
+}
+
+// CellStatus is a cell on a small map and whether it is surveyed.
+type CellStatus struct {
+	Cell     string
+	Surveyed bool
+}
+
+// Photo is the photo page (/photo/{id}). Its Page.OG carries the share image.
+type Photo struct {
+	Page
+	Photo    PhotoItem
+	Licence  Licence
+	Prev     *PhotoItem // older photo of the same plot; nil for the oldest
+	Next     *PhotoItem // newer photo of the same plot; nil for the newest
+	Position int        // 1-based position in the plot, oldest = 1
+	Count    int        // photos in the plot
+}
+
+// Region is the region page (/region/{slug}).
+type Region struct {
+	Page
+	Region         RegionRef
+	Coverage       Coverage
+	Counters       Counters // Plots, Photos and Surveyors within the region; Regions is 0
+	Bounds         Bounds   // for the coverage map; the map script fetches /api/coverage
+	Latest         []PhotoItem
+	Pagination     Pagination         // of Latest
+	ActiveRecent   []SurveyorActivity // most photos in the last ActiveDays, up to RegionTop
+	ActiveAllTime  []SurveyorActivity // most photos ever, up to RegionTop
+	LastSurveyedAt *time.Time
+}
+
+// Feed is an RSS feed: /latest.rss, /region/{slug}.rss, /surveyor/{name}.rss.
+// Page.Title is the channel title, Page.Canonical the HTML page it mirrors.
+type Feed struct {
+	Page
+	Items   []PhotoItem // up to FeedItems, newest first
+	Updated time.Time   // newest item's UploadedAt; Page.Now if empty
+}
+
+// SignIn is the sign-in form (/signin): one e-mail field.
+type SignIn struct {
+	Page
+	Email string // prefilled after an error
+	Next  string // local path to return to after sign-in, e.g. "/map"
+	Error string // plain-text message shown above the form; empty if none
+}
+
+// CheckEmail is shown after the sign-in form was sent.
+type CheckEmail struct {
+	Page
+	Email string
+}
+
+// ConfirmSignIn is the page behind the magic link (GET /signin/link?token=…).
+// It only shows a "Sign in" button: a form that POSTs Token (field "token")
+// and the CSRF field to /signin/link, so that mail scanners that prefetch the
+// link do not use up the single-use token (task 2 addition).
+type ConfirmSignIn struct {
+	Page
+	Token string
+}
+
+// ChooseName is the one-time Surveyor name form shown after the first sign-in.
+type ChooseName struct {
+	Page
+	Name  string // prefilled after an error
+	Next  string
+	Error string
+}
+
+// EditProfile is the profile form (/settings or similar) for bio and home region.
+type EditProfile struct {
+	Page
+	Name       string      // the viewer's Surveyor name, shown read-only
+	Bio        string      // current or submitted value
+	HomeRegion string      // slug of the chosen region; empty for none
+	Regions    []RegionRef // options for the home-region select, by name
+	Error      string
+	Saved      bool // show a short "Saved." note
+}
+
+// Error is the error and not-found page.
+type Error struct {
+	Page
+	Status  int    // HTTP status, e.g. 404
+	Message string // plain text for the visitor, e.g. "This plot does not exist."
+}

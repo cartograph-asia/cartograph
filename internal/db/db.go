@@ -17,7 +17,8 @@ var ErrNotFound = errors.New("not found")
 
 // DB wraps a pgx connection pool.
 type DB struct {
-	Pool *pgxpool.Pool
+	Pool    *pgxpool.Pool
+	regions regionCache // point-in-region index, see ReloadRegions
 }
 
 // Connect opens a pool and waits until the database answers or timeout

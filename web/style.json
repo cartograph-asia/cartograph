@@ -6,7 +6,7 @@
   },
   "center": [100.5, 13.75],
   "zoom": 6,
-  "glyphs": "/fonts/{fontstack}/{range}.pbf",
+  "glyphs": "/map/fonts/{fontstack}/{range}.pbf",
   "sources": {
     "openmaptiles": {
       "type": "vector",

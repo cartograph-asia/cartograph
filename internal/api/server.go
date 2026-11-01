@@ -109,6 +109,11 @@ func cors(next http.Handler) http.Handler {
 	})
 }
 
+// Observe wraps next in the same panic recovery and request logging as
+// Handler. cmd/api uses it for the routes that live outside the JSON API
+// (server-rendered pages, sign-in).
+func Observe(next http.Handler) http.Handler { return recoverer(requestLogger(next)) }
+
 func requestLogger(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()

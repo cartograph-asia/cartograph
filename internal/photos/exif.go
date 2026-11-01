@@ -16,6 +16,12 @@ type Meta struct {
 	Lat     float64
 	Lng     float64
 	TakenAt *time.Time // nil if unknown
+	// TakenLocal is DateTimeOriginal as the camera's wall clock (location
+	// UTC, but not converted); nil if unknown.
+	TakenLocal *time.Time
+	// TakenOffset is OffsetTimeOriginal in minutes east of UTC; nil if the
+	// photo has none.
+	TakenOffset *int
 }
 
 const offsetTimeOriginal exif.FieldName = "OffsetTimeOriginal"
@@ -61,38 +67,40 @@ func ReadMeta(b []byte) Meta {
 	if lat, lng, err := x.LatLong(); err == nil && validLatLng(lat, lng) && !(lat == 0 && lng == 0) {
 		m.HasGPS, m.Lat, m.Lng = true, lat, lng
 	}
-	m.TakenAt = takenAt(x)
+	m.TakenAt, m.TakenLocal, m.TakenOffset = takenAt(x)
 	return m
 }
 
 // takenAt parses DateTimeOriginal. EXIF stores local wall-clock time; if
 // OffsetTimeOriginal is present it is applied, otherwise the time is taken
-// as UTC (the true zone is unknown).
-func takenAt(x *exif.Exif) *time.Time {
+// as UTC (the true zone is unknown). It also returns the wall clock itself
+// and the offset in minutes (nil without OffsetTimeOriginal).
+func takenAt(x *exif.Exif) (utc, local *time.Time, offsetMin *int) {
 	tag, err := x.Get(exif.DateTimeOriginal)
 	if err != nil {
-		return nil
+		return nil, nil, nil
 	}
 	s, err := tag.StringVal()
 	if err != nil {
-		return nil
+		return nil, nil, nil
 	}
 	s = strings.TrimRight(strings.TrimSpace(s), "\x00")
-	loc := time.UTC
+	wall, err := time.ParseInLocation("2006:01:02 15:04:05", s, time.UTC)
+	if err != nil || wall.Year() < 1900 {
+		return nil, nil, nil
+	}
+	t := wall
 	if ot, err := x.Get(offsetTimeOriginal); err == nil {
 		if offs, err := ot.StringVal(); err == nil {
 			if z, err := time.Parse("-07:00", strings.TrimRight(strings.TrimSpace(offs), "\x00")); err == nil {
 				_, secs := z.Zone()
-				loc = time.FixedZone("", secs)
+				t = wall.Add(-time.Duration(secs) * time.Second)
+				mins := secs / 60
+				offsetMin = &mins
 			}
 		}
 	}
-	t, err := time.ParseInLocation("2006:01:02 15:04:05", s, loc)
-	if err != nil || t.Year() < 1900 {
-		return nil
-	}
-	t = t.UTC()
-	return &t
+	return &t, &wall, offsetMin
 }
 
 func validLatLng(lat, lng float64) bool {

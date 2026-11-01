@@ -64,6 +64,14 @@ body {
   letter-spacing: 0.01em;
 }
 
+.brand a {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: inherit;
+  text-decoration: none;
+}
+
 .brand-logo {
   display: block;
   width: 24px;
@@ -295,6 +303,14 @@ body.panel-open .fab {
   color: var(--muted);
 }
 
+/* The plot's H3 index: the one place it is shown, small and quiet. */
+.details {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+}
+
 .error {
   color: var(--error);
 }
@@ -334,6 +350,23 @@ body.panel-open .fab {
   gap: 14px;
   padding-top: 16px;
   border-top: 1px solid var(--line);
+}
+
+.upload[hidden],
+.signin-prompt[hidden] {
+  display: none;
+}
+
+.signin-prompt {
+  margin: 0;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.signin-prompt a {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
 }
 
 .upload h3 {

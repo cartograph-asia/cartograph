@@ -35,6 +35,14 @@ func TestReadMetaWithGPS(t *testing.T) {
 	if m.TakenAt == nil || !m.TakenAt.Equal(want) {
 		t.Errorf("TakenAt = %v, want %v", m.TakenAt, want)
 	}
+	// The wall clock is kept as is, so year and month stay local.
+	wantLocal := time.Date(2026, 9, 9, 16, 38, 6, 0, time.UTC)
+	if m.TakenLocal == nil || !m.TakenLocal.Equal(wantLocal) {
+		t.Errorf("TakenLocal = %v, want %v", m.TakenLocal, wantLocal)
+	}
+	if m.TakenOffset == nil || *m.TakenOffset != 7*60 {
+		t.Errorf("TakenOffset = %v, want 420", m.TakenOffset)
+	}
 }
 
 func TestReadMetaWithoutGPS(t *testing.T) {
@@ -125,6 +133,13 @@ func TestProcessDownscalesAndFlattens(t *testing.T) {
 	}
 	if v.LargeWidth != LargeSide || (v.LargeHeight < 666 || v.LargeHeight > 667) {
 		t.Errorf("large = %dx%d", v.LargeWidth, v.LargeHeight)
+	}
+	medium, err := jpeg.DecodeConfig(bytes.NewReader(v.Medium))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if medium.Width != MediumSide || medium.Height < 399 || medium.Height > 400 {
+		t.Errorf("medium = %dx%d", medium.Width, medium.Height)
 	}
 	dec, err := jpeg.Decode(bytes.NewReader(v.Large))
 	if err != nil {

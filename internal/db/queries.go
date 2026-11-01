@@ -12,16 +12,43 @@ import (
 
 // NewPhoto is a photo to be inserted by ClaimPhoto.
 type NewPhoto struct {
-	ID         uuid.UUID
-	Cell       string // res-8 plot
-	Parent5    string
-	Parent6    string
-	Surveyor   string
-	KeyLarge   string
-	KeyThumb   string
-	Lat, Lng   float64
-	TakenAt    *time.Time
-	UploadedAt time.Time
+	ID             uuid.UUID
+	Cell           string // res-8 plot
+	Parent5        string
+	Parent6        string
+	Surveyor       string    // name as typed or the account's name; kept in photos.surveyor
+	SurveyorID     uuid.UUID // account; uuid.Nil stores null
+	KeyLarge       string
+	KeyMedium      string // empty stores null
+	KeyThumb       string
+	Width          int // of the large variant; 0 stores null
+	Height         int
+	Lat, Lng       float64
+	TakenAt        *time.Time
+	TakenLocal     *time.Time // camera wall clock (location UTC, not converted)
+	TakenUTCOffset *int       // minutes east of UTC; nil if unknown
+	UploadedAt     time.Time
+}
+
+func nullUUID(u uuid.UUID) *uuid.UUID {
+	if u == uuid.Nil {
+		return nil
+	}
+	return &u
+}
+
+func nullString(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}
+
+func nullInt(n int) *int {
+	if n == 0 {
+		return nil
+	}
+	return &n
 }
 
 // PlotSummary is one surveyed plot for the map layer.
@@ -49,33 +76,67 @@ type PlotDetail struct {
 	PhotoCount    int
 	FirstSurveyor string
 	ClaimedAt     time.Time
+	Place         string // nearest place, else the region name; empty outside every region
+	Region        string // region name_en; empty outside every region
+	RegionSlug    string
+	District      string // district name_en; empty where none is imported
+	Number        int    // running number in the region; 0 if none
 	Photos        []PlotPhoto
 }
 
 // ClaimPhoto records a survey in one transaction: it upserts the plot
-// (first_photo, first_surveyor and claimed_at are only set when the plot row
-// is new; photo_count is incremented) and inserts the photo. The plot is
-// written first because photos.cell references plots(cell). claimed reports
-// whether this photo created the plot.
+// (first_photo, first_surveyor(_id), claimed_at, region and place name are
+// only set when the plot row is new; photo_count is incremented), inserts the
+// photo and updates the region's claimed_cells and last_surveyed_at. The plot
+// is written first because photos.cell references plots(cell). claimed
+// reports whether this photo created the plot. A plot whose centre is outside
+// every region is rejected with ErrOutsideRegions.
 func (d *DB) ClaimPhoto(ctx context.Context, p NewPhoto) (claimed bool, err error) {
+	loc, err := d.locatePlot(ctx, d.Pool, p.Cell)
+	if err != nil {
+		if errors.Is(err, ErrOutsideRegions) {
+			return false, err
+		}
+		return false, fmt.Errorf("db: claim photo: %w", err)
+	}
 	err = pgx.BeginFunc(ctx, d.Pool, func(tx pgx.Tx) error {
 		err := tx.QueryRow(ctx, `
-			insert into plots (cell, first_photo, first_surveyor, claimed_at, photo_count, parent5, parent6)
-			values ($1, $2, $3, $4, 1, $5, $6)
+			insert into plots (cell, first_photo, first_surveyor, first_surveyor_id, claimed_at, photo_count,
+			                   parent5, parent6, region_id, place_name, place_name_th, district_id)
+			values ($1, $2, $3, $4, $5, 1, $6, $7, $8, $9, $10, $11)
 			on conflict (cell) do update set photo_count = plots.photo_count + 1
 			returning (xmax = 0)`,
-			p.Cell, p.ID, p.Surveyor, p.UploadedAt, p.Parent5, p.Parent6,
+			p.Cell, p.ID, p.Surveyor, nullUUID(p.SurveyorID), p.UploadedAt, p.Parent5, p.Parent6,
+			loc.RegionID, loc.PlaceEn, loc.PlaceTh, loc.DistrictID,
 		).Scan(&claimed)
 		if err != nil {
 			return fmt.Errorf("upsert plot: %w", err)
 		}
+		if claimed {
+			if err := numberPlot(ctx, tx, loc.RegionID, p.Cell); err != nil {
+				return fmt.Errorf("number plot: %w", err)
+			}
+		}
 		_, err = tx.Exec(ctx, `
-			insert into photos (id, cell, surveyor, key_large, key_thumb, lat, lng, taken_at, uploaded_at)
-			values ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-			p.ID, p.Cell, p.Surveyor, p.KeyLarge, p.KeyThumb, p.Lat, p.Lng, p.TakenAt, p.UploadedAt,
+			insert into photos (id, cell, surveyor, surveyor_id, key_large, key_medium, key_thumb,
+			                    width, height, lat, lng, taken_at, taken_at_local, taken_utc_offset, uploaded_at)
+			values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+			p.ID, p.Cell, p.Surveyor, nullUUID(p.SurveyorID), p.KeyLarge, nullString(p.KeyMedium), p.KeyThumb,
+			nullInt(p.Width), nullInt(p.Height), p.Lat, p.Lng, p.TakenAt, p.TakenLocal, p.TakenUTCOffset, p.UploadedAt,
 		)
 		if err != nil {
 			return fmt.Errorf("insert photo: %w", err)
+		}
+		// The plot's stored region: for a plot claimed before the import it
+		// may be null until cmd/regions backfills it.
+		_, err = tx.Exec(ctx, `
+			update regions set
+			  claimed_cells = claimed_cells + $2::int,
+			  last_surveyed_at = greatest(last_surveyed_at, $3)
+			where id = (select region_id from plots where cell = $1)`,
+			p.Cell, map[bool]int{true: 1}[claimed], p.UploadedAt)
+		if err != nil {
+			return fmt.Errorf("update region: %w", err)
 		}
 		return nil
 	})
@@ -111,9 +172,14 @@ func (d *DB) Plots(ctx context.Context, cells []string) ([]PlotSummary, error) {
 func (d *DB) Plot(ctx context.Context, cell string) (*PlotDetail, error) {
 	var p PlotDetail
 	err := d.Pool.QueryRow(ctx, `
-		select cell, photo_count, coalesce(first_surveyor, ''), claimed_at
-		from plots where cell = $1 and photo_count > 0`, cell,
-	).Scan(&p.Cell, &p.PhotoCount, &p.FirstSurveyor, &p.ClaimedAt)
+		select pl.cell, pl.photo_count, coalesce(pl.first_surveyor, ''), pl.claimed_at,
+		       coalesce(pl.place_name, r.name_en, ''), coalesce(r.name_en, ''), coalesce(r.slug, ''), coalesce(n.number, 0),
+		       coalesce(dr.name_en, '')
+		from plots pl left join regions r on r.id = pl.region_id
+		left join regions dr on dr.id = pl.district_id
+		left join plot_numbers n on n.cell = pl.cell
+		where pl.cell = $1 and pl.photo_count > 0`, cell,
+	).Scan(&p.Cell, &p.PhotoCount, &p.FirstSurveyor, &p.ClaimedAt, &p.Place, &p.Region, &p.RegionSlug, &p.Number, &p.District)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}

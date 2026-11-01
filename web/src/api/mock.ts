@@ -16,6 +16,8 @@ import {
 
 const MAX_BYTES = 25 * 1024 * 1024;
 const LATENCY_MS = 150;
+/** The mock is always signed in as this Surveyor. */
+const MOCK_SURVEYOR = 'mock-surveyor';
 
 interface MockPlot {
   cell: string;
@@ -173,6 +175,11 @@ export const mockApi: Api = {
       photo_count: p.photos.length,
       first_surveyor: p.first_surveyor,
       claimed_at: p.claimed_at,
+      name: 'Pattaya · Chon Buri 17',
+      path: '/plot/chon-buri/17',
+      number: 17,
+      place: 'Pattaya',
+      region: 'Chon Buri',
       photos: [...p.photos].reverse(),
     });
   },
@@ -194,7 +201,6 @@ export const mockApi: Api = {
   async uploadPhoto(input: UploadInput): Promise<UploadResult> {
     await delay(null);
     const { photo } = input;
-    if (!input.surveyor.trim()) throw new ApiError(400, 'surveyor is required');
     if (photo.size > MAX_BYTES) throw new ApiError(400, 'file is larger than 25 MB');
     if (!['image/jpeg', 'image/png'].includes(photo.type)) {
       throw new ApiError(400, 'unsupported file type; use JPEG or PNG');
@@ -206,7 +212,11 @@ export const mockApi: Api = {
     if (!loc) throw new ApiError(400, 'no GPS location in photo and no lat/lng given');
     const url = URL.createObjectURL(photo);
     const urls = { large: url, thumb: url };
-    const r = addPhoto(loc.lat, loc.lng, input.surveyor.trim(), urls, new Date());
+    const r = addPhoto(loc.lat, loc.lng, MOCK_SURVEYOR, urls, new Date());
     return { id: r.id, cell: r.cell, claimed: r.claimed, urls };
+  },
+
+  async getMe() {
+    return delay({ name: MOCK_SURVEYOR });
   },
 };

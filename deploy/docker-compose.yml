@@ -9,6 +9,26 @@
 
 name: cartograph
 
+# Settings shared by the api and the one-shot commands built into its image.
+x-api-env: &api-env
+  API_ADDR: ${API_ADDR:-:8000}
+  DATABASE_URL: ${DATABASE_URL:-postgres://cartograph:cartograph@postgres:5432/cartograph?sslmode=disable}
+  S3_ENDPOINT: ${S3_ENDPOINT:-garage:3900}
+  S3_BUCKET: ${S3_BUCKET:-cartograph}
+  S3_ACCESS_KEY: ${S3_ACCESS_KEY:-GKd530ae12b21f90f857abc4d8}
+  S3_SECRET_KEY: ${S3_SECRET_KEY:-072f12d29227eaaa0abc440478fc241b2680b11feb3f38d6a62b740a57d3eedf}
+  S3_REGION: ${S3_REGION:-us-east-1}
+  S3_USE_PATH_STYLE: ${S3_USE_PATH_STYLE:-true}
+  S3_USE_SSL: ${S3_USE_SSL:-false}
+  IMG_BASE_URL: ${IMG_BASE_URL:-http://localhost:8080/img}
+  MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-25}
+  BASE_URL: ${BASE_URL:-http://localhost:8080}
+  SMTP_HOST: ${SMTP_HOST:-}
+  SMTP_PORT: ${SMTP_PORT:-587}
+  SMTP_USER: ${SMTP_USER:-}
+  SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+  MAIL_FROM: ${MAIL_FROM:-Cartograph <hello@cartograph.asia>}
+
 services:
   postgres:
     # Plain PostgreSQL; PostGIS is not used by the prototype.
@@ -58,7 +78,58 @@ services:
       - ./garage-init.sh:/garage-init.sh:ro
     restart: "no"
 
+  # Pattaya fixtures (prototype only): provinces, places and a few
+  # Surveyors with synthetic photos, so a clean `docker compose up` shows a
+  # populated front page. Each step is idempotent. For all of Thailand set
+  # IMPORT_PBF, IMPORT_WATER and IMPORT_BBOX as in .env.example.
+  regions:
+    image: cartograph-api:local
+    pull_policy: never
+    depends_on:
+      postgres:
+        condition: service_healthy
+      api:
+        condition: service_started # builds the image first
+    entrypoint: ["/usr/local/bin/regions"]
+    command:
+      - -pbf=${IMPORT_PBF:-/usr/share/cartograph/fixtures/pattaya.osm.gz}
+      - -water=${IMPORT_WATER-/usr/share/cartograph/fixtures/pattaya-water.shp}
+      - -bbox=${IMPORT_BBOX-100.82,12.82,100.98,13.02}
+    environment: *api-env
+    volumes:
+      - ../map:/srv/map:ro
+    restart: "no"
+
+  places:
+    image: cartograph-api:local
+    pull_policy: never
+    depends_on:
+      regions:
+        condition: service_completed_successfully
+    entrypoint: ["/usr/local/bin/places"]
+    command:
+      - -pbf=${IMPORT_PBF:-/usr/share/cartograph/fixtures/pattaya.osm.gz}
+      - -bbox=${IMPORT_BBOX-100.82,12.82,100.98,13.02}
+    environment: *api-env
+    volumes:
+      - ../map:/srv/map:ro
+    restart: "no"
+
+  seed:
+    image: cartograph-api:local
+    pull_policy: never
+    depends_on:
+      places:
+        condition: service_completed_successfully
+      garage-init:
+        condition: service_completed_successfully
+    entrypoint: ["/usr/local/bin/seed"]
+    command: ["-photos=${SEED_PHOTOS:-30}"]
+    environment: *api-env
+    restart: "no"
+
   api:
+    image: cartograph-api:local
     build:
       context: ..
       dockerfile: deploy/Dockerfile.api
@@ -68,18 +139,7 @@ services:
         condition: service_healthy
       garage-init:
         condition: service_completed_successfully
-    environment:
-      API_ADDR: ${API_ADDR:-:8000}
-      DATABASE_URL: ${DATABASE_URL:-postgres://cartograph:cartograph@postgres:5432/cartograph?sslmode=disable}
-      S3_ENDPOINT: ${S3_ENDPOINT:-garage:3900}
-      S3_BUCKET: ${S3_BUCKET:-cartograph}
-      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-GKd530ae12b21f90f857abc4d8}
-      S3_SECRET_KEY: ${S3_SECRET_KEY:-072f12d29227eaaa0abc440478fc241b2680b11feb3f38d6a62b740a57d3eedf}
-      S3_REGION: ${S3_REGION:-us-east-1}
-      S3_USE_PATH_STYLE: ${S3_USE_PATH_STYLE:-true}
-      S3_USE_SSL: ${S3_USE_SSL:-false}
-      IMG_BASE_URL: ${IMG_BASE_URL:-http://localhost:8080/img}
-      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-25}
+    environment: *api-env
     healthcheck:
       # The binary probes its own /healthz; distroless has no shell or curl.
       test: ["CMD", "/usr/local/bin/api", "-healthcheck"]

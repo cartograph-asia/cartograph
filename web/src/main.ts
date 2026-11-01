@@ -3,7 +3,7 @@ import './styles.css';
 import { addProtocol, Map as MapLibreMap, NavigationControl, setWorkerUrl } from 'maplibre-gl';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 import { Protocol } from 'pmtiles';
-import { cellToLatLng, latLngToCell } from 'h3-js';
+import { cellToLatLng, getResolution, isValidCell, latLngToCell } from 'h3-js';
 import { loadApi, MOCK, type UploadResult } from './api';
 import { DataStore } from './data';
 import { PLOT_RES, planView, type ViewPlan } from './grid';
@@ -147,8 +147,24 @@ function onUploaded(r: UploadResult): void {
   }
 }
 
+/** The plot from /map?cell=… (the "Survey this plot" link on plot pages), if valid. */
+function linkedCell(): string | null {
+  const cell = new URLSearchParams(location.search).get('cell')?.toLowerCase() ?? null;
+  return cell && isValidCell(cell) && getResolution(cell) === PLOT_RES ? cell : null;
+}
+
 map.on('load', () => {
   addLayers(map);
+  const cell = linkedCell();
+  if (cell) {
+    // Drop the query so that a reload keeps the user's own view from the hash.
+    history.replaceState(null, '', location.pathname + location.hash);
+    const [lat, lng] = cellToLatLng(cell);
+    select(cell);
+    void panel.openPlot(cell);
+    map.jumpTo({ center: [lng, lat], zoom: Math.max(map.getZoom(), 15) });
+    map.panBy(panelOffset().map((v) => -v) as [number, number], { duration: 0 });
+  }
   void refresh();
 });
 map.on('moveend', scheduleRefresh);

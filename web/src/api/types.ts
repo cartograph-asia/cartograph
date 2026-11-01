@@ -28,6 +28,15 @@ export interface PlotDetail {
   photo_count: number;
   first_surveyor: string;
   claimed_at: string;
+  /** User-facing name, "{place} · {province} {number}". */
+  name: string;
+  /** Link to the plot page: /plot/{region-slug}/{number}, else /plot/{cell}. */
+  path: string;
+  /** Running number in the province; 0 if none yet. */
+  number: number;
+  /** Nearest place, else the region; empty when unknown. */
+  place: string;
+  region: string;
   photos: PhotoInfo[];
 }
 
@@ -46,9 +55,14 @@ export interface UploadResult {
   urls: PhotoUrls;
 }
 
+/** 200 of GET /api/me: the signed-in Surveyor. */
+export interface Me {
+  name: string;
+}
+
+/** The Surveyor comes from the session; there is no name field. */
 export interface UploadInput {
   photo: File;
-  surveyor: string;
   lat?: number;
   lng?: number;
 }
@@ -61,6 +75,8 @@ export interface Api {
   /** At most COVERAGE_BATCH cells per call. */
   getCoverage(res: 5 | 6, cells: string[]): Promise<CoverageCell[]>;
   uploadPhoto(input: UploadInput): Promise<UploadResult>;
+  /** The signed-in Surveyor, or null when signed out or no name is chosen yet (401). */
+  getMe(): Promise<Me | null>;
 }
 
 export class ApiError extends Error {

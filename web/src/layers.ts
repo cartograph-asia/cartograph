@@ -4,7 +4,10 @@ import type { FeatureCollection, Polygon } from 'geojson';
 import { cellRing } from './grid';
 import type { DataStore } from './data';
 
-const GREEN = '#2e8b57';
+// Greens from the logo palette (docs/HOME_BRIEF.md), light to dark.
+const GREEN_LIGHT = '#A8CDB3';
+const GREEN_MID = '#5FA57A';
+const GREEN = '#2E7D4F';
 const GRID = 'rgba(55, 65, 75, 0.32)';
 
 export const PLOT_FILL = 'plots-fill';
@@ -60,11 +63,16 @@ export function addLayers(map: MapLibreMap): void {
     type: 'fill',
     source: 'plots',
     paint: {
-      'fill-color': GREEN,
+      // Three steps by photo count: 1 photo light, 2–3 mid, 4 or more dark.
+      'fill-color': ['step', ['get', 'photo_count'], GREEN_LIGHT, 2, GREEN_MID, 4, GREEN],
       'fill-opacity': [
-        '+',
-        ['case', ['==', ['get', 'surveyed'], 1], 0.35, 0],
-        ['*', 0.45, ['coalesce', ['feature-state', 'pulse'], 0]],
+        'min',
+        1,
+        [
+          '+',
+          ['case', ['==', ['get', 'surveyed'], 1], 0.7, 0],
+          ['*', 0.45, ['coalesce', ['feature-state', 'pulse'], 0]],
+        ],
       ],
     },
   });

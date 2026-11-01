@@ -1,0 +1,12 @@
+{{define "content" -}}
+<div class="form">
+<h1>Sign in to Cartograph</h1>
+<p>You followed a sign-in link. Press the button to finish signing in on this device.</p>
+<form method="post" action="/signin/link">
+{{template "csrf" .}}
+<input type="hidden" name="token" value="{{.Token}}">
+<button type="submit">Sign in</button>
+</form>
+<p class="note">Did not ask for this? Close the page; nothing happens without the button.</p>
+</div>
+{{- end}}

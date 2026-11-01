@@ -1,9 +1,9 @@
 # Front proxy: the single entry point of the prototype (host :8080 -> :80).
 #
-#   /api/*, /healthz  -> api:8000
+#   /map, /map/*      -> web:80 (the map page, a Vite build with base /map/)
 #   /tiles/*.pmtiles  -> static files from the map/ bind mount (range requests + CORS)
 #   /img/photos/<key> -> Garage website endpoint for the bucket (read-only)
-#   everything else   -> web:80 (static frontend build)
+#   everything else   -> api:8000 (JSON API under /api/, server-rendered pages)
 {
 	auto_https off
 }
@@ -20,8 +20,16 @@
 		reverse_proxy api:8000
 	}
 
-	handle /healthz {
-		reverse_proxy api:8000
+	# /map (as linked from the pages, e.g. /map?cell=…) serves the same page
+	# as /map/; rewrite keeps the query string. Assets use absolute /map/ paths.
+	handle /map {
+		rewrite * /map/
+		reverse_proxy web:80
+	}
+
+	handle /map/* {
+		encode zstd gzip
+		reverse_proxy web:80
 	}
 
 	handle_path /tiles/* {
@@ -63,6 +71,11 @@
 	}
 
 	handle {
-		reverse_proxy web:80
+		request_body {
+			max_size 1MB
+		}
+		# Pages, feeds and the stylesheet; photos and tiles are not compressed.
+		encode zstd gzip
+		reverse_proxy api:8000
 	}
 }

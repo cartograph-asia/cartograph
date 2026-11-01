@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 	"github.com/cartograph-asia/cartograph/internal/h3"
 	"github.com/cartograph-asia/cartograph/internal/photos"
 	"github.com/cartograph-asia/cartograph/internal/storage"
+	"github.com/cartograph-asia/cartograph/internal/views"
 )
 
 // fakeRepo is an in-memory Repo with the same claim semantics as db.DB.
@@ -95,6 +97,7 @@ type testEnv struct {
 	srv   *httptest.Server
 	store *storage.Memory
 	repo  *fakeRepo
+	as    atomic.Pointer[views.Viewer] // the signed-in viewer internal/auth would set; nil = signed out
 }
 
 func newEnv(t *testing.T, maxMB int) *testEnv {
@@ -102,9 +105,20 @@ func newEnv(t *testing.T, maxMB int) *testEnv {
 	store := storage.NewMemory("http://img.test/img")
 	s := New(repo, store, Config{MaxUploadMB: maxMB})
 	s.now = func() time.Time { return time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC) }
-	srv := httptest.NewServer(s.Handler())
-	t.Cleanup(srv.Close)
-	return &testEnv{t: t, srv: srv, store: store, repo: repo}
+	e := &testEnv{t: t, store: store, repo: repo}
+	e.signIn("Ada")
+	h := s.Handler()
+	e.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h.ServeHTTP(w, r.WithContext(views.WithViewer(r.Context(), e.as.Load())))
+	}))
+	t.Cleanup(e.srv.Close)
+	return e
+}
+
+// signIn makes the following requests come from Surveyor name ("" = a
+// session without a name yet).
+func (e *testEnv) signIn(name string) {
+	e.as.Store(&views.Viewer{SurveyorID: "id-" + name, Name: name, Email: name + "@example.org"})
 }
 
 func fixture(t *testing.T, name string) []byte {
@@ -176,7 +190,7 @@ func TestCreatePhotoClaimsThenAdds(t *testing.T) {
 
 	keys := e.store.Keys()
 	sort.Strings(keys)
-	if len(keys) != 2 {
+	if len(keys) != 3 || keys[1] != "photos/2026/11/"+id+"_medium.jpg" {
 		t.Fatalf("stored keys: %v", keys)
 	}
 	large, _ := e.store.Get("photos/2026/11/" + id + "_large.jpg")
@@ -187,7 +201,8 @@ func TestCreatePhotoClaimsThenAdds(t *testing.T) {
 		t.Error("stored large variant still has GPS EXIF")
 	}
 
-	status, body = e.upload(img, map[string]string{"surveyor": "Grace"})
+	e.signIn("Grace")
+	status, body = e.upload(img, map[string]string{"surveyor": "Ada"}) // the field is ignored
 	if status != http.StatusCreated || body["claimed"] != false || body["cell"] != wantCell {
 		t.Fatalf("second upload: %d %v", status, body)
 	}
@@ -205,6 +220,9 @@ func TestCreatePhotoClaimsThenAdds(t *testing.T) {
 	ph := body["photos"].([]any)
 	if len(ph) != 2 || ph[0].(map[string]any)["surveyor"] != "Ada" || ph[0].(map[string]any)["taken_at"] != "2026-09-09T09:38:06Z" {
 		t.Fatalf("photos: %v", ph)
+	}
+	if ph[1].(map[string]any)["surveyor"] != "Grace" {
+		t.Fatalf("second photo should be the signed-in Grace's: %v", ph[1])
 	}
 
 	status, body = e.get("/api/plots?cells=" + wantCell + ",88283082a3fffff")
@@ -256,7 +274,6 @@ func TestCreatePhotoRejects(t *testing.T) {
 		want   string
 	}{
 		{"no photo", nil, map[string]string{"surveyor": "Ada"}, "photo is required"},
-		{"no surveyor", fixture(t, "gps.jpg"), map[string]string{"surveyor": "  "}, "surveyor is required"},
 		{"heic", heic, map[string]string{"surveyor": "Ada"}, "HEIC is not supported"},
 		{"garbage", []byte("definitely not a photo"), map[string]string{"surveyor": "Ada"}, "unsupported file type"},
 		{"too large", big, map[string]string{"surveyor": "Ada"}, "larger than 1 MB"},
@@ -280,6 +297,41 @@ func TestCreatePhotoRejects(t *testing.T) {
 	}
 	if status, _ := decode(t, resp); status != http.StatusBadRequest {
 		t.Errorf("non-multipart: %d", status)
+	}
+}
+
+func TestCreatePhotoNeedsSurveyor(t *testing.T) {
+	e := newEnv(t, 25)
+	img := fixture(t, "gps.jpg")
+	e.as.Store(nil)
+	if status, body := e.upload(img, map[string]string{"surveyor": "Ada"}); status != http.StatusUnauthorized || body["error"] == nil {
+		t.Errorf("signed out: %d %v", status, body)
+	}
+	e.signIn("")
+	if status, body := e.upload(img, nil); status != http.StatusUnauthorized {
+		t.Errorf("no name yet: %d %v", status, body)
+	}
+
+	e.signIn("Ada")
+	for _, h := range [][2]string{{"Sec-Fetch-Site", "cross-site"}, {"Sec-Fetch-Site", "same-site"}, {"Origin", "https://evil.example"}} {
+		var body bytes.Buffer
+		mw := multipart.NewWriter(&body)
+		fw, _ := mw.CreateFormFile("photo", "photo.jpg")
+		_, _ = fw.Write(img)
+		_ = mw.Close()
+		req, _ := http.NewRequest(http.MethodPost, e.srv.URL+"/api/photos", &body)
+		req.Header.Set("Content-Type", mw.FormDataContentType())
+		req.Header.Set(h[0], h[1])
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if status, _ := decode(t, resp); status != http.StatusForbidden {
+			t.Errorf("%s: %s: %d", h[0], h[1], status)
+		}
+	}
+	if keys := e.store.Keys(); len(keys) != 0 {
+		t.Errorf("refused uploads stored objects: %v", keys)
 	}
 }
 

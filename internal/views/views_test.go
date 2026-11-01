@@ -75,3 +75,24 @@ func TestCSRFContext(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+func TestPlotRefName(t *testing.T) {
+	cb := RegionRef{Slug: "chon-buri", NameEn: "Chon Buri"}
+	for _, c := range []struct {
+		p          PlotRef
+		name, path string
+	}{
+		{PlotRef{Cell: "88658bd11dfffff", Place: "Pattaya", Region: cb, Number: 17}, "Pattaya · Chon Buri 17", "/plot/chon-buri/17"},
+		{PlotRef{Cell: "88658bd11dfffff", Place: "Chon Buri", Region: cb, Number: 17}, "Chon Buri 17", "/plot/chon-buri/17"},
+		{PlotRef{Cell: "88658bd11dfffff", Place: "Pattaya", Region: cb}, "Pattaya · Chon Buri", "/plot/88658bd11dfffff"},
+		{PlotRef{Cell: "88658bd11dfffff", Place: "Pattaya"}, "Pattaya", "/plot/88658bd11dfffff"},
+		{PlotRef{Cell: "88658bd11dfffff"}, "A plot", "/plot/88658bd11dfffff"},
+	} {
+		if got := c.p.Name(); got != c.name {
+			t.Errorf("Name(%+v) = %q, want %q", c.p, got, c.name)
+		}
+		if got := c.p.Path(); got != c.path {
+			t.Errorf("Path(%+v) = %q, want %q", c.p, got, c.path)
+		}
+	}
+}

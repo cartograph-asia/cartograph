@@ -317,6 +317,16 @@ func plotIndex(cell string) int {
 	return -1
 }
 
+// PlotCell implements views.Source.
+func (f *Fake) PlotCell(ctx context.Context, slug string, number int) (string, error) {
+	for _, pl := range plots {
+		if strings.EqualFold(pl.ref.Region.Slug, slug) && pl.ref.Number == number {
+			return pl.ref.Cell, nil
+		}
+	}
+	return "", views.ErrNotFound
+}
+
 // Plot implements views.Source. Only fixture cells exist; 88658bd157fffff is
 // blank. Neighbours are known only for 88658bd11dfffff (Pattaya Beach).
 func (f *Fake) Plot(ctx context.Context, cell string) (*views.Plot, error) {
@@ -326,7 +336,7 @@ func (f *Fake) Plot(ctx context.Context, cell string) (*views.Plot, error) {
 	}
 	pl := plots[pi]
 	idx := f.d.byPlot[pi]
-	title := pl.ref.Place + ", " + pl.ref.Region.NameEn
+	title := pl.ref.Name()
 	out := &views.Plot{
 		Page:       base(title, "/plot/"+pl.ref.Cell, "", ""),
 		Plot:       pl.ref,
@@ -341,10 +351,10 @@ func (f *Fake) Plot(ctx context.Context, cell string) (*views.Plot, error) {
 		first := out.Photos[0]
 		out.FirstSurveyor = &first.Surveyor
 		out.ClaimedAt = &first.UploadedAt
-		out.Description = fmt.Sprintf("A plot near %s, first surveyed by %s. %d photos.", pl.ref.Place, first.Surveyor.Name, len(idx))
+		out.Description = fmt.Sprintf("%s, first surveyed by %s. %d photos.", title, first.Surveyor.Name, len(idx))
 	} else {
 		out.NoIndex = true
-		out.Description = fmt.Sprintf("A plot near %s that nobody has surveyed yet.", pl.ref.Place)
+		out.Description = fmt.Sprintf("%s: nobody has surveyed this plot yet.", title)
 	}
 	if pi == 0 {
 		for _, n := range plots[1:7] {
@@ -363,8 +373,8 @@ func (f *Fake) Photo(ctx context.Context, id string) (*views.Photo, error) {
 	ph := f.d.photos[i]
 	siblings := f.d.byPlot[plotIndex(ph.Plot.Cell)]
 	out := &views.Photo{
-		Page: base(fmt.Sprintf("%s, %s by %s", ph.Plot.Place, ph.Plot.Region.NameEn, ph.Surveyor.Name),
-			"/photo/"+ph.ID, fmt.Sprintf("A photo near %s, %s, by %s. %s.", ph.Plot.Place, ph.Plot.Region.NameEn, ph.Surveyor.Name, views.CCBYSA4.Name), ""),
+		Page: base(fmt.Sprintf("%s by %s", ph.Plot.Name(), ph.Surveyor.Name),
+			"/photo/"+ph.ID, fmt.Sprintf("A photo of %s by %s. %s.", ph.Plot.Name(), ph.Surveyor.Name, views.CCBYSA4.Name), ""),
 		Photo:   ph,
 		Licence: views.CCBYSA4,
 		Count:   len(siblings),

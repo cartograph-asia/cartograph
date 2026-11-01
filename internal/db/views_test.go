@@ -270,7 +270,7 @@ func TestViews(t *testing.T) {
 		p.FirstSurveyor.Name != "adrian" || p.Plot.Place != "Pattaya" || len(p.Neighbours) != 6 || p.Lat == 0 || p.NoIndex {
 		t.Fatalf("plot %+v", p)
 	}
-	if p.Title != "Pattaya, Chon Buri" || strings.Contains(p.Description, beachCell) {
+	if p.Title != fmt.Sprintf("Pattaya · Chon Buri %d", p.Plot.Number) || p.Plot.Number == 0 || strings.Contains(p.Description, beachCell) {
 		t.Fatalf("plot meta %q %q", p.Title, p.Description)
 	}
 	blank, err := v.Plot(ctx, p.Neighbours[0].Cell)
@@ -338,4 +338,98 @@ func deref(s *string) string {
 		return "<nil>"
 	}
 	return *s
+}
+
+func TestPlotNumbers(t *testing.T) {
+	w := newWorld(t)
+	ctx := context.Background()
+	var n, min, max, distinct int
+	if err := w.d.Pool.QueryRow(ctx, `select count(*), min(number), max(number), count(distinct number) from plot_numbers`).
+		Scan(&n, &min, &max, &distinct); err != nil {
+		t.Fatal(err)
+	}
+	// Every land cell of the fixture is numbered 1..n without gaps (claims
+	// on land cells reuse their numbers).
+	if n < 200 || min != 1 || max != n || distinct != n {
+		t.Fatalf("numbers: %d rows, %d..%d, %d distinct", n, min, max, distinct)
+	}
+
+	// Neighbouring plots get nearby numbers: the median gap between a cell
+	// and its numbered neighbours is small compared with the province.
+	rows, err := w.d.Pool.Query(ctx, `select cell, number from plot_numbers`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	num := map[string]int{}
+	for rows.Next() {
+		var c string
+		var k int
+		if err := rows.Scan(&c, &k); err != nil {
+			t.Fatal(err)
+		}
+		num[c] = k
+	}
+	near := 0
+	total := 0
+	for c, k := range num {
+		ring, _ := h3.Ring(c, 1)
+		for _, r := range ring {
+			if j, ok := num[r]; ok && r != c {
+				total++
+				if abs(j-k) <= 20 {
+					near++
+				}
+			}
+		}
+	}
+	if near*2 < total {
+		t.Fatalf("only %d of %d neighbour pairs are within 20 numbers", near, total)
+	}
+
+	// A re-import keeps every number and adds none.
+	osmPath, waterPath := importer.Fixture()
+	if _, err := importer.Regions(ctx, w.d, importer.RegionOptions{PBF: osmPath, Water: waterPath, BBox: importer.FixtureBBox}); err != nil {
+		t.Fatal(err)
+	}
+	same := 0
+	if err := w.d.Pool.QueryRow(ctx, `select count(*) from plot_numbers`).Scan(&same); err != nil || same != n {
+		t.Fatalf("after re-import: %d numbers, want %d (%v)", same, n, err)
+	}
+	beachCell, _ := h3.CellFromLatLng(beach[0], beach[1], h3.PlotRes)
+	var k int
+	if err := w.d.Pool.QueryRow(ctx, `select number from plot_numbers where cell = $1`, beachCell).Scan(&k); err != nil || k != num[beachCell] {
+		t.Fatalf("beach number changed: %d → %d (%v)", num[beachCell], k, err)
+	}
+
+	// A surveyed plot without a number (here: its number removed, as for a
+	// cell outside the land cells) gets the next free one on the next import.
+	if _, err := w.d.Pool.Exec(ctx, `delete from plot_numbers where cell = $1`, beachCell); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := importer.Regions(ctx, w.d, importer.RegionOptions{PBF: osmPath, Water: waterPath, BBox: importer.FixtureBBox}); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.d.Pool.QueryRow(ctx, `select number from plot_numbers where cell = $1`, beachCell).Scan(&k); err != nil || k != n+1 {
+		t.Fatalf("renumbered beach: %d, want %d (%v)", k, n+1, err)
+	}
+
+	// The friendly path resolves, regardless of case.
+	cell, err := w.d.Views().PlotCell(ctx, "Chon-Buri", n+1)
+	if err != nil || cell != beachCell {
+		t.Fatalf("PlotCell: %q %v", cell, err)
+	}
+	if _, err := w.d.Views().PlotCell(ctx, "chon-buri", n+2); err != views.ErrNotFound {
+		t.Fatalf("unknown number: %v", err)
+	}
+	p, err := w.d.Views().Plot(ctx, beachCell)
+	if err != nil || p.Plot.Number != n+1 || p.Plot.Name() != fmt.Sprintf("Pattaya · Chon Buri %d", n+1) {
+		t.Fatalf("plot page: %+v %v", p, err)
+	}
+}
+
+func abs(v int) int {
+	if v < 0 {
+		return -v
+	}
+	return v
 }

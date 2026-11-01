@@ -12,6 +12,7 @@
 package views
 
 import (
+	"strconv"
 	"time"
 )
 
@@ -112,10 +113,40 @@ type RegionRef struct {
 
 // PlotRef identifies a plot for links and labels.
 type PlotRef struct {
-	Cell    string    // H3 res-8 index; for links (/plot/{cell}) and maps only, never shown as text
+	Cell    string    // H3 res-8 index; for links (/plot/{cell}), maps and the plot page's details line only
 	Place   string    // display name: nearest OSM place within 5 km, else the region's name
 	PlaceTh string    // Thai name of the place; may be empty
 	Region  RegionRef // region containing the plot's centre; zero value outside every region
+	Number  int       // running number within the region (/plot/{slug}/{number}); 0 if none yet
+}
+
+// Name is the plot's user-facing name, "{place} · {province} {number}",
+// e.g. "Pattaya · Chon Buri 17". Without a nearby place (the place is the
+// province itself) it is "Chon Buri 17"; parts that are unknown are left out.
+func (p PlotRef) Name() string {
+	province := p.Region.NameEn
+	if p.Number > 0 && province != "" {
+		province += " " + strconv.Itoa(p.Number)
+	}
+	switch {
+	case p.Place == "" || p.Place == p.Region.NameEn:
+		if province == "" {
+			return "A plot"
+		}
+		return province
+	case province == "":
+		return p.Place
+	}
+	return p.Place + " · " + province
+}
+
+// Path is the plot's friendly path, /plot/{region-slug}/{number}, or the
+// canonical /plot/{cell} when it has no number yet.
+func (p PlotRef) Path() string {
+	if p.Number > 0 && p.Region.Slug != "" {
+		return "/plot/" + p.Region.Slug + "/" + strconv.Itoa(p.Number)
+	}
+	return "/plot/" + p.Cell
 }
 
 // SurveyorRef identifies a Surveyor for links and labels (/surveyor/{name}).

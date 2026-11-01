@@ -40,10 +40,12 @@ const photoCols = `ph.id, ph.key_thumb, coalesce(ph.key_medium, ''), ph.key_larg
 	coalesce(ph.width, 0), coalesce(ph.height, 0), ph.cell,
 	coalesce(pl.place_name, r.name_en, ''), coalesce(pl.place_name_th, ''),
 	coalesce(r.slug, ''), coalesce(r.name_en, ''), coalesce(r.name_th, ''),
-	coalesce(s.name, ph.surveyor), ph.taken_at, ph.uploaded_at, pl.first_photo is not distinct from ph.id`
+	coalesce(s.name, ph.surveyor), ph.taken_at, ph.uploaded_at, pl.first_photo is not distinct from ph.id,
+	coalesce(pn.number, 0)`
 
 const photoFrom = ` from photos ph
 	join plots pl on pl.cell = ph.cell
+	left join plot_numbers pn on pn.cell = ph.cell
 	left join regions r on r.id = pl.region_id
 	left join surveyors s on s.id = ph.surveyor_id `
 
@@ -55,7 +57,7 @@ func scanPhoto(row pgx.CollectableRow) (views.PhotoItem, error) {
 	var id uuid.UUID
 	err := row.Scan(&id, &p.Keys.Thumb, &p.Keys.Medium, &p.Keys.Large, &p.Width, &p.Height, &p.Plot.Cell,
 		&p.Plot.Place, &p.Plot.PlaceTh, &p.Plot.Region.Slug, &p.Plot.Region.NameEn, &p.Plot.Region.NameTh,
-		&p.Surveyor.Name, &p.TakenAt, &p.UploadedAt, &p.FirstSurvey)
+		&p.Surveyor.Name, &p.TakenAt, &p.UploadedAt, &p.FirstSurvey, &p.Plot.Number)
 	p.ID = id.String()
 	p.UploadedAt = p.UploadedAt.UTC()
 	if p.TakenAt != nil {
@@ -521,6 +523,10 @@ func (v *Views) Plot(ctx context.Context, cell string) (*views.Plot, error) {
 			}
 		}
 	}
+	err = v.d.Pool.QueryRow(ctx, `select number from plot_numbers where cell = $1`, cell).Scan(&out.Plot.Number)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return nil, fmt.Errorf("db: plot number: %w", err)
+	}
 	if out.Lat, out.Lng, err = h3.Centre(cell); err != nil {
 		return nil, err
 	}
@@ -549,29 +555,34 @@ func (v *Views) Plot(ctx context.Context, cell string) (*views.Plot, error) {
 		out.Neighbours = append(out.Neighbours, views.CellStatus{Cell: c, Surveyed: set[c]})
 	}
 
-	name := plotName(out.Plot)
+	name := out.Plot.Name()
 	out.Page = v.base(name, "/plot/"+cell, "", "")
 	if out.Surveyed {
 		who := ""
 		if out.FirstSurveyor != nil {
 			who = " by " + out.FirstSurveyor.Name
 		}
-		out.Description = fmt.Sprintf("A plot near %s, first surveyed%s. %s.", out.Plot.Place, who, plural(out.PhotoCount, "photo"))
+		out.Description = fmt.Sprintf("%s, first surveyed%s. %s.", name, who, plural(out.PhotoCount, "photo"))
 	} else {
 		out.NoIndex = true
-		out.Description = fmt.Sprintf("A plot near %s that nobody has surveyed yet.", out.Plot.Place)
+		out.Description = fmt.Sprintf("%s: nobody has surveyed this plot yet.", name)
 	}
 	return out, nil
 }
 
-func plotName(p views.PlotRef) string {
-	switch {
-	case p.Place == "":
-		return "A plot"
-	case p.Region.NameEn == "" || p.Region.NameEn == p.Place:
-		return p.Place
+// PlotCell implements views.Source.
+func (v *Views) PlotCell(ctx context.Context, slug string, number int) (string, error) {
+	var cell string
+	err := v.d.Pool.QueryRow(ctx, `
+		select n.cell from plot_numbers n join regions r on r.id = n.region_id
+		where lower(r.slug) = lower($1) and n.number = $2`, slug, number).Scan(&cell)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", views.ErrNotFound
 	}
-	return p.Place + ", " + p.Region.NameEn
+	if err != nil {
+		return "", fmt.Errorf("db: plot by number: %w", err)
+	}
+	return cell, nil
 }
 
 func plural(n int, word string) string {
@@ -651,7 +662,7 @@ func (v *Views) Photo(ctx context.Context, id string) (*views.Photo, error) {
 	if place == "" {
 		place = "an unnamed plot"
 	}
-	out.Page = v.base(fmt.Sprintf("%s by %s", plotName(ph.Plot), ph.Surveyor.Name), "/photo/"+ph.ID,
+	out.Page = v.base(fmt.Sprintf("%s by %s", ph.Plot.Name(), ph.Surveyor.Name), "/photo/"+ph.ID,
 		fmt.Sprintf("A photo near %s by %s. %s.", place, ph.Surveyor.Name, out.Licence.Name), "")
 	out.OG = views.OpenGraph{Type: "article", ImageKey: ph.Keys.Best(), ImageAlt: "Photo near " + place}
 	out.OG.ImageWidth, out.OG.ImageHeight = ph.Width, ph.Height

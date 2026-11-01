@@ -36,6 +36,9 @@ type Source interface {
 	// one outside every region is ErrNotFound; a blank cell in a region is a
 	// page with Surveyed false.
 	Plot(ctx context.Context, cell string) (*Plot, error)
+	// PlotCell resolves a plot's running number in a region (by slug, any
+	// case) to its cell, for /plot/{slug}/{number}; ErrNotFound if unknown.
+	PlotCell(ctx context.Context, slug string, number int) (string, error)
 	// Photo returns a photo page, or ErrNotFound (also for a malformed id).
 	Photo(ctx context.Context, id string) (*Photo, error)
 	// Region returns one page of a region, or ErrNotFound.

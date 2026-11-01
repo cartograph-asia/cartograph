@@ -1,0 +1,120 @@
+# Cartograph prototype stack.
+#
+#   cd deploy
+#   cp .env.example .env      # optional: every variable has a default below
+#   docker compose up --build
+#
+# Then open http://localhost:8080. Only one host port is published: 8080
+# (caddy).
+
+name: cartograph
+
+services:
+  postgres:
+    # Plain PostgreSQL; PostGIS is not used by the prototype.
+    image: postgres:16.15-alpine3.24
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-cartograph}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cartograph}
+      POSTGRES_DB: ${POSTGRES_DB:-cartograph}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  garage:
+    # Single-node Garage as the local S3 store (config in garage.toml). The
+    # image has no shell, so there is no healthcheck; garage-init waits for it.
+    image: dxflrs/garage:v2.5.0
+    restart: unless-stopped
+    environment:
+      GARAGE_RPC_SECRET: ${GARAGE_RPC_SECRET:-dda494800248dc844572c3cb46c426b8ef2b3f1e6b83aa2ab47b47ee5a859c44}
+      GARAGE_ADMIN_TOKEN: ${GARAGE_ADMIN_TOKEN:-PAT5VqzxsIBdt0Y4PsJWopnlIQovuzPVD9jpjV8}
+    volumes:
+      - ./garage.toml:/etc/garage.toml:ro
+      - garage-meta:/var/lib/garage/meta
+      - garage-data:/var/lib/garage/data
+
+  # One-shot: assigns the node's layout, creates the bucket with website
+  # access (served read-only via caddy /img/*) and imports the api's key.
+  # Idempotent.
+  garage-init:
+    image: curlimages/curl:8.22.0
+    depends_on:
+      garage:
+        condition: service_started
+    entrypoint: ["/bin/sh", "/garage-init.sh"]
+    environment:
+      GARAGE_ADMIN_TOKEN: ${GARAGE_ADMIN_TOKEN:-PAT5VqzxsIBdt0Y4PsJWopnlIQovuzPVD9jpjV8}
+      S3_BUCKET: ${S3_BUCKET:-cartograph}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-GKd530ae12b21f90f857abc4d8}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-072f12d29227eaaa0abc440478fc241b2680b11feb3f38d6a62b740a57d3eedf}
+    volumes:
+      - ./garage-init.sh:/garage-init.sh:ro
+    restart: "no"
+
+  api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      garage-init:
+        condition: service_completed_successfully
+    environment:
+      API_ADDR: ${API_ADDR:-:8000}
+      DATABASE_URL: ${DATABASE_URL:-postgres://cartograph:cartograph@postgres:5432/cartograph?sslmode=disable}
+      S3_ENDPOINT: ${S3_ENDPOINT:-garage:3900}
+      S3_BUCKET: ${S3_BUCKET:-cartograph}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-GKd530ae12b21f90f857abc4d8}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-072f12d29227eaaa0abc440478fc241b2680b11feb3f38d6a62b740a57d3eedf}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_USE_PATH_STYLE: ${S3_USE_PATH_STYLE:-true}
+      S3_USE_SSL: ${S3_USE_SSL:-false}
+      IMG_BASE_URL: ${IMG_BASE_URL:-http://localhost:8080/img}
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-25}
+    healthcheck:
+      # The binary probes its own /healthz; distroless has no shell or curl.
+      test: ["CMD", "/usr/local/bin/api", "-healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+
+  web:
+    build:
+      context: ../web
+      dockerfile: ../deploy/Dockerfile.web
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2.11.7-alpine
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_started
+      garage-init:
+        condition: service_completed_successfully
+    environment:
+      S3_BUCKET: ${S3_BUCKET:-cartograph}
+    ports:
+      - "${HTTP_PORT:-8080}:80"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ../map:/srv/tiles:ro
+      - caddy-data:/data
+
+volumes:
+  postgres-data:
+  garage-meta:
+  garage-data:
+  caddy-data:

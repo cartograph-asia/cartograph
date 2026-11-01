@@ -27,12 +27,14 @@ GET  /api/plots?cells=88a,88b,...      up to 2000 res-8 cells
 
 GET  /api/plots/{cell}
   200 → { "cell": "...", "photo_count": n, "first_surveyor": "...",
+          "claimed_at": "...",
           "photos": [ { "id", "surveyor", "taken_at", "uploaded_at",
                         "urls": { "large", "thumb" } } ] }
   404 → blank plot
 
 GET  /api/coverage?res=5|6&cells=85a,85b,...   parent cells, up to 500
   200 → { "cells": [ { "cell": "85...", "surveyed": 12, "total": 343 } ] }
+      (only parents with at least one surveyed plot returned)
       total = number of res-8 children (h3 cellToChildrenSize); land/sea
       is not distinguished in the prototype.
 

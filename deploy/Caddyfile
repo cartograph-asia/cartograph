@@ -1,0 +1,68 @@
+# Front proxy: the single entry point of the prototype (host :8080 -> :80).
+#
+#   /api/*, /healthz  -> api:8000
+#   /tiles/*.pmtiles  -> static files from the map/ bind mount (range requests + CORS)
+#   /img/photos/<key> -> Garage website endpoint for the bucket (read-only)
+#   everything else   -> web:80 (static frontend build)
+{
+	auto_https off
+}
+
+:80 {
+	log
+
+	handle /api/* {
+		# Uploads are capped at MAX_UPLOAD_MB (25) by the api; leave room for
+		# multipart overhead.
+		request_body {
+			max_size 30MB
+		}
+		reverse_proxy api:8000
+	}
+
+	handle /healthz {
+		reverse_proxy api:8000
+	}
+
+	handle_path /tiles/* {
+		header {
+			Access-Control-Allow-Origin *
+			Access-Control-Allow-Methods "GET, HEAD, OPTIONS"
+			Access-Control-Allow-Headers "Range, If-Match, If-None-Match"
+			Access-Control-Expose-Headers "Content-Range, Content-Length, ETag, Accept-Ranges"
+		}
+
+		@preflight method OPTIONS
+		respond @preflight 204
+
+		# The map/ directory also holds scripts and the OSM extract; only
+		# expose the tile archives.
+		@notArchive not path *.pmtiles
+		respond @notArchive 404
+
+		root * /srv/tiles
+		file_server
+	}
+
+	handle_path /img/* {
+		@readonly method GET HEAD
+		handle @readonly {
+			# Website access exposes the whole bucket; only photos/ is public.
+			@notPhoto not path /photos/*
+			respond @notPhoto 404
+
+			# Garage picks the bucket from the Host header (see garage.toml).
+			reverse_proxy garage:3902 {
+				header_up Host {$S3_BUCKET:cartograph}.web.garage.localhost
+				header_up -Authorization
+				# Cache-Control comes from the object itself: the api stores
+				# photos as "public, max-age=31536000, immutable".
+			}
+		}
+		respond 405
+	}
+
+	handle {
+		reverse_proxy web:80
+	}
+}

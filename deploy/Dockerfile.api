@@ -1,0 +1,26 @@
+# syntax=docker/dockerfile:1
+#
+# Cartograph api. Build context is the repository root:
+#   docker build -f deploy/Dockerfile.api .
+#
+# h3-go wraps the H3 C library, so this is a cgo build; the final stage is
+# distroless/cc (glibc) to match the bookworm build stage.
+
+FROM golang:1.27.3-bookworm AS build
+WORKDIR /src
+ENV CGO_ENABLED=1 GOFLAGS=-mod=readonly
+
+COPY go.mod go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
+
+COPY . .
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    go build -trimpath -ldflags="-s -w" -o /out/api ./cmd/api
+
+FROM gcr.io/distroless/cc-debian12:nonroot
+COPY --from=build /out/api /usr/local/bin/api
+USER nonroot:nonroot
+EXPOSE 8000
+ENTRYPOINT ["/usr/local/bin/api"]

@@ -1,0 +1,7 @@
+# Used instead of web/.dockerignore when building with deploy/Dockerfile.web.
+node_modules
+dist
+.env
+.env.*
+.DS_Store
+*.log

@@ -1,0 +1,14 @@
+# Build context for deploy/Dockerfile.api is the repository root.
+# The web image uses deploy/Dockerfile.web.dockerignore instead.
+.git
+.gitignore
+.dockerignore
+.DS_Store
+**/.DS_Store
+**/.env
+**/.env.*
+/deploy
+/docs
+/map
+/testdata
+/web

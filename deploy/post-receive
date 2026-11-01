@@ -70,9 +70,15 @@ echo "==> 3/5 probe on 127.0.0.1:${PROBE_PORT}"
 # when they run unchanged, this does nothing.
 cp "$RUNTIME/deploy/.env" "$BUILD/deploy/.env"
 export API_TAG=$tag WEB_TAG=$tag CARTOGRAPH_PROJECT=$PROJECT
-if ! limit 300 "$BUILD/deploy/prod.sh" up -d --no-build postgres garage garage-init; then
-	echo "ERROR: the database or the photo store did not start; see: deploy/prod.sh logs garage postgres"
-	exit 1
+# On the first deploy nothing runs yet: start the database and the photo
+# store from this release. Later they run from $RUNTIME and are left alone
+# here (starting them from $BUILD would mount its files, which are deleted
+# when the hook ends).
+if [ ! -f "$RUNTIME/deploy/docker-compose.yml" ]; then
+	if ! limit 300 "$BUILD/deploy/prod.sh" up -d --no-build postgres garage garage-init; then
+		echo "ERROR: the database or the photo store did not start; see: deploy/prod.sh logs garage postgres"
+		exit 1
+	fi
 fi
 "$BUILD/deploy/prod.sh" run -d --no-deps --name "$PROBE" -p "127.0.0.1:${PROBE_PORT}:8000" api >/dev/null
 ok=""

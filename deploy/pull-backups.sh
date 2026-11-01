@@ -5,7 +5,7 @@
 #
 # Settings come from ~/.config/cartograph/backup.env (not in git):
 #
-#   BACKUP_HOST=yaksha                        ssh host (as in ~/.ssh/config)
+#   BACKUP_HOST=myhost                        ssh host (as in ~/.ssh/config)
 #   BACKUP_REMOTE=cartograph-backups          directory on the host
 #   BACKUP_LOCAL=/Volumes/…/cartograph        where the backups go on the Mac
 #
@@ -32,7 +32,7 @@ mkdir -p "$BACKUP_LOCAL/db" "$BACKUP_LOCAL/photos"
 
 # --ignore-existing: a dump never changes once written; photos keep their keys.
 rsync -a --ignore-existing -e "ssh -o BatchMode=yes" "$BACKUP_HOST:$BACKUP_REMOTE/db/" "$BACKUP_LOCAL/db/"
-rsync -a --ignore-existing -e "ssh -o BatchMode=yes" "$BACKUP_HOST:$BACKUP_REMOTE/photos/" "$BACKUP_LOCAL/photos/"
+rsync -a --no-links --ignore-existing -e "ssh -o BatchMode=yes" "$BACKUP_HOST:$BACKUP_REMOTE/photos/" "$BACKUP_LOCAL/photos/"
 
 # Keep 14 daily, 8 weekly (Sundays), 12 monthly (the 1st) dumps.
 now=$(date +%s)

@@ -17,6 +17,8 @@
 #                                    deleting: a photo removed on the site
 #                                    stays in the backup
 set -euo pipefail
+# The photo mirror and the dumps are for the deploy user only.
+umask 077
 here=$(cd "$(dirname "$0")" && pwd)
 dest=${BACKUP_DIR:-$HOME/cartograph-backups}
 key="$dest/backup-key.asc"
@@ -34,14 +36,17 @@ find "$dest/db" -name 'cartograph-*.dump.gpg' -mtime +2 -delete
 # api's key from .env; nothing is published on the host for this. .env is
 # read value by value: it is not shell syntax (MAIL_FROM has "<" in it).
 env_val() { sed -n "s/^$1=//p" "$here/.env" | tail -n 1; }
-S3_ACCESS_KEY=$(env_val S3_ACCESS_KEY)
-S3_SECRET_KEY=$(env_val S3_SECRET_KEY)
+# The key goes to the container through the environment, by name only, so it
+# never appears on a command line (ps shows those to every local user).
+RCLONE_CONFIG_G_ACCESS_KEY_ID=$(env_val S3_ACCESS_KEY)
+RCLONE_CONFIG_G_SECRET_ACCESS_KEY=$(env_val S3_SECRET_KEY)
+export RCLONE_CONFIG_G_ACCESS_KEY_ID RCLONE_CONFIG_G_SECRET_ACCESS_KEY
 S3_BUCKET=$(env_val S3_BUCKET)
 docker run --rm --user "$(id -u):$(id -g)" --network "${CARTOGRAPH_PROJECT:-cartograph}_default" \
 	-v "$dest/photos:/data" \
 	-e RCLONE_CONFIG_G_TYPE=s3 -e RCLONE_CONFIG_G_PROVIDER=Other \
 	-e RCLONE_CONFIG_G_ENDPOINT=http://garage:3900 -e RCLONE_CONFIG_G_REGION=us-east-1 \
-	-e RCLONE_CONFIG_G_ACCESS_KEY_ID="$S3_ACCESS_KEY" -e RCLONE_CONFIG_G_SECRET_ACCESS_KEY="$S3_SECRET_KEY" \
+	-e RCLONE_CONFIG_G_ACCESS_KEY_ID -e RCLONE_CONFIG_G_SECRET_ACCESS_KEY \
 	-e RCLONE_CONFIG_G_FORCE_PATH_STYLE=true \
 	rclone/rclone:1.71.2 copy "g:${S3_BUCKET:-cartograph}" /data --quiet
 

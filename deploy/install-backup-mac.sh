@@ -1,7 +1,7 @@
 #!/bin/bash
 # Sets up the pull of the production backups on Adrian's Mac (once):
 #
-#   deploy/install-backup-mac.sh /Volumes/<disk>/backups/cartograph [ssh-host]
+#   deploy/install-backup-mac.sh /Volumes/<disk>/backups/cartograph SSH_HOST
 #
 #   1. a GPG key only for the backups, in its own keyring
 #      (~/.config/cartograph/gnupg); its passphrase goes into the login
@@ -13,8 +13,8 @@
 #
 # Run again, it keeps an existing key and only refreshes the rest.
 set -euo pipefail
-local_dir=${1:?usage: install-backup-mac.sh BACKUP_DIR [SSH_HOST]}
-host=${2:-yaksha}
+local_dir=${1:?usage: install-backup-mac.sh BACKUP_DIR SSH_HOST}
+host=${2:?usage: install-backup-mac.sh BACKUP_DIR SSH_HOST}
 here=$(cd "$(dirname "$0")" && pwd)
 conf=$HOME/.config/cartograph
 export GNUPGHOME=$conf/gnupg
@@ -25,7 +25,7 @@ uid="Cartograph backup <backup@cartograph.asia>"
 if ! gpg --list-secret-keys "$uid" >/dev/null 2>&1; then
 	pass=$(openssl rand -base64 32)
 	security add-generic-password -U -a "$USER" -s cartograph-backup -w "$pass"
-	gpg --batch --pinentry-mode loopback --passphrase "$pass" \
+	printf '%s' "$pass" | gpg --batch --pinentry-mode loopback --passphrase-fd 0 \
 		--quick-generate-key "$uid" cv25519 encr never
 	echo "created the backup key; its passphrase is in the login keychain (cartograph-backup)"
 fi

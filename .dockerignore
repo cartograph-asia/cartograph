@@ -10,5 +10,11 @@
 /deploy
 /docs
 /map
-/testdata
+# Only the Pattaya fixture extract goes into the image (for the regions,
+# places and seed commands).
+/testdata/*
+!/testdata/pattaya.osm.gz
+!/testdata/pattaya-water.shp
 /web
+/.claude
+/backup

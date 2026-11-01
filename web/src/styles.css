@@ -303,6 +303,14 @@ body.panel-open .fab {
   color: var(--muted);
 }
 
+/* The plot's H3 index: the one place it is shown, small and quiet. */
+.details {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+}
+
 .error {
   color: var(--error);
 }

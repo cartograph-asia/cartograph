@@ -13,6 +13,7 @@ import (
 
 	"github.com/cartograph-asia/cartograph/internal/db"
 	"github.com/cartograph-asia/cartograph/internal/h3"
+	"github.com/cartograph-asia/cartograph/internal/views"
 )
 
 const (
@@ -41,6 +42,8 @@ type plotDetail struct {
 	PhotoCount    int         `json:"photo_count"`
 	FirstSurveyor string      `json:"first_surveyor"`
 	ClaimedAt     time.Time   `json:"claimed_at"`
+	Name          string      `json:"name"`
+	Number        int         `json:"number"`
 	Place         string      `json:"place"`
 	Region        string      `json:"region"`
 	Photos        []plotPhoto `json:"photos"`
@@ -134,6 +137,8 @@ func (s *Server) getPlot(w http.ResponseWriter, r *http.Request) {
 		PhotoCount:    p.PhotoCount,
 		FirstSurveyor: p.FirstSurveyor,
 		ClaimedAt:     p.ClaimedAt.UTC(),
+		Name:          plotRef(p).Name(),
+		Number:        p.Number,
 		Place:         p.Place,
 		Region:        p.Region,
 		Photos:        make([]plotPhoto, 0, len(p.Photos)),
@@ -153,6 +158,12 @@ func (s *Server) getPlot(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+// plotRef is p as the pages name it ("Pattaya · Chon Buri 17").
+func plotRef(p *db.PlotDetail) views.PlotRef {
+	return views.PlotRef{Cell: p.Cell, Place: p.Place, Number: p.Number,
+		Region: views.RegionRef{Slug: p.RegionSlug, NameEn: p.Region}}
 }
 
 // coverage handles GET /api/coverage?res=5|6&cells=...

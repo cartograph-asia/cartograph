@@ -28,6 +28,10 @@ export interface PlotDetail {
   photo_count: number;
   first_surveyor: string;
   claimed_at: string;
+  /** User-facing name, "{place} · {province} {number}". */
+  name: string;
+  /** Running number in the province; 0 if none yet. */
+  number: number;
   /** Nearest place, else the region; empty when unknown. */
   place: string;
   region: string;

@@ -152,7 +152,7 @@ func TestEveryPageRenders(t *testing.T) {
 	}{
 		{"home", views.PageHome, viewstest.Home(), []string{
 			"Latest surveys", "Plot of the week", viewstest.FeaturedText, "New Surveyors", "Regions",
-			`<b>13</b> plots surveyed`, `href="/surveyors"`, `href="/regions"`, "first survey", "Chon Buri",
+			`<b>13</b> plots surveyed`, `href="/surveyors"`, `href="/regions"`, `<abbr class="first" title="First survey of this plot">first</abbr>`, "Chon Buri", `class="lede"`, `<svg class="bar"`,
 			`<span lang="th" class="th">ชลบุรี</span>`, `href="/latest">More surveys`, "Welcome",
 		}},
 		{"latest", views.PageLatest, viewstest.Latest(10), []string{"Latest surveys", `rel="next" href="/latest?page=2"`, "Page 1 of 3"}},
@@ -483,10 +483,58 @@ func TestFrontPageWeight(t *testing.T) {
 	body := render(t, views.PageHome, viewstest.Home())
 	rd := newRenderer(t)
 	css := rd.assets.size("style.css")
-	total := len(body) + css
-	t.Logf("front page: %d bytes HTML + %d bytes CSS = %d bytes", len(body), css, total)
+	// A page uses at most one display face (one typographic direction).
+	font := max(rd.assets.size("fonts/fraunces-latin-600.woff2"), rd.assets.size("fonts/inter-tight-latin-600.woff2"))
+	total := len(body) + css + font
+	t.Logf("front page: %d bytes HTML + %d bytes CSS + %d bytes font = %d bytes", len(body), css, font, total)
 	if total >= 100*1024 {
 		t.Fatalf("front page is %d bytes, budget is 100 KB", total)
+	}
+	if font > 40*1024 {
+		t.Fatalf("display face is %d bytes, budget is 40 KB", font)
+	}
+}
+
+func TestNoInlineStyles(t *testing.T) {
+	// Every page is styled from style.css only (docs/DESIGN_BRIEF.md).
+	for _, name := range []string{"home", "latest", "surveyors", "regions", "surveyor", "plot", "photo", "region",
+		"signin", "check-email", "choose-name", "edit-profile", "confirm-signin", "error", "static", "layout", "partials"} {
+		b, err := templateFS.ReadFile("templates/" + name + ".html")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if m := regexp.MustCompile(`\sstyle=|<style`).Find(b); m != nil {
+			t.Errorf("templates/%s.html: inline style %q", name, m)
+		}
+	}
+}
+
+func TestStylesheetFontURLs(t *testing.T) {
+	// url(fonts/…) in style.css is rewritten to the fonts' hashed URLs.
+	rd := newRenderer(t)
+	css := string(rd.assets.byHashed[strings.TrimPrefix(rd.assets.url("style.css"), StaticPrefix)].data)
+	for _, f := range []string{"fonts/fraunces-latin-600.woff2", "fonts/inter-tight-latin-600.woff2"} {
+		if !strings.Contains(css, "url("+rd.assets.url(f)+")") {
+			t.Errorf("style.css does not refer to %s as %s", f, rd.assets.url(f))
+		}
+	}
+	if strings.Contains(css, "url(fonts/") {
+		t.Error("style.css still has a relative font URL")
+	}
+}
+
+func TestTypeSwitch(t *testing.T) {
+	rd := newRenderer(t)
+	for _, tc := range []struct{ ask, want string }{{"", DefaultType}, {"b1", "b1"}, {"b2", "b2"}, {"zz", DefaultType}} {
+		r := httptest.NewRequest(http.MethodGet, "/", nil)
+		if tc.ask != "" {
+			r = r.WithContext(WithType(r.Context(), tc.ask))
+		}
+		w := httptest.NewRecorder()
+		rd.Render(w, r, http.StatusOK, views.PageHome, viewstest.Home())
+		if !strings.Contains(w.Body.String(), `<html lang="en" data-type="`+tc.want+`">`) {
+			t.Errorf("type %q: want data-type %q", tc.ask, tc.want)
+		}
 	}
 }
 

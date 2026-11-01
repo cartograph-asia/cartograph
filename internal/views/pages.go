@@ -158,6 +158,15 @@ type CheckEmail struct {
 	Email string
 }
 
+// ConfirmSignIn is the page behind the magic link (GET /signin/link?token=…).
+// It only shows a "Sign in" button: a form that POSTs Token (field "token")
+// and the CSRF field to /signin/link, so that mail scanners that prefetch the
+// link do not use up the single-use token (task 2 addition).
+type ConfirmSignIn struct {
+	Page
+	Token string
+}
+
 // ChooseName is the one-time Surveyor name form shown after the first sign-in.
 type ChooseName struct {
 	Page

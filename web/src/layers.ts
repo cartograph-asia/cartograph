@@ -1,5 +1,5 @@
 // Plot and coverage layers on top of the base style.
-import type { GeoJSONSource, Map as MapLibreMap } from 'maplibre-gl';
+import type { ExpressionSpecification, GeoJSONSource, Map as MapLibreMap } from 'maplibre-gl';
 import type { FeatureCollection, Polygon } from 'geojson';
 import { cellRing } from './grid';
 import type { DataStore } from './data';
@@ -14,6 +14,8 @@ export const PLOT_FILL = 'plots-fill';
 const PLOT_LINE = 'plots-line';
 const COV_FILL = 'coverage-fill';
 const COV_LINE = 'coverage-line';
+const COV_PREV_FILL = 'coverage-prev-fill';
+const COV_PREV_LINE = 'coverage-prev-line';
 
 const ringCache = new Map<string, number[][]>();
 function ring(cell: string): number[][] {
@@ -28,29 +30,47 @@ function ring(cell: string): number[][] {
 type FC = FeatureCollection<Polygon>;
 const empty = (): FC => ({ type: 'FeatureCollection', features: [] });
 
-export function addLayers(map: MapLibreMap): void {
-  map.addSource('coverage', { type: 'geojson', data: empty(), promoteId: 'cell' });
-  map.addSource('plots', { type: 'geojson', data: empty(), promoteId: 'cell' });
+// Opacity expressions take a fade factor f (0–1) for the cross-fade between
+// single plots and groups, and between the two group sizes. MapLibre has no
+// layer opacity, and a zoom curve must stay the outermost expression, so f
+// goes into every output.
 
+function coverageFillOpacity(f: number): ExpressionSpecification {
+  // Brief: opacity proportional to surveyed/total, 0 -> 0.05, 1 -> 0.6. Untouched parents stay clear.
+  return ['case', ['>', ['get', 'surveyed'], 0], ['interpolate', ['linear'], ['get', 'ratio'], 0, 0.05 * f, 1, 0.6 * f], 0];
+}
+
+function coverageLineOpacity(f: number): ExpressionSpecification {
+  const at = (blank: number): ExpressionSpecification => [
+    'case',
+    ['boolean', ['feature-state', 'hover'], false], f,
+    ['>', ['get', 'surveyed'], 0], 0.75 * f,
+    blank * f,
+  ];
+  // Blank parent cells only from zoom 8: further out their outlines
+  // tile the whole view, sea included, and read as a pattern, not data.
+  return ['interpolate', ['linear'], ['zoom'], 6.5, at(0), 8, at(0.45)];
+}
+
+function plotFillOpacity(f: number): ExpressionSpecification {
+  return [
+    '*',
+    f,
+    ['min', 1, ['+', ['case', ['==', ['get', 'surveyed'], 1], 0.7, 0], ['*', 0.45, ['coalesce', ['feature-state', 'pulse'], 0]]]],
+  ];
+}
+
+function addCoverageLayers(map: MapLibreMap, source: string, fill: string, line: string): void {
   map.addLayer({
-    id: COV_FILL,
+    id: fill,
     type: 'fill',
-    source: 'coverage',
-    paint: {
-      'fill-color': GREEN,
-      // Brief: opacity proportional to surveyed/total, 0 -> 0.05, 1 -> 0.6. Untouched parents stay clear.
-      'fill-opacity': [
-        'case',
-        ['>', ['get', 'surveyed'], 0],
-        ['interpolate', ['linear'], ['get', 'ratio'], 0, 0.05, 1, 0.6],
-        0,
-      ],
-    },
+    source,
+    paint: { 'fill-color': GREEN, 'fill-opacity': coverageFillOpacity(1) },
   });
   map.addLayer({
-    id: COV_LINE,
+    id: line,
     type: 'line',
-    source: 'coverage',
+    source,
     paint: {
       // The group under the mouse is outlined in ink: a click zooms to it.
       'line-color': [
@@ -59,13 +79,7 @@ export function addLayers(map: MapLibreMap): void {
         ['>', ['get', 'surveyed'], 0], GREEN,
         GRID,
       ],
-      // Blank parent cells only from zoom 8: further out their outlines
-      // tile the whole view, sea included, and read as a pattern, not data.
-      'line-opacity': [
-        'interpolate', ['linear'], ['zoom'],
-        6.5, ['case', ['boolean', ['feature-state', 'hover'], false], 1, ['>', ['get', 'surveyed'], 0], 0.75, 0],
-        8, ['case', ['boolean', ['feature-state', 'hover'], false], 1, ['>', ['get', 'surveyed'], 0], 0.75, 0.45],
-      ],
+      'line-opacity': coverageLineOpacity(1),
       'line-width': [
         'case',
         ['boolean', ['feature-state', 'hover'], false], 2,
@@ -74,6 +88,16 @@ export function addLayers(map: MapLibreMap): void {
       ],
     },
   });
+}
+
+export function addLayers(map: MapLibreMap): void {
+  map.addSource('coverage', { type: 'geojson', data: empty(), promoteId: 'cell' });
+  // The groups of the previous size while they fade out (see renderCoverage).
+  map.addSource('coverage-prev', { type: 'geojson', data: empty() });
+  map.addSource('plots', { type: 'geojson', data: empty(), promoteId: 'cell' });
+
+  addCoverageLayers(map, 'coverage-prev', COV_PREV_FILL, COV_PREV_LINE);
+  addCoverageLayers(map, 'coverage', COV_FILL, COV_LINE);
 
   map.addLayer({
     id: PLOT_FILL,
@@ -82,15 +106,7 @@ export function addLayers(map: MapLibreMap): void {
     paint: {
       // Three steps by photo count: 1 photo light, 2–3 mid, 4 or more dark.
       'fill-color': ['step', ['get', 'photo_count'], GREEN_LIGHT, 2, GREEN_MID, 4, GREEN],
-      'fill-opacity': [
-        'min',
-        1,
-        [
-          '+',
-          ['case', ['==', ['get', 'surveyed'], 1], 0.7, 0],
-          ['*', 0.45, ['coalesce', ['feature-state', 'pulse'], 0]],
-        ],
-      ],
+      'fill-opacity': plotFillOpacity(1),
     },
   });
   map.addLayer({
@@ -113,15 +129,68 @@ export function addLayers(map: MapLibreMap): void {
       ],
     },
   });
+  setVisible(map, [PLOT_FILL, PLOT_LINE, COV_FILL, COV_LINE, COV_PREV_FILL, COV_PREV_LINE], false);
 }
 
 function setVisible(map: MapLibreMap, ids: string[], visible: boolean): void {
   for (const id of ids) map.setLayoutProperty(id, 'visibility', visible ? 'visible' : 'none');
 }
 
-export function showMode(map: MapLibreMap, mode: 'plots' | 'coverage' | 'none'): void {
-  setVisible(map, [PLOT_FILL, PLOT_LINE], mode === 'plots');
-  setVisible(map, [COV_FILL, COV_LINE], mode === 'coverage');
+type Group = 'plots' | 'coverage' | 'coverage-prev';
+const LAYERS: Record<Group, string[]> = {
+  plots: [PLOT_FILL, PLOT_LINE],
+  coverage: [COV_FILL, COV_LINE],
+  'coverage-prev': [COV_PREV_FILL, COV_PREV_LINE],
+};
+
+function setFade(map: MapLibreMap, group: Group, f: number): void {
+  if (group === 'plots') {
+    map.setPaintProperty(PLOT_FILL, 'fill-opacity', plotFillOpacity(f));
+    map.setPaintProperty(PLOT_LINE, 'line-opacity', f);
+    return;
+  }
+  const [fill, line] = LAYERS[group];
+  map.setPaintProperty(fill, 'fill-opacity', coverageFillOpacity(f));
+  map.setPaintProperty(line, 'line-opacity', coverageLineOpacity(f));
+}
+
+/** Cross-fade length when the view changes between single plots and groups, or between group sizes. */
+const FADE_MS = 350;
+let fadeFrame = 0;
+
+/** Fade `inGroup` in and `outGroup` out; a new fade replaces one still running. */
+function crossFade(map: MapLibreMap, inGroup: Group | null, outGroup: Group | null): void {
+  cancelAnimationFrame(fadeFrame);
+  for (const g of Object.keys(LAYERS) as Group[]) {
+    if (g !== inGroup && g !== outGroup) setVisible(map, LAYERS[g], false);
+  }
+  if (inGroup) {
+    setFade(map, inGroup, 0);
+    setVisible(map, LAYERS[inGroup], true);
+  }
+  const start = performance.now();
+  const step = (now: number) => {
+    const t = Math.min(1, (now - start) / FADE_MS);
+    if (inGroup) setFade(map, inGroup, t);
+    if (outGroup) setFade(map, outGroup, 1 - t);
+    if (t < 1) fadeFrame = requestAnimationFrame(step);
+    else if (outGroup) setVisible(map, LAYERS[outGroup], false);
+  };
+  fadeFrame = requestAnimationFrame(step);
+}
+
+type Mode = 'plots' | 'coverage' | 'none';
+let shownMode: Mode = 'none';
+
+/** Show single plots, groups or nothing; a change of mode cross-fades. */
+export function showMode(map: MapLibreMap, mode: Mode): void {
+  if (mode === shownMode) return;
+  const from = shownMode;
+  shownMode = mode;
+  // Groups coming back after single plots fade in on their own; there is
+  // no group size to fade from.
+  if (mode === 'coverage') coverageRes = null;
+  crossFade(map, mode === 'none' ? null : mode, from === 'none' ? null : from);
 }
 
 /** Draw all cells in view; unknown cells are drawn blank until their data arrives. */
@@ -143,6 +212,14 @@ export function renderPlots(map: MapLibreMap, cells: string[], data: DataStore):
   return surveyed;
 }
 
+let coverageRes: 5 | 6 | null = null;
+let coverageData: FC = empty();
+
+/**
+ * Draw the groups in view. When their size changes (zoom 7), the groups of
+ * the old size move to the coverage-prev layers and fade out while the new
+ * ones fade in.
+ */
 export function renderCoverage(map: MapLibreMap, res: 5 | 6, cells: string[], data: DataStore): void {
   const fc: FC = {
     type: 'FeatureCollection',
@@ -157,6 +234,14 @@ export function renderCoverage(map: MapLibreMap, res: 5 | 6, cells: string[], da
       };
     }),
   };
+  if (coverageRes !== null && res !== coverageRes && shownMode === 'coverage') {
+    (map.getSource('coverage-prev') as GeoJSONSource).setData(coverageData);
+    setFade(map, 'coverage-prev', 1);
+    setVisible(map, LAYERS['coverage-prev'], true);
+    crossFade(map, 'coverage', 'coverage-prev');
+  }
+  coverageRes = res;
+  coverageData = fc;
   (map.getSource('coverage') as GeoJSONSource).setData(fc);
 }
 

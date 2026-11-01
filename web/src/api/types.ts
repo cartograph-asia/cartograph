@@ -79,6 +79,8 @@ export interface UploadInput {
 export interface ClientConfig {
   /** The base map's PMTiles archive (TILES_URL): a path on this site or a full URL. */
   tiles_url: string;
+  /** [west, south, east, north] around every imported province: where plots can be surveyed. Absent before any import. */
+  surveyable?: [number, number, number, number];
 }
 
 export interface Api {

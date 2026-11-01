@@ -75,6 +75,10 @@ func (f *fakeRepo) Plot(_ context.Context, cell string) (*db.PlotDetail, error) 
 	return &cp, nil
 }
 
+func (f *fakeRepo) SurveyableBounds(context.Context) (db.Bounds, bool, error) {
+	return db.Bounds{West: 97.3, South: 5.6, East: 105.6, North: 20.5}, true, nil
+}
+
 func (f *fakeRepo) Coverage(_ context.Context, res int, parents []string) (map[string]int64, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -553,6 +557,9 @@ func TestClientConfig(t *testing.T) {
 	status, body := e.get("/api/config")
 	if status != 200 || body["tiles_url"] != DefaultTilesURL {
 		t.Errorf("GET /api/config: %d %v", status, body)
+	}
+	if sb, _ := body["surveyable"].([]any); len(sb) != 4 || sb[0] != 97.3 || sb[3] != 20.5 {
+		t.Errorf("surveyable: %v", body["surveyable"])
 	}
 
 	s := New(newFakeRepo(), storage.NewMemory("http://img.test/img"), Config{TilesURL: "https://tiles.example/asia-20261101.pmtiles"})

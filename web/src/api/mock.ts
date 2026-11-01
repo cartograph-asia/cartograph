@@ -160,7 +160,7 @@ function parseTiffGps(v: DataView, tiff: number): { lat: number; lng: number } |
 
 export const mockApi: Api = {
   async getConfig() {
-    return { tiles_url: '/tiles/asia.pmtiles' };
+    return { tiles_url: '/tiles/asia.pmtiles', surveyable: [97.3, 5.6, 105.6, 20.5] as [number, number, number, number] };
   },
   getPlots(cells: string[]): Promise<PlotSummary[]> {
     if (cells.length > 2000) return Promise.reject(new ApiError(400, 'too many cells (max 2000)'));

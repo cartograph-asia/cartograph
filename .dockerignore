@@ -8,7 +8,11 @@
 **/.env
 **/.env.*
 /deploy
-/docs
+# The static pages' Markdown is embedded into the api (package docs).
+/docs/*
+!/docs/embed.go
+!/docs/PRINCIPLES.md
+!/docs/pages
 /map
 # Only the Pattaya fixture extract goes into the image (for the regions,
 # places and seed commands).

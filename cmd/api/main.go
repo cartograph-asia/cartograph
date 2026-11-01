@@ -39,6 +39,7 @@ type config struct {
 	auth        auth.Config
 	s3          storage.S3Config
 	maxUploadMB int
+	concurrency int    // UPLOAD_CONCURRENCY, see api.Config.MaxConcurrentProcessing
 	tilesURL    string // TILES_URL, see api.Config.TilesURL
 	crawlers    crawlers.Policy
 }
@@ -126,12 +127,26 @@ func routes(cfg config, database *db.DB, store storage.Store) (http.Handler, err
 	if err != nil {
 		return nil, err
 	}
-	a := auth.New(acfg, auth.NewPGStore(database.Pool), auth.NewMailer(acfg.SMTP), rd.RenderFunc(), database.Views())
+	mailer := auth.NewMailer(acfg.SMTP)
+	if sm, ok := mailer.(*auth.SMTPMailer); ok {
+		// Tell at start whether mail works, without sending any; a mail
+		// outage does not keep the site down.
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			defer cancel()
+			if err := sm.Check(ctx); err != nil {
+				slog.Error("smtp check failed: sign-in mails will not go out", "sender", sm.Sender(), "err", err)
+				return
+			}
+			slog.Info("smtp ok", "sender", sm.Sender())
+		}()
+	}
+	a := auth.New(acfg, auth.NewPGStore(database.Pool), mailer, rd.RenderFunc(), database.Views())
 	pages := web.NewHandlers(database.Views(), rd)
 	adminH := admin.New(database.Admin(), a, store, rd.RenderFunc())
 	slog.Info("accounts", "admins", len(acfg.Admins), "signup", acfg.Signup)
 	slog.Info("crawlers", "policy", cfg.crawlers)
-	apiH := api.New(database, store, api.Config{MaxUploadMB: cfg.maxUploadMB, TilesURL: cfg.tilesURL}).Handler()
+	apiH := api.New(database, store, api.Config{MaxUploadMB: cfg.maxUploadMB, MaxConcurrentProcessing: cfg.concurrency, TilesURL: cfg.tilesURL}).Handler()
 
 	r := chi.NewRouter()
 	// Outermost, so that every response carries the robots header with
@@ -233,6 +248,9 @@ func loadConfig() (config, error) {
 	}
 	if c.crawlers, err = crawlers.FromEnv(os.Getenv); err != nil {
 		errs = append(errs, err)
+	}
+	if c.concurrency, err = strconv.Atoi(envOr("UPLOAD_CONCURRENCY", "2")); err != nil || c.concurrency <= 0 {
+		errs = append(errs, errors.New("UPLOAD_CONCURRENCY must be a positive integer"))
 	}
 	c.tilesURL = envOr("TILES_URL", api.DefaultTilesURL)
 	if !strings.HasPrefix(c.tilesURL, "/") && !strings.HasPrefix(c.tilesURL, "https://") && !strings.HasPrefix(c.tilesURL, "http://") {

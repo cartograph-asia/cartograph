@@ -32,7 +32,7 @@ IMPORT_WATER=/srv/map/data/sources/water-polygons-split-3857.zip
 IMPORT_BBOX=
 ```
 
-and run `docker compose up regions places` (about 20 s for the 77 provinces and 18,000 places). Set `SEED_PHOTOS=0` if you do not want the synthetic photos.
+and run `docker compose up regions places` (77 provinces and about 18,000 places). Set `SEED_PHOTOS=0` if you do not want the synthetic photos.
 
 ## Build the map
 

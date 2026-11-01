@@ -8,7 +8,7 @@ Decisions made while building the prototype that are not in `CLAUDE.md`. One lin
 - 2026-11-01 – Work happens on the `prototype` branch with one commit per area.
 - 2026-11-01 – The api image is built with `CGO_ENABLED=1` (h3-go wraps the C library) and runs on `gcr.io/distroless/cc-debian12:nonroot`, not scratch.
 - 2026-11-01 – `deploy/Caddyfile` is the only Caddyfile; the map pipeline does not ship a snippet.
-- 2026-11-01 – Public image URLs are `IMG_BASE_URL/<key>` with `IMG_BASE_URL=http://localhost:8080/img`; Caddy maps `/img/<key>` to `/<bucket>/<key>` on MinIO.
+- 2026-11-01 – Public image URLs are `IMG_BASE_URL/<key>` with `IMG_BASE_URL=http://localhost:8080/img`; Caddy maps `/img/<key>` to `/<bucket>/<key>` on MinIO. *(superseded, see Review follow-ups)*
 - 2026-11-01 – Added env vars `API_ADDR`, `S3_USE_SSL`, `S3_REGION` and `HTTP_PORT` to the brief's list.
 - 2026-11-01 – Migrations are embedded into the binary from `migrations/embed.go` (`go:embed`), since the final image has no filesystem to read them from.
 
@@ -19,7 +19,7 @@ Decisions made while building the prototype that are not in `CLAUDE.md`. One lin
 - 2026-11-01 – `--osm-url` is set to the Geofabrik Thailand URL so a missing extract can never silently build Planetiler's default area.
 - 2026-11-01 – The Planetiler container runs as the host user so output files belong to the developer.
 - 2026-11-01 – The extract's md5 check is best effort with a 30 s timeout (Geofabrik's `.md5` endpoint can hang).
-- 2026-11-01 – Glyphs load from the Protomaps basemaps-assets fonts on GitHub Pages (Noto Sans, no key).
+- 2026-11-01 – Glyphs load from the Protomaps basemaps-assets fonts on GitHub Pages (Noto Sans, no key). *(superseded, see Review follow-ups)*
 - 2026-11-01 – Labels prefer `name:en`, then `name_en`, `name:latin`, `name`; MapLibre does not shape Thai script well, so English names come first.
 - 2026-11-01 – The style adds very low-contrast wood/park fills, buildings from z14 and a dashed country boundary; water names, POIs, road names and house numbers are hidden.
 
@@ -44,12 +44,12 @@ Decisions made while building the prototype that are not in `CLAUDE.md`. One lin
 
 ## Infrastructure
 
-- 2026-11-01 – MinIO runs from the community build `pgsty/minio` / `pgsty/mc`, because upstream no longer publishes container images.
-- 2026-11-01 – `postgis/postgis:16-3.6` is amd64-only and runs under emulation on Apple Silicon (`platform: linux/amd64`).
-- 2026-11-01 – The api uses its own bucket-scoped MinIO user (`cartograph-app`), created by `minio-init`, not the root credentials.
-- 2026-11-01 – Only host ports 8080 (Caddy) and 127.0.0.1:9001 (MinIO console) are published.
+- 2026-11-01 – MinIO runs from the community build `pgsty/minio` / `pgsty/mc`, because upstream no longer publishes container images. *(superseded, see Review follow-ups)*
+- 2026-11-01 – `postgis/postgis:16-3.6` is amd64-only and runs under emulation on Apple Silicon (`platform: linux/amd64`). *(superseded, see Review follow-ups)*
+- 2026-11-01 – The api uses its own bucket-scoped MinIO user (`cartograph-app`), created by `minio-init`, not the root credentials. *(superseded, see Review follow-ups)*
+- 2026-11-01 – Only host ports 8080 (Caddy) and 127.0.0.1:9001 (MinIO console) are published. *(superseded, see Review follow-ups)*
 - 2026-11-01 – Caddy serves only `*.pmtiles` from the `map/` mount; `/img` allows GET/HEAD only; the request body limit for `/api/*` is 30 MB.
-- 2026-11-01 – The api container has no healthcheck (distroless has no shell); Caddy waits for it to start, not to be healthy.
+- 2026-11-01 – The api container has no healthcheck (distroless has no shell); Caddy waits for it to start, not to be healthy. *(superseded, see Review follow-ups)*
 
 ## Frontend
 
@@ -64,3 +64,18 @@ Decisions made while building the prototype that are not in `CLAUDE.md`. One lin
 - 2026-11-01 – `web/style.json` is bundled with `import.meta.glob`, and `pmtiles:///…` URLs are rewritten to the page origin at runtime.
 - 2026-11-01 – The client blocks HEIC and files over 25 MB before upload, mirroring the backend.
 - 2026-11-01 – A 404 from `GET /api/plots/{cell}` is shown as a blank plot.
+
+## Review follow-ups
+
+- 2026-11-01 – Photo storage runs on Garage (`dxflrs/garage:v2.5.0`, single node, config in `deploy/garage.toml`) instead of a MinIO community image; `quay.io/minio/minio` now requires authentication (401). The api code is unchanged: only `internal/storage` speaks S3.
+- 2026-11-01 – `garage-init` (`curlimages/curl:8.22.0` + `deploy/garage-init.sh`) sets the node layout, creates the bucket and imports the api's key through Garage's admin API v2; Garage secrets come from `GARAGE_RPC_SECRET` / `GARAGE_ADMIN_TOKEN`, never from the config file.
+- 2026-11-01 – Garage has no anonymous-read bucket policy, so the bucket gets website access and Caddy proxies `/img/photos/*` to Garage's website endpoint (Host `<bucket>.web.garage.localhost`); other paths under `/img` return 404, non-GET/HEAD 405.
+- 2026-11-01 – `Cache-Control` for photos comes from the stored object only; Caddy no longer adds its own header.
+- 2026-11-01 – Garage requires its key format: `S3_ACCESS_KEY` is `GK` + 24 hex characters, `S3_SECRET_KEY` 64 hex characters.
+- 2026-11-01 – Only host port 8080 is published; Garage has no console.
+- 2026-11-01 – PostgreSQL is `postgres:16.15-alpine3.24`; PostGIS was optional and ran emulated on Apple Silicon. Existing local volumes from the PostGIS image should be reset with `docker compose down -v`.
+- 2026-11-01 – `api -healthcheck` probes `/healthz` on `API_ADDR` and exits 0/1; compose uses it as the api's healthcheck and Caddy waits for the api to be healthy.
+- 2026-11-01 – `GET /api/plots/{cell}` returns `claimed_at`; the frontend no longer derives it from the photo list.
+- 2026-11-01 – `GET /api/coverage` returns only parents with at least one surveyed plot.
+- 2026-11-01 – Map glyphs are self-hosted in `web/public/fonts/` (Noto Sans Regular and Medium, all 256 ranges, OFL) and the style loads `/fonts/{fontstack}/{range}.pbf`.
+- 2026-11-01 – The logo lives in `web/public/logo.svg` (favicon and header); `apple-touch-icon.png` (180 px) is rendered from it with square corners because iOS masks the icon itself.

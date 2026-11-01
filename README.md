@@ -18,7 +18,7 @@ docker compose up --build
 open http://localhost:8080
 ```
 
-Upload a geotagged JPEG or PNG (the photos in `testdata/` work) and its plot turns surveyed. The MinIO console runs on http://localhost:9001 for debugging. `docker compose down -v` resets all data.
+Upload a geotagged JPEG or PNG (the photos in `testdata/` work) and its plot turns surveyed. The stack runs PostgreSQL, Garage (local S3 for the photos), the api, the web build and Caddy, with only port 8080 published. `docker compose down -v` resets all data.
 
 ## Build the map
 
@@ -40,4 +40,4 @@ Everything is configured through environment variables, all documented in [deplo
 - Ranks, leaderboards, the "where was this" mode, moderation and rate limiting.
 - HEIC uploads: JPEG and PNG only for now.
 - Country and province boundaries, land/sea distinction in coverage, and anything beyond Thailand.
-- An image CDN and self-hosted map fonts (glyphs currently load from the Protomaps assets host).
+- An image CDN.

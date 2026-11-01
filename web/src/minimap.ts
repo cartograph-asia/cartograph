@@ -14,7 +14,7 @@ import type { Feature, FeatureCollection, Polygon } from 'geojson';
 import { Protocol } from 'pmtiles';
 import { httpApi } from './api/http';
 import { type BBox, cellRing, cellsForBBox, chunk, COVERAGE_BATCH, estimateCellCount, MAX_VIEW_CELLS } from './grid';
-import { baseStyle } from './style';
+import { loadBaseStyle } from './style';
 
 // The three greens of /map (src/layers.ts): 1 photo, 2–3, 4 or more.
 const GREEN_LIGHT = '#A8CDB3';
@@ -23,7 +23,8 @@ const GREEN_MID = '#5FA57A';
 const SLATE = '#2F3A3F';
 
 setWorkerUrl(workerUrl);
-addProtocol('pmtiles', new Protocol().tile);
+const protocol = new Protocol();
+addProtocol('pmtiles', protocol.tile);
 
 // MapLibre's controls in the pages' look, as on /map (src/styles.css): square,
 // no shadow, the paper colour and the page's serif for the attribution. The
@@ -44,6 +45,8 @@ const config = await httpApi.getConfig().catch((err: unknown) => {
   console.warn('minimap config:', err);
   return null;
 });
+// With the paper margin beyond the archive, as on /map (style.ts).
+const { style } = await loadBaseStyle(config?.tiles_url, protocol);
 
 const css = document.createElement('style');
 css.textContent = maplibreCss + OVERRIDES;
@@ -78,17 +81,21 @@ function createMap(el: HTMLElement, bounds: LngLatBoundsLike, maxZoom: number): 
   el.append(box);
   const map = new MapLibreMap({
     container: box,
-    style: baseStyle(config?.tiles_url),
+    style: structuredClone(style),
     bounds,
     fitBoundsOptions: { padding: 24, maxZoom },
     minZoom: 4.5,
     maxZoom: 17,
     scrollZoom: false, // never trap the page scroll
+    // North up and flat, as on /map.
     dragRotate: false,
     pitchWithRotate: false,
+    touchPitch: false,
+    maxPitch: 0,
     attributionControl: { compact: true },
   });
   map.touchZoomRotate.disableRotation();
+  map.keyboard.disableRotation();
   map.addControl(new NavigationControl({ showCompass: false }), 'top-right');
   map.on('error', (e) => console.warn('minimap:', e.error?.message ?? e));
   return map;

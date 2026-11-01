@@ -26,8 +26,13 @@
 #   JAVA_XMX          JVM heap, default 5g (Thailand and neighbours peak at
 #                     ~3.8 GB; node locations and the feature sort live on
 #                     disk, not in the heap; see README.md)
-#   BOUNDS            area the archive covers, default 88,-12,150,55: the map's
-#                     maxBounds in web/src/main.ts. Planetiler would otherwise
+#   BOUNDS            area the archive covers, default "world": coasts, sea and
+#                     Natural Earth everywhere, OSM detail only for EXTRACTS
+#                     (identical sea tiles are stored once, so the whole world
+#                     adds about 0.6 GB and a few minutes); or a box such as
+#                     88,-12,150,55. The map reads it from the archive's header and
+#                     covers everything beyond it with paper
+#                     (web/src/style.ts). Planetiler would otherwise
 #                     stop at the extract's bounding box, so the sea west of
 #                     97.3°E and everything beyond Thailand's box went blank
 #                     ("cut off"). Ocean and low-zoom land come from the
@@ -47,7 +52,7 @@ PLANETILER_VERSION="${PLANETILER_VERSION:-0.10.2}"
 PLANETILER_IMAGE="${PLANETILER_IMAGE:-ghcr.io/onthegomap/planetiler:${PLANETILER_VERSION}}"
 PLANETILER_JAR="${SCRIPT_DIR}/data/planetiler-${PLANETILER_VERSION}.jar"
 JAVA_XMX="${JAVA_XMX:-5g}"
-BOUNDS="${BOUNDS:-88,-12,150,55}"
+BOUNDS="${BOUNDS:-world}"
 DEBIAN_IMAGE="${DEBIAN_IMAGE:-debian:bookworm-slim}"
 EXTRACTS="${EXTRACTS:-thailand myanmar laos cambodia vietnam malaysia-singapore-brunei indonesia philippines east-timor china taiwan japan south-korea north-korea mongolia}"
 PBF_NAME="region-latest.osm.pbf"

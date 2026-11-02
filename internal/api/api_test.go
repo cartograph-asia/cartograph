@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cartograph-asia/cartograph/internal/countries"
 	"github.com/cartograph-asia/cartograph/internal/db"
 	"github.com/cartograph-asia/cartograph/internal/h3"
 	"github.com/cartograph-asia/cartograph/internal/photos"
@@ -29,6 +30,10 @@ type fakeRepo struct {
 	plots  map[string]*db.PlotDetail
 	parent map[string][2]string // cell -> parent5, parent6
 	got    []db.NewPhoto        // every photo that was claimed, in order
+	// outside makes ClaimPhoto fail with db.ErrOutsideRegions; open is what
+	// OpenCountries reports.
+	outside bool
+	open    []countries.Country
 }
 
 func newFakeRepo() *fakeRepo {
@@ -38,6 +43,9 @@ func newFakeRepo() *fakeRepo {
 func (f *fakeRepo) ClaimPhoto(_ context.Context, p db.NewPhoto) (bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.outside {
+		return false, db.ErrOutsideRegions
+	}
 	f.got = append(f.got, p)
 	pl, ok := f.plots[p.Cell]
 	if !ok {
@@ -79,6 +87,12 @@ func (f *fakeRepo) Plot(_ context.Context, cell string) (*db.PlotDetail, error) 
 
 func (f *fakeRepo) SurveyableBounds(context.Context) (db.Bounds, bool, error) {
 	return db.Bounds{West: 97.3, South: 5.6, East: 105.6, North: 20.5}, true, nil
+}
+
+func (f *fakeRepo) OpenCountries(context.Context) ([]countries.Country, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.open, nil
 }
 
 func (f *fakeRepo) Coverage(_ context.Context, res int, parents []string) (map[string]int64, error) {
@@ -624,5 +638,42 @@ func TestCreatePhotoPassesCamera(t *testing.T) {
 	}
 	if c := e.repo.got[1].Camera; c != nil {
 		t.Errorf("a file without camera tags got %+v", c)
+	}
+}
+
+func country(t *testing.T, code string) countries.Country {
+	t.Helper()
+	c, ok := countries.ByCode(code)
+	if !ok {
+		t.Fatalf("no country %q", code)
+	}
+	return c
+}
+
+// A photo outside every province is a 400 JSON error that names the open
+// countries: in brackets, "and" before the last, none without brackets.
+func TestCreatePhotoOutsideRegionsNamesOpenCountries(t *testing.T) {
+	const sentence = "this photo was taken outside the area Cartograph covers so far"
+	for _, tc := range []struct {
+		name string
+		open []string
+		want string
+	}{
+		{"none", nil, sentence},
+		{"one", []string{"th"}, sentence + " (Thailand)"},
+		{"two", []string{"la", "th"}, sentence + " (Laos and Thailand)"},
+		{"three", []string{"kh", "la", "th"}, sentence + " (Cambodia, Laos and Thailand)"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := newEnv(t, 25)
+			e.repo.outside = true
+			for _, code := range tc.open {
+				e.repo.open = append(e.repo.open, country(t, code))
+			}
+			status, body := e.upload(fixture(t, "gps.jpg"), nil)
+			if status != http.StatusBadRequest || body["error"] != tc.want || len(body) != 1 {
+				t.Fatalf("got %d %v, want 400 %q", status, body, tc.want)
+			}
+		})
 	}
 }

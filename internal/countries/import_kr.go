@@ -30,24 +30,27 @@ package countries
 //     jeonbuk-south-korea, jeonnam-gwangju-south-korea. The word for
 //     Jeonnam-Gwangju is OSM's English one, "special metropolitan city".
 //   - Districts: the 229 level-6 relations of the country (no ISO code):
-//     73 si (cities: "Andong-si"), 77 gun (counties, "Cheorwon-gun") and 69
-//     gu (districts of the metropolitan cities, "Jongno-gu"), the last 10
-//     with a bare English name ("Ansan", "Jeju", "Sinan") and one new Incheon
-//     district, 검단구, without an English name, which is skipped. The suffixes
-//     "-si", "-gun", "-gu" and the Korean 시, 군, 구 are stripped from the
-//     names, so the 219 with and the ten without a suffix agree ("Andong",
-//     "Gangnam"-style), and the type is the kind word: city, county or
-//     district. The five names that are only a direction (Jung, Dong, Seo, Nam,
-//     Buk, 23 districts) become one word; the settings keep no "-gu" for them.
-//     Kind word: KindWord matches an affix at either end of the name, and
-//     구리시 (Guri), 구미시, 군산시, 군포시 and 구례군 start with 구 or 군. So
-//     the English suffixes are listed too: they are longer and tried first,
-//     and every name that has an English suffix is decided by it; the Korean
-//     one decides the ten bare names, none of which starts with 구, 군 or 시.
+//     77 si (cities, "Andong-si"), 82 gun (counties, "Cheorwon-gun") and 69
+//     gu (districts of the metropolitan cities, "Jongno-gu"), and one new
+//     Incheon district, 검단구, without an English name, which is skipped.
+//     Nine English names carry no suffix ("Ansan", "Jeju", "Sinan"). The
+//     suffixes "-si", "-gun", "-gu" and the Korean 시, 군, 구 are stripped
+//     from the names, so that the nine agree with the rest, and the type is
+//     the kind word: city, county or district. The Korean suffixes go gu
+//     first, then gun, then si, each once: 양구군 (Yanggu-gun) loses its 군
+//     and must keep its 구. Five directions (Jung, Dong, Seo, Nam, Buk) name
+//     23 gu and become one-syllable names (중, 동, 서, 남, 북); keeping "-gu"
+//     for them alone would make the list inconsistent.
+//     KindWord matches an affix at either end of a name, and 구리시 (Guri),
+//     구미시, 군산시, 군포시 and 구례군 start with 구 or 군. So the English
+//     suffixes are listed too: they are longer, tried first, and decide every
+//     name that carries one; the Korean affix decides the nine bare names,
+//     none of which starts with 구, 군 or 시.
 //   - Names: English from name:en, int_name, name:ko-Latn, name (never a name
 //     in Hangul, Han, kana or Cyrillic: villages beyond the border in North
 //     Korea, China, Japan and Russia); local from name:ko, else a Hangul name.
-//     name:ko-Hani is Hanja, not the local name. Accents do not occur.
+//     name:ko-Hani is Hanja, not the local name. No province or district name has
+//     an accent.
 //   - Places: the default six kinds; 719 hamlets stay out as in Thailand.
 //
 // LandPlots: docs/countries/south-korea.md, scanned 2026-11-02 from the
@@ -84,7 +87,7 @@ var importKR = Import{
 		},
 		Strip: Affixes{
 			EnSuffix:    []string{"-si", "-gun", "-gu"},
-			LocalSuffix: []string{"시", "군", "구"},
+			LocalSuffix: []string{"구", "군", "시"}, // 군 before 시, 구 first: 양구군 (Yanggu-gun) loses its 군 only
 		},
 	},
 	English:      []string{"name:en", "int_name", "name:ko-Latn", "name"},

@@ -82,6 +82,8 @@ func TestSouthKoreaNames(t *testing.T) {
 			kr.District, "Gunsan", "군산", "city", "gunsan"},
 		{"Gurye-gun starts with gu", krTags("name", "구례군", "name:en", "Gurye-gun", "name:ko", "구례군"),
 			kr.District, "Gurye", "구례", "county", "gurye"},
+		{"Yanggu-gun ends with gu and gun", krTags("name", "양구군", "name:en", "Yanggu-gun", "name:ko", "양구군"),
+			kr.District, "Yanggu", "양구", "county", "yanggu"},
 		{"Gunwi-gun", krTags("name", "군위군", "name:en", "Gunwi-gun", "name:ko", "군위군"),
 			kr.District, "Gunwi", "군위", "county", "gunwi"},
 		// Ten names have no English suffix; the Korean one decides the word.

@@ -10,7 +10,9 @@
 #
 # The first extract is the country's own, the others are neighbours. The
 # merged cut is for reading boundaries only: it holds the neighbours' place
-# nodes too, so places are read from the country's own cut.
+# nodes too, so places are read from the country's own cut. It also holds
+# the neighbours' relations, which a scan counts and a district level reads;
+# osmfile.ReadBoundaryDataWith reads the cuts side by side without them.
 #
 # The cuts are made by cmd/countryscan (or map/cut.sh) beside the extracts;
 # a missing cut is an error. The merge is skipped when the merged file is

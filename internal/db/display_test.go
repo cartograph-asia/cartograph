@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/cartograph-asia/cartograph/internal/db"
+	"github.com/cartograph-asia/cartograph/internal/views"
 )
 
 func TestDisplayNamesInReads(t *testing.T) {
@@ -35,7 +36,7 @@ func TestDisplayNamesInReads(t *testing.T) {
 	if ns := h.NewSurveyors[0]; ns.Surveyor.Display != "Somchai Kittisak" {
 		t.Fatalf("new surveyors %+v", ns)
 	}
-	s, err := v.Surveyor(ctx, "somchai-k", 1)
+	s, err := v.Surveyor(ctx, "somchai-k", views.SurveyorQuery{Page: 1})
 	if err != nil || s.Profile.Name != "Somchai-K" || s.Profile.Display != "Somchai Kittisak" || s.Title != "Somchai Kittisak" || s.Canonical != "/surveyor/Somchai-K" {
 		t.Fatalf("profile %+v %v", s.Page, err)
 	}

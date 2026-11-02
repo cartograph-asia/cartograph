@@ -1,5 +1,5 @@
 {{define "content" -}}
-{{$s := .Profile}}
+{{$s := .Profile}}{{$q := .Query}}
 <header class="head">
 <p class="kicker">Surveyor</p>
 <h1>{{$s.Label}}</h1>
@@ -9,8 +9,11 @@
 <li><b>{{num .Stats.Surveyed}}</b> {{surveyed .Stats.Surveyed .Stats.Plots}}</li>
 <li><b>{{num .Stats.Photos}}</b> {{if eq .Stats.Photos 1}}photo{{else}}photos{{end}}</li>
 <li><b>{{num .Stats.Regions}}</b> {{if eq .Stats.Regions 1}}region{{else}}regions{{end}}</li>
+{{if .Stats.Days}}<li><b>{{num .Stats.Days}}</b> {{if eq .Stats.Days 1}}day{{else}}days{{end}} with photos</li>{{end}}
 </ul>
-<p class="note"><a href="{{.Feed}}">RSS feed of {{$s.Label}}'s photos</a>{{if and .Viewer .Viewer.HasName (eq .Viewer.Name $s.Name)}} · <a href="/settings">Edit your profile</a>{{end}}</p>
+{{with .HomeCoverage}}{{if .Claimed}}<p class="cov"><span class="pct">{{pct .}}</span> <span class="of">{{num .Claimed}} of {{num .Land}} plots of <a href="/region/{{$s.HomeRegion.Slug}}">{{$s.HomeRegion.NameEn}}</a> surveyed by {{$s.Label}}</span></p>
+<div class="cov big">{{template "covbar" .}}</div>{{end}}{{end}}
+<p class="note"><a href="{{.Feed}}">RSS feed of {{$s.Label}}'s photos</a>{{if .PlotCells}} · <a href="/surveyor/{{$s.Name}}.gpx">GPX of the plots</a> · <a href="/surveyor/{{$s.Name}}.geojson">GeoJSON of the plots</a>{{end}}{{if and .Viewer .Viewer.HasName (eq .Viewer.Name $s.Name)}} · <a href="/settings">Edit your profile</a>{{end}}</p>
 </header>
 
 {{if .PlotCells}}<section class="block minimap" aria-labelledby="map-h">
@@ -19,10 +22,38 @@
 <p class="note">{{count (len .PlotCells) "plot" "plots"}} surveyed by {{$s.Label}}.</p>
 </section>{{end}}
 
+{{if or (gt (len .Regions) 1) (gt (len .Years) 1) (gt (len .UploadYears) 1)}}<section class="block" aria-labelledby="where-h">
+<div class="head-row"><h2 id="where-h">Where and when</h2><span class="note">Each line opens its photos.</span></div>
+<div class="cols">
+{{if gt (len .Regions) 1}}<div><h3 class="kicker">Where</h3>
+<ul class="tally">{{range .Regions}}<li><a href="{{($q.WithRegion .Region.Slug).Path $s.Name}}">{{.Region.NameEn}}</a> <span class="n">{{count .Plots "plot" "plots"}} of {{num .Land}} · {{count .Photos "photo" "photos"}}</span></li>{{end}}</ul></div>{{end}}
+{{if or (gt (len .Years) 1) (gt (len .UploadYears) 1)}}<div>
+{{if gt (len .Years) 1}}<h3 class="kicker">When taken</h3>
+<ul class="tally">{{range .Years}}<li><a href="{{($q.WithYear .Year).Path $s.Name}}">{{.Year}}</a> <span class="n">{{count .Photos "photo" "photos"}}</span></li>{{end}}</ul>{{end}}
+{{if gt (len .UploadYears) 1}}<h3 class="kicker">When uploaded</h3>
+<ul class="tally">{{range .UploadYears}}<li><a href="{{($q.WithUploaded .Year).Path $s.Name}}">{{.Year}}</a> <span class="n">{{count .Photos "photo" "photos"}}</span></li>{{end}}</ul>{{end}}
+</div>{{end}}
+</div>
+</section>{{end}}
+
 <section class="block" aria-labelledby="photos-h">
-<div class="head-row"><h2 id="photos-h">Photos</h2><span class="note">Newest first.</span></div>
-{{if .Photos}}{{template "grid" (grid .Now .Photos true "surveyor")}}{{else}}<p>{{$s.Label}} has not uploaded a photo yet.</p>{{end}}
-{{template "pagination" .}}
+<div class="head-row"><h2 id="photos-h">Photos</h2><span class="note">{{if eq $q.Order "oldest"}}Oldest uploaded first.{{else if eq $q.Order "taken"}}Newest taken first.{{else}}Newest first.{{end}}</span></div>
+{{if .PlotCells}}<nav class="opts" aria-label="Order of the photos">
+<a href="{{($q.WithOrder "").Path $s.Name}}"{{if eq $q.Order ""}} aria-current="true"{{end}}>Newest uploaded</a>
+<a href="{{($q.WithOrder "oldest").Path $s.Name}}"{{if eq $q.Order "oldest"}} aria-current="true"{{end}}>Oldest uploaded</a>
+<a href="{{($q.WithOrder "taken").Path $s.Name}}"{{if eq $q.Order "taken"}} aria-current="true"{{end}}>Newest taken</a>
+</nav>
+<nav class="opts" aria-label="Which photos">
+<a href="{{($q.WithOnePerPlot false).Path $s.Name}}"{{if not $q.OnePerPlot}} aria-current="true"{{end}}>All photos</a>
+<a href="{{($q.WithOnePerPlot true).Path $s.Name}}"{{if $q.OnePerPlot}} aria-current="true"{{end}}>One photo per plot</a>
+</nav>{{end}}
+{{if or .FilterRegion $q.Year $q.Uploaded}}<p class="note">Showing {{count .Pagination.Total "photo" "photos"}}{{with .FilterRegion}} in {{.NameEn}}{{end}}{{with $q.Year}} taken in {{.}}{{end}}{{with $q.Uploaded}}{{if $q.Year}} and{{end}} uploaded in {{.}}{{end}}. <a href="{{((($q.WithRegion "").WithYear 0).WithUploaded 0).Path $s.Name}}">Show all</a></p>{{end}}
+{{if .Photos}}{{template "grid" (grid .Now .Photos true "surveyor")}}{{else if $q.Filtered}}<p>No photos of {{$s.Label}} match this view.</p>{{else}}<p>{{$s.Label}} has not uploaded a photo yet.</p>{{end}}
+{{if gt .Pagination.Pages 1}}<nav class="pages" aria-label="Pages">
+{{- if .Pagination.HasPrev}}<a rel="prev" href="{{pageQuery .Canonical .Pagination.Prev}}">← {{if eq $q.Order ""}}Newer{{else}}Previous{{end}}</a>{{else}}<span></span>{{end}}
+<span>Page {{.Pagination.Page}} of {{.Pagination.Pages}}</span>
+{{- if .Pagination.HasNext}}<a rel="next" href="{{pageQuery .Canonical .Pagination.Next}}">{{if eq $q.Order ""}}Older{{else}}Next{{end}} →</a>{{else}}<span></span>{{end -}}
+</nav>{{end}}
 </section>
 {{if .PlotCells}}{{template "minimap-script"}}{{end}}
 {{- end}}

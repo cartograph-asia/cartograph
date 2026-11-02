@@ -35,11 +35,15 @@ func Surveyors() *views.SurveyorList { return must(NewFake().Surveyors(ctx, 1)) 
 func Regions() *views.RegionList { return must(NewFake().Regions(ctx)) }
 
 // Surveyor returns the profile of adrian, the most active fixture surveyor.
-func Surveyor() *views.Surveyor { return must(NewFake().Surveyor(ctx, "adrian", 1)) }
+func Surveyor() *views.Surveyor {
+	return must(NewFake().Surveyor(ctx, "adrian", views.SurveyorQuery{Page: 1}))
+}
 
 // PlaceholderSurveyor returns the profile of a prototype placeholder account
 // (no bio, no home region).
-func PlaceholderSurveyor() *views.Surveyor { return must(NewFake().Surveyor(ctx, "beach-walker", 1)) }
+func PlaceholderSurveyor() *views.Surveyor {
+	return must(NewFake().Surveyor(ctx, "beach-walker", views.SurveyorQuery{Page: 1}))
+}
 
 // Plot returns Pattaya Beach (88658bd11dfffff), the plot with the most photos.
 func Plot() *views.Plot { return must(NewFake().Plot(ctx, "88658bd11dfffff")) }

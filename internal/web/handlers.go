@@ -3,8 +3,11 @@ package web
 import (
 	"errors"
 	"net/http"
+	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -26,7 +29,7 @@ func NewHandlers(src views.Source, rd *Renderer) *Handlers {
 // Routes mounts every page, feed and the static assets on r:
 //
 //	/  /latest  /latest.rss  /surveyors  /regions
-//	/surveyor/{name}[.rss]  /plot/{cell}  /plot/{slug}/{number}  /photo/{id}  /region/{slug}[.rss]
+//	/surveyor/{name}[.rss|.gpx|.geojson]  /plot/{cell}  /plot/{slug}/{number}  /photo/{id}  /region/{slug}[.rss]
 //	/about  /about/plots  /principles  /licence (StaticPages)  /static/*
 //	/{country}[.rss]  (last: every static route above wins; see internal/countries)
 //
@@ -87,17 +90,31 @@ func page(r *http.Request) (int, bool) {
 	return n, true
 }
 
-// canonical redirects to canon (path with an optional ?page=N) when the
-// request spells the path differently (case of a name, slug or id) or says
-// ?page=1 explicitly. It reports whether it redirected.
+// canonicalParams are the query parameters of the pages that carry one;
+// canonical compares these and ignores any other.
+var canonicalParams = []string{"page", "order", "region", "year", "uploaded", "one"}
+
+func knownQuery(vs url.Values) string {
+	known := url.Values{}
+	for _, k := range canonicalParams {
+		if v, ok := vs[k]; ok {
+			known[k] = v
+		}
+	}
+	return known.Encode()
+}
+
+// canonical redirects to canon (path with an optional query of
+// canonicalParams) when the request spells the address differently (case of a
+// name, slug or id, parameter order, an explicit ?page=1). It reports whether
+// it redirected.
 func canonical(w http.ResponseWriter, r *http.Request, canon string) bool {
 	if canon == "" {
 		return false
 	}
 	path, query, _ := strings.Cut(canon, "?")
-	got := r.URL.Query().Get("page")
-	want := strings.TrimPrefix(query, "page=")
-	if r.URL.EscapedPath() == path && got == want {
+	want, _ := url.ParseQuery(query)
+	if r.URL.EscapedPath() == path && knownQuery(r.URL.Query()) == knownQuery(want) {
 		return false
 	}
 	http.Redirect(w, r, canon, http.StatusMovedPermanently)
@@ -152,14 +169,78 @@ func (h *Handlers) surveyor(w http.ResponseWriter, r *http.Request) {
 		h.feed(w, r, func() (*views.Feed, error) { return h.src.SurveyorFeed(r.Context(), base) })
 		return
 	}
-	n, ok := page(r)
+	for _, suffix := range []string{exportGPX, exportGeoJSON} {
+		if base, ok := strings.CutSuffix(name, suffix); ok {
+			h.exportPlots(w, r, base, suffix)
+			return
+		}
+	}
+	q, ok := surveyorQuery(r)
 	if !ok {
 		h.NotFound(w, r)
 		return
 	}
-	d, err := h.src.Surveyor(r.Context(), name, n)
+	d, err := h.src.Surveyor(r.Context(), name, q)
 	h.show(w, r, views.PageSurveyor, d, err)
 }
+
+// firstYear is the earliest year a profile can be filtered by.
+const firstYear = 2000
+
+// surveyorQuery reads a profile's ?order=&region=&year=&uploaded=&one=&page=. A value it
+// does not know, or a parameter given twice, is not a page (false).
+func surveyorQuery(r *http.Request) (views.SurveyorQuery, bool) {
+	var q views.SurveyorQuery
+	vs := r.URL.Query()
+	one := func(key string) (string, bool, bool) { // value, present, valid
+		v, ok := vs[key]
+		if !ok {
+			return "", false, true
+		}
+		return v[0], true, len(v) == 1
+	}
+	var ok bool
+	if q.Page, ok = page(r); !ok {
+		return q, false
+	}
+	if v, present, valid := one("order"); !valid || present && v != views.OrderOldest && v != views.OrderTaken {
+		return q, false
+	} else {
+		q.Order = v
+	}
+	if v, present, valid := one("region"); !valid || present && !slugPattern.MatchString(v) {
+		return q, false
+	} else {
+		q.Region = v
+	}
+	year := func(key string, dst *int) bool {
+		v, present, valid := one(key)
+		if !valid {
+			return false
+		}
+		if present {
+			y, err := strconv.Atoi(v)
+			if err != nil || len(v) != 4 || y < firstYear || y > time.Now().Year() {
+				return false
+			}
+			*dst = y
+		}
+		return true
+	}
+	if !year("year", &q.Year) || !year("uploaded", &q.Uploaded) {
+		return q, false
+	}
+	if v, present, valid := one("one"); !valid || present && v != "plot" {
+		return q, false
+	} else {
+		q.OnePerPlot = present
+	}
+	return q, true
+}
+
+// slugPattern matches a region slug in any case (the lookup is
+// case-insensitive and the page redirects to the stored spelling).
+var slugPattern = regexp.MustCompile(`^[A-Za-z0-9]+(-[A-Za-z0-9]+)*$`)
 
 func (h *Handlers) plot(w http.ResponseWriter, r *http.Request) {
 	d, err := h.src.Plot(r.Context(), chi.URLParam(r, "cell"))

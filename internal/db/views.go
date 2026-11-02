@@ -441,30 +441,128 @@ func deref(s *string) string {
 
 func surveyorPath(name string) string { return "/surveyor/" + url.PathEscape(name) }
 
+// takenOn is the date a photo with alias ph was taken on the clock where it
+// was taken (taken_at_local), else the UTC date of taken_at; null without either.
+func takenOn(ph string) string {
+	return "coalesce(" + ph + ".taken_at_local, " + ph + ".taken_at at time zone 'UTC')"
+}
+
+var takenLocal = takenOn("ph")
+
+// uploadedOn is the date a photo with alias ph was uploaded, on Bangkok's
+// clock like every date the pages show (internal/web's zone).
+func uploadedOn(ph string) string { return ph + ".uploaded_at at time zone 'Asia/Bangkok'" }
+
+// surveyorOrder maps a views.SurveyorQuery order to its ORDER BY clause.
+var surveyorOrder = map[string]string{
+	views.OrderNewest: newestFirst,
+	views.OrderOldest: oldestFirst,
+	views.OrderTaken:  `order by ` + takenLocal + ` desc nulls last, ph.uploaded_at desc, ph.id desc`,
+}
+
+// surveyorWhere returns the conditions of q on the photo alias ph and the plot
+// alias pl, joined as in photoFrom, and the arguments they bind, numbered from
+// next. The region filter matches a plot's province and its district.
+func surveyorWhere(q views.SurveyorQuery, regionID *int, next int, ph, pl string) (string, []any) {
+	var sql string
+	var args []any
+	if regionID != nil {
+		sql += fmt.Sprintf(" and (%s.region_id = $%d or %s.district_id = $%d)", pl, next, pl, next)
+		args = append(args, *regionID)
+		next++
+	}
+	if q.Year != 0 {
+		sql += fmt.Sprintf(" and extract(year from %s) = $%d", takenOn(ph), next)
+		args = append(args, q.Year)
+		next++
+	}
+	if q.Uploaded != 0 {
+		sql += fmt.Sprintf(" and extract(year from %s) = $%d", uploadedOn(ph), next)
+		args = append(args, q.Uploaded)
+	}
+	return sql, args
+}
+
 // Surveyor implements views.Source.
-func (v *Views) Surveyor(ctx context.Context, name string, page int) (*views.Surveyor, error) {
+func (v *Views) Surveyor(ctx context.Context, name string, q views.SurveyorQuery) (*views.Surveyor, error) {
 	s, err := v.surveyor(ctx, name)
 	if err != nil {
 		return nil, err
 	}
+	order, ok := surveyorOrder[q.Order]
+	if !ok {
+		return nil, views.ErrNotFound
+	}
 	out := &views.Surveyor{Profile: s.profile}
+	var regionID *int
+	if q.Region != "" {
+		var id int
+		var ref views.RegionRef
+		err := v.d.Pool.QueryRow(ctx, `select id, slug, name_en, coalesce(name_th, '') from regions where slug = lower($1)`, q.Region).
+			Scan(&id, &ref.Slug, &ref.NameEn, &ref.NameTh)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, views.ErrNotFound
+		}
+		if err != nil {
+			return nil, fmt.Errorf("db: surveyor region filter: %w", err)
+		}
+		regionID, q.Region, out.FilterRegion = &id, ref.Slug, &ref
+	}
 	err = v.d.Pool.QueryRow(ctx, `
 		select
 		  count(distinct ph.cell), (select count(*) from plots where first_surveyor_id = $1),
-		  count(*), count(distinct pl.region_id)
+		  count(*), count(distinct pl.region_id), count(distinct `+takenLocal+`::date)
 		from visible_photos ph join plots pl on pl.cell = ph.cell where ph.surveyor_id = $1`, s.id,
-	).Scan(&out.Stats.Surveyed, &out.Stats.Plots, &out.Stats.Photos, &out.Stats.Regions)
+	).Scan(&out.Stats.Surveyed, &out.Stats.Plots, &out.Stats.Photos, &out.Stats.Regions, &out.Stats.Days)
 	if err != nil {
 		return nil, fmt.Errorf("db: surveyor stats: %w", err)
 	}
-	pg, err := pagination(page, views.PerPage, out.Stats.Photos)
+
+	// The photos of the view: filtered, optionally one per plot, ordered.
+	cond, fargs := surveyorWhere(q, regionID, 2, "ph", "pl")
+	where := "where ph.surveyor_id = $1" + cond
+	args := append([]any{s.id}, fargs...)
+	if q.OnePerPlot {
+		sub, _ := surveyorWhere(q, regionID, 2, "ph2", "pl2")
+		where += ` and ph.id in (select distinct on (ph2.cell) ph2.id from visible_photos ph2 join plots pl2 on pl2.cell = ph2.cell
+			where ph2.surveyor_id = $1` + sub + ` order by ph2.cell, ph2.uploaded_at desc, ph2.id desc)`
+	}
+	total, err := v.count(ctx, `select count(*) from visible_photos ph join plots pl on pl.cell = ph.cell `+where, args...)
 	if err != nil {
 		return nil, err
 	}
-	out.Pagination = pg
-	if out.Photos, err = v.photos(ctx, "where ph.surveyor_id = $1", newestFirst+" limit $2 offset $3", s.id, pg.PerPage, offset(pg)); err != nil {
+	pg, err := pagination(q.Page, views.PerPage, total)
+	if err != nil {
 		return nil, err
 	}
+	q.Page = pg.Page
+	out.Query, out.Pagination = q, pg
+	n := len(args)
+	if out.Photos, err = v.photos(ctx, where, fmt.Sprintf("%s limit $%d offset $%d", order, n+1, n+2), append(args, pg.PerPage, offset(pg))...); err != nil {
+		return nil, err
+	}
+
+	if out.Regions, err = v.surveyorRegions(ctx, s.id); err != nil {
+		return nil, err
+	}
+	if out.Years, err = v.surveyorYears(ctx, s.id, takenLocal); err != nil {
+		return nil, err
+	}
+	if out.UploadYears, err = v.surveyorYears(ctx, s.id, uploadedOn("ph")); err != nil {
+		return nil, err
+	}
+	if h := s.profile.HomeRegion; h != nil {
+		var c views.Coverage
+		err := v.d.Pool.QueryRow(ctx, `
+			select (select count(distinct ph.cell) from visible_photos ph join plots pl on pl.cell = ph.cell
+			        where ph.surveyor_id = $1 and (pl.region_id = r.id or pl.district_id = r.id)), r.land_cells
+			from regions r where r.slug = $2`, s.id, h.Slug).Scan(&c.Claimed, &c.Land)
+		if err != nil {
+			return nil, fmt.Errorf("db: surveyor home coverage: %w", err)
+		}
+		out.HomeCoverage = &c
+	}
+
 	rows, err := v.d.Pool.Query(ctx, `select pl.cell, pl.photo_count from plots pl
 		where pl.cell in (select cell from visible_photos where surveyor_id = $1) order by pl.cell`, s.id)
 	if err != nil {
@@ -472,10 +570,10 @@ func (v *Views) Surveyor(ctx context.Context, name string, page int) (*views.Sur
 	}
 	out.PlotPhotos = map[string]int{}
 	var cell string
-	var n int
-	if _, err = pgx.ForEachRow(rows, []any{&cell, &n}, func() error {
+	var np int
+	if _, err = pgx.ForEachRow(rows, []any{&cell, &np}, func() error {
 		out.PlotCells = append(out.PlotCells, cell)
-		out.PlotPhotos[cell] = n
+		out.PlotPhotos[cell] = np
 		return nil
 	}); err != nil {
 		return nil, fmt.Errorf("db: surveyor cells: %w", err)
@@ -490,8 +588,87 @@ func (v *Views) Surveyor(ctx context.Context, name string, page int) (*views.Sur
 	if desc == "" {
 		desc = fmt.Sprintf("Photos by %s on Cartograph.", s.profile.Label())
 	}
-	path := surveyorPath(s.profile.Name)
-	out.Page = v.base(s.profile.Label(), withPage(path, pg.Page), desc, path+".rss")
+	out.Page = v.base(s.profile.Label(), q.Path(s.profile.Name), desc, surveyorPath(s.profile.Name)+".rss")
+	out.NoIndex = q.Filtered()
+	return out, nil
+}
+
+// surveyorRegions is the "Where" list: provinces with photos of the
+// Surveyor's, most plots first.
+func (v *Views) surveyorRegions(ctx context.Context, id uuid.UUID) ([]views.SurveyorRegion, error) {
+	rows, err := v.d.Pool.Query(ctx, `
+		select r.slug, r.name_en, coalesce(r.name_th, ''), count(distinct ph.cell), count(*), r.land_cells
+		from visible_photos ph join plots pl on pl.cell = ph.cell join regions r on r.id = pl.region_id
+		where ph.surveyor_id = $1 group by r.id order by 4 desc, r.name_en, r.id`, id)
+	if err != nil {
+		return nil, fmt.Errorf("db: surveyor regions: %w", err)
+	}
+	out, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (x views.SurveyorRegion, err error) {
+		err = r.Scan(&x.Region.Slug, &x.Region.NameEn, &x.Region.NameTh, &x.Plots, &x.Photos, &x.Land)
+		return
+	})
+	if err != nil {
+		return nil, fmt.Errorf("db: surveyor regions: %w", err)
+	}
+	return out, nil
+}
+
+// surveyorYears is a "When" list: the years of date (takenLocal or
+// uploadedOn) over their photos, newest first; photos without the date are
+// left out.
+func (v *Views) surveyorYears(ctx context.Context, id uuid.UUID, date string) ([]views.SurveyorYear, error) {
+	rows, err := v.d.Pool.Query(ctx, `
+		select extract(year from `+date+`)::int as y, count(*) from visible_photos ph
+		where ph.surveyor_id = $1 and `+date+` is not null group by y order by y desc`, id)
+	if err != nil {
+		return nil, fmt.Errorf("db: surveyor years: %w", err)
+	}
+	out, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (x views.SurveyorYear, err error) {
+		err = r.Scan(&x.Year, &x.Photos)
+		return
+	})
+	if err != nil {
+		return nil, fmt.Errorf("db: surveyor years: %w", err)
+	}
+	return out, nil
+}
+
+// SurveyorPlots implements views.Source.
+func (v *Views) SurveyorPlots(ctx context.Context, name string) (*views.SurveyorPlotList, error) {
+	s, err := v.surveyor(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := v.d.Pool.Query(ctx, `
+		select ph.cell, coalesce(pl.place_name, r.name_en, ''), coalesce(pl.place_name_th, ''),
+		       coalesce(r.slug, ''), coalesce(r.name_en, ''), coalesce(r.name_th, ''),
+		       coalesce(pn.number, 0), coalesce(dr.name_en, ''), count(*), pl.first_surveyor_id is not distinct from $1
+		from visible_photos ph
+		join plots pl on pl.cell = ph.cell
+		left join plot_numbers pn on pn.cell = ph.cell
+		left join regions r on r.id = pl.region_id
+		left join regions dr on dr.id = pl.district_id
+		where ph.surveyor_id = $1
+		group by ph.cell, pl.place_name, pl.place_name_th, pl.first_surveyor_id, r.id, pn.number, dr.id
+		order by ph.cell`, s.id)
+	if err != nil {
+		return nil, fmt.Errorf("db: surveyor plots: %w", err)
+	}
+	out := &views.SurveyorPlotList{Surveyor: views.SurveyorRef{Name: s.profile.Name, Display: s.profile.Display}}
+	out.Plots, err = pgx.CollectRows(rows, func(r pgx.CollectableRow) (x views.SurveyorPlot, err error) {
+		p := &x.Plot
+		err = r.Scan(&p.Cell, &p.Place, &p.PlaceTh, &p.Region.Slug, &p.Region.NameEn, &p.Region.NameTh, &p.Number, &p.District, &x.Photos, &x.First)
+		return
+	})
+	if err != nil {
+		return nil, fmt.Errorf("db: surveyor plots: %w", err)
+	}
+	for i := range out.Plots {
+		x := &out.Plots[i]
+		if x.Lat, x.Lng, err = h3.Centre(x.Plot.Cell); err != nil {
+			return nil, err
+		}
+	}
 	return out, nil
 }
 

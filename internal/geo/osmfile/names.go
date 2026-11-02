@@ -24,9 +24,21 @@ import (
 // MatchLevel reports whether r belongs to level l by its tags: a
 // boundary=administrative relation at one of l.AdminLevels whose ISO3166-2
 // starts with l.ISOPrefix and "-" (case-insensitive; no check when the prefix
-// is empty), or one of l.Include, whatever its tags. l.Parent is a geometric
-// rule and is left to the caller. A zero Level matches nothing.
+// is empty), or one of l.Include, whatever its tags; never one of l.Exclude
+// (Excluded tells those apart). l.Parent is a geometric rule and is left to
+// the caller. A zero Level matches nothing.
 func MatchLevel(r *osm.Relation, l countries.Level) bool {
+	return !slices.Contains(l.Exclude, int64(r.ID)) && matchRule(r, l)
+}
+
+// Excluded reports whether r would belong to level l by its tags but is one
+// of l.Exclude, which the dry run reports.
+func Excluded(r *osm.Relation, l countries.Level) bool {
+	return slices.Contains(l.Exclude, int64(r.ID)) && matchRule(r, l)
+}
+
+// matchRule is MatchLevel without l.Exclude.
+func matchRule(r *osm.Relation, l countries.Level) bool {
 	if len(l.AdminLevels) == 0 {
 		return false
 	}
@@ -280,60 +292,138 @@ func LevelNames(t osm.Tags, imp countries.Import, l countries.Level) Named {
 // Sibling is one of the regions ResolveSlugs compares: the provinces of one
 // country, or the districts of one province.
 type Sibling struct {
-	OSMID  int64
-	Names  Named
-	Stored string // the slug already stored for this relation, "" if new; it never changes
-	Slug   string // set by ResolveSlugs
+	OSMID int64
+	Names Named
+	// Stored is the slug already stored for this relation, "" if new; it
+	// never changes. StoredEn and StoredLocal are the names stored with it
+	// ("" for NULL): they tell whether the stored row carries its affixes.
+	Stored                string
+	StoredEn, StoredLocal string
+	Slug                  string // set by ResolveSlugs
 }
 
 // ResolveSlugs gives every sibling its slug and settles duplicates
 // (decision 7 of docs/COUNTRY_IMPORT_STAGE2_BRIEF.md). full builds a slug from
 // its name part: for provinces Slug(en) plus the country suffix where the
 // settings want one, for districts the province's stored slug, "-" and
-// Slug(en). A relation with a stored slug keeps it, renamed or not.
+// Slug(en).
+//
+// Collisions are decided on what a fresh import would give, so that a
+// second run decides as the first did, whatever is stored by then:
 //
 //  1. Every sibling gets full(Slug(Names.En)).
-//  2. Where siblings share a slug (a stored one counts as theirs), all of them
-//     keep their affixes: Names.En and Names.Local go back to the raw names
-//     (Local still NULL when equal), and the new ones get full(Slug(raw En)).
-//  3. New siblings that still share a slug get the OSM id appended to the
-//     name part: full(Slug(En) + "-" + id).
+//  2. Where siblings share a slug, all of them keep their affixes: Names.En
+//     and Names.Local go back to the raw names (Local still NULL when
+//     equal), and they get full(Slug(raw En)).
+//  3. Siblings that still share a slug get the OSM id appended to the name
+//     part: full(Slug(En) + "-" + id).
+//
+// Then the stored rows are laid over it. A relation with a stored slug keeps
+// it, renamed or not, and keeps its stored affix state: when its stored
+// English and local names are the stripped (or the raw) form of its names
+// now, it gets that form again, whatever the collisions above say; only a
+// relation renamed in OSM takes the form of step 2. A new sibling whose slug
+// is a stored sibling's (the stored one was renamed, or came first and
+// alone) gives way: it keeps its affixes, and when that is still taken it
+// gets its OSM id appended.
 //
 // An empty name part is left for the caller to refuse.
 func ResolveSlugs(sibs []Sibling, full func(base string) string) {
-	slugOf := func(s *Sibling, base string) {
-		if s.Stored != "" {
-			s.Slug = s.Stored
-		} else {
-			s.Slug = full(base)
-		}
+	// fresh[i] is what a fresh import gives sibling i.
+	type result struct {
+		slug    string
+		affixed bool
 	}
+	fresh := make([]result, len(sibs))
 	shared := func() map[string]int {
 		n := map[string]int{}
-		for _, s := range sibs {
-			n[s.Slug]++
+		for _, r := range fresh {
+			n[r.slug]++
 		}
 		return n
 	}
 	for i := range sibs {
-		slugOf(&sibs[i], Slug(sibs[i].Names.En))
+		fresh[i] = result{slug: full(Slug(sibs[i].Names.En))}
 	}
 	n := shared()
 	for i := range sibs {
-		s := &sibs[i]
-		if n[s.Slug] < 2 {
-			continue
+		if n[fresh[i].slug] >= 2 {
+			fresh[i] = result{slug: full(Slug(sibs[i].Names.RawEn)), affixed: true}
 		}
-		s.Names.En = s.Names.RawEn
-		s.Names.Local = s.Names.local(s.Names.RawEn, s.Names.RawLocal)
-		slugOf(s, Slug(s.Names.En))
 	}
 	n = shared()
 	for i := range sibs {
+		if n[fresh[i].slug] >= 2 {
+			name := sibs[i].Names.En
+			if fresh[i].affixed {
+				name = sibs[i].Names.RawEn
+			}
+			fresh[i].slug = full(fmt.Sprintf("%s-%d", Slug(name), sibs[i].OSMID))
+		}
+	}
+
+	taken := map[string]bool{}
+	for i := range sibs {
 		s := &sibs[i]
-		if n[s.Slug] < 2 || s.Stored != "" {
+		if s.Stored == "" {
 			continue
 		}
-		slugOf(s, fmt.Sprintf("%s-%d", Slug(s.Names.En), s.OSMID))
+		s.Slug = s.Stored
+		taken[s.Stored] = true
+		affixed := fresh[i].affixed
+		if st, known := s.storedAffixed(); known {
+			affixed = st
+		}
+		if affixed {
+			s.Names = s.Names.affixed()
+		}
 	}
+	for i := range sibs {
+		s := &sibs[i]
+		if s.Stored != "" {
+			continue
+		}
+		affixed, slug := fresh[i].affixed, fresh[i].slug
+		if taken[slug] && !affixed {
+			affixed, slug = true, full(Slug(s.Names.RawEn))
+		}
+		if taken[slug] {
+			slug = full(fmt.Sprintf("%s-%d", Slug(s.Names.RawEn), s.OSMID))
+		}
+		if affixed {
+			s.Names = s.Names.affixed()
+		}
+		s.Slug = slug
+		taken[slug] = true
+	}
+}
+
+// affixed returns n with the raw names in place of the stripped ones.
+func (n Named) affixed() Named {
+	n.En = n.RawEn
+	n.Local = n.local(n.RawEn, n.RawLocal)
+	return n
+}
+
+// storedAffixed tells from the stored names whether the stored row carries
+// its affixes: known is false when the stored names are neither form of the
+// names now (the relation was renamed in OSM, or nothing is stored). Both
+// names are compared first, then the English one alone (a local name that
+// changed on its own).
+func (s Sibling) storedAffixed() (affixed, known bool) {
+	if s.Stored == "" {
+		return false, false
+	}
+	stripped, raw := s.Names, s.Names.affixed()
+	switch {
+	case s.StoredEn == stripped.En && s.StoredLocal == stripped.Local:
+		return false, true
+	case s.StoredEn == raw.En && s.StoredLocal == raw.Local:
+		return true, true
+	case s.StoredEn == stripped.En:
+		return false, true
+	case s.StoredEn == raw.En:
+		return true, true
+	}
+	return false, false
 }

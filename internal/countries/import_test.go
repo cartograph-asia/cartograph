@@ -1,6 +1,7 @@
 package countries
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
 	"unicode"
@@ -135,4 +136,35 @@ func TestThailandSettings(t *testing.T) {
 	if got := Imports["th"]; !reflect.DeepEqual(got, want) {
 		t.Errorf("Thailand's settings\n got %+v\nwant %+v", got, want)
 	}
+}
+
+// A relation is either included or excluded at a level, never both.
+func TestExcludeNotIncluded(t *testing.T) {
+	for _, e := range excludeErrors(Imports) {
+		t.Error(e)
+	}
+	// The rule itself, on settings that break it.
+	bad := map[string]Import{"aa": {
+		Province: Level{AdminLevels: []int{4}, Include: []int64{1, 2}, Exclude: []int64{2}},
+		District: Level{AdminLevels: []int{6}, Include: []int64{3}, Exclude: []int64{3, 4}},
+	}}
+	if got := excludeErrors(bad); len(got) != 2 {
+		t.Errorf("errors on bad settings: %q, want 2", got)
+	}
+}
+
+func excludeErrors(imps map[string]Import) []string {
+	var out []string
+	for code, imp := range imps {
+		for name, l := range map[string]Level{"province": imp.Province, "district": imp.District} {
+			for _, id := range l.Exclude {
+				for _, in := range l.Include {
+					if id == in {
+						out = append(out, fmt.Sprintf("%s: %s relation r%d is in both Include and Exclude", code, name, id))
+					}
+				}
+			}
+		}
+	}
+	return out
 }

@@ -2,6 +2,7 @@ package osmfile
 
 import (
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"testing/quick"
@@ -201,6 +202,14 @@ func TestMatchLevel(t *testing.T) {
 	}
 	if MatchLevel(&osm.Relation{ID: 8, Tags: tags("boundary", "administrative", "admin_level", "4")}, ph) {
 		t.Error("a relation without the ISO code counted")
+	}
+	// Vietnam: a relation named in Exclude never counts, and Excluded tells it.
+	vn := countries.Level{AdminLevels: []int{6}, Exclude: []int64{7}}
+	if MatchLevel(admin("6", ""), vn) || !Excluded(admin("6", ""), vn) {
+		t.Error("Exclude did not exclude")
+	}
+	if Excluded(admin("5", ""), vn) || Excluded(&osm.Relation{ID: 8, Tags: tags("boundary", "administrative", "admin_level", "6")}, vn) {
+		t.Error("Excluded counted a relation outside the rule or not listed")
 	}
 	// Brunei: no district level.
 	if MatchLevel(admin("6", ""), countries.Level{}) {
@@ -430,7 +439,8 @@ func TestResolveSlugs(t *testing.T) {
 		}
 	}
 
-	// A new sibling that collides with a stored one keeps its affix; the
+	// A new sibling gets what a fresh import would give it: here its affix
+	// and its id, since a fresh import of the two would give both; the
 	// stored one keeps its slug.
 	sibs = []Sibling{
 		sibling(1, vietnam, vietnam.District, "name", "Xã Tân Thành"),
@@ -438,8 +448,177 @@ func TestResolveSlugs(t *testing.T) {
 	}
 	sibs[0].Stored = "ho-chi-minh-vietnam-tan-thanh"
 	ResolveSlugs(sibs, district)
-	if sibs[0].Slug != "ho-chi-minh-vietnam-tan-thanh" || sibs[1].Slug != "ho-chi-minh-vietnam-xa-tan-thanh" {
+	if sibs[0].Slug != "ho-chi-minh-vietnam-tan-thanh" || sibs[1].Slug != "ho-chi-minh-vietnam-xa-tan-thanh-2" {
 		t.Errorf("stored and new: %q %q", sibs[0].Slug, sibs[1].Slug)
+	}
+}
+
+// stored returns sibs as the next run sees them after the slugs and names
+// of keep were stored (all of them when keep is nil).
+func stored(sibs []Sibling, keep func(id int64) bool) []Sibling {
+	out := make([]Sibling, len(sibs))
+	for i, s := range sibs {
+		out[i] = Sibling{OSMID: s.OSMID, Names: s.Names}
+		if keep == nil || keep(s.OSMID) {
+			out[i].Stored, out[i].StoredEn, out[i].StoredLocal = s.Slug, s.Names.En, s.Names.Local
+		}
+	}
+	return out
+}
+
+// fresh resets the names of sibs to what LevelNames gives, as a new run
+// reads them from OSM.
+func fresh(sibs []Sibling, names map[int64]Named) []Sibling {
+	for i := range sibs {
+		sibs[i].Names, sibs[i].Slug = names[sibs[i].OSMID], ""
+	}
+	return sibs
+}
+
+// A run on top of what the run before it stored changes nothing, in every
+// case decision 7 settles (the Vietnam run's 22 districts lost their affixes
+// on the second run when collisions were decided on the stored slugs).
+func TestResolveSlugsStable(t *testing.T) {
+	district := func(base string) string { return "dong-thap-vietnam-" + base }
+	named := func(kv ...string) Named { return LevelNames(tags(kv...), vietnam, vietnam.District) }
+	type want struct {
+		slug, en string
+	}
+	for _, c := range []struct {
+		name  string
+		first map[int64]Named // the first run, nothing stored
+		then  map[int64]Named // OSM at the second run (nil: as the first)
+		want  map[int64]want  // after the second run
+	}{
+		{
+			name:  "a pair resolved by its words",
+			first: map[int64]Named{1: named("name", "Xã Tân Thành"), 2: named("name", "Phường Tân Thành")},
+			want:  map[int64]want{1: {"dong-thap-vietnam-xa-tan-thanh", "Xã Tân Thành"}, 2: {"dong-thap-vietnam-phuong-tan-thanh", "Phường Tân Thành"}},
+		},
+		{
+			name:  "a pair that differs in tone marks only ends with the ids",
+			first: map[int64]Named{15581288: named("name", "Xã Tân Thành"), 15581289: named("name", "Xã Tân Thạnh")},
+			want: map[int64]want{
+				15581288: {"dong-thap-vietnam-xa-tan-thanh-15581288", "Xã Tân Thành"},
+				15581289: {"dong-thap-vietnam-xa-tan-thanh-15581289", "Xã Tân Thạnh"},
+			},
+		},
+		{
+			name:  "a stored one whose sibling disappeared from OSM keeps its words",
+			first: map[int64]Named{1: named("name", "Xã Tân Thành"), 2: named("name", "Phường Tân Thành")},
+			then:  map[int64]Named{1: named("name", "Xã Tân Thành")},
+			want:  map[int64]want{1: {"dong-thap-vietnam-xa-tan-thanh", "Xã Tân Thành"}},
+		},
+		{
+			name:  "a renamed relation takes its new name, not a new slug; its stored sibling keeps its words",
+			first: map[int64]Named{1: named("name", "Xã Tân Thành"), 2: named("name", "Phường Tân Thành")},
+			then:  map[int64]Named{1: named("name", "Xã Tân Hòa"), 2: named("name", "Phường Tân Thành")},
+			want:  map[int64]want{1: {"dong-thap-vietnam-xa-tan-thanh", "Tân Hòa"}, 2: {"dong-thap-vietnam-phuong-tan-thanh", "Phường Tân Thành"}},
+		},
+		{
+			name:  "a stored one stays stripped when a new sibling collides with it",
+			first: map[int64]Named{1: named("name", "Xã Tân Thành")},
+			then:  map[int64]Named{1: named("name", "Xã Tân Thành"), 2: named("name", "Phường Tân Thành")},
+			want:  map[int64]want{1: {"dong-thap-vietnam-tan-thanh", "Tân Thành"}, 2: {"dong-thap-vietnam-phuong-tan-thanh", "Phường Tân Thành"}},
+		},
+		{
+			name:  "a new sibling equal to a stored one takes its words and its id",
+			first: map[int64]Named{1: named("name", "Xã Tân Thành")},
+			then:  map[int64]Named{1: named("name", "Xã Tân Thành"), 2: named("name", "Xã Tân Thành"), 3: named("name", "Xã An Phú")},
+			want: map[int64]want{
+				1: {"dong-thap-vietnam-tan-thanh", "Tân Thành"},
+				2: {"dong-thap-vietnam-xa-tan-thanh-2", "Xã Tân Thành"},
+				3: {"dong-thap-vietnam-an-phu", "An Phú"},
+			},
+		},
+		{
+			name:  "a new sibling whose fresh slug a renamed stored one holds gives way",
+			first: map[int64]Named{1: named("name", "Xã Tân Thành")},
+			then:  map[int64]Named{1: named("name", "Xã Tân Hòa"), 2: named("name", "Xã Tân Thành")},
+			want:  map[int64]want{1: {"dong-thap-vietnam-tan-thanh", "Tân Hòa"}, 2: {"dong-thap-vietnam-xa-tan-thanh", "Xã Tân Thành"}},
+		},
+		{
+			name:  "… and without an affix to take, the new one gets its id",
+			first: map[int64]Named{1: named("name", "Tân Thành")},
+			then:  map[int64]Named{1: named("name", "Tân Hòa"), 2: named("name", "Tân Thành")},
+			want:  map[int64]want{1: {"dong-thap-vietnam-tan-thanh", "Tân Hòa"}, 2: {"dong-thap-vietnam-tan-thanh-2", "Tân Thành"}},
+		},
+		{
+			name:  "a third sibling joins a stored pair",
+			first: map[int64]Named{1: named("name", "Xã Tân Thành"), 2: named("name", "Phường Tân Thành")},
+			then: map[int64]Named{1: named("name", "Xã Tân Thành"), 2: named("name", "Phường Tân Thành"),
+				3: named("name", "Xã Tân Thạnh")},
+			want: map[int64]want{
+				1: {"dong-thap-vietnam-xa-tan-thanh", "Xã Tân Thành"},
+				2: {"dong-thap-vietnam-phuong-tan-thanh", "Phường Tân Thành"},
+				3: {"dong-thap-vietnam-xa-tan-thanh-3", "Xã Tân Thạnh"},
+			},
+		},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			var first []Sibling
+			for _, id := range sortedIDs(c.first) {
+				first = append(first, Sibling{OSMID: id, Names: c.first[id]})
+			}
+			ResolveSlugs(first, district)
+			then := c.then
+			if then == nil {
+				then = c.first
+			}
+			byID := map[int64]Sibling{}
+			for _, s := range stored(first, nil) {
+				byID[s.OSMID] = s
+			}
+			var second []Sibling
+			for _, id := range sortedIDs(then) {
+				s, ok := byID[id]
+				if !ok {
+					s = Sibling{OSMID: id}
+				}
+				s.Names = then[id]
+				second = append(second, s)
+			}
+			ResolveSlugs(second, district)
+			for _, s := range second {
+				if w := c.want[s.OSMID]; s.Slug != w.slug || s.Names.En != w.en || s.Names.Local != "" {
+					t.Errorf("r%d: %q %q (local %q), want %q %q", s.OSMID, s.Slug, s.Names.En, s.Names.Local, w.slug, w.en)
+				}
+			}
+			// A third run on what the second stored changes nothing either.
+			third := fresh(stored(second, nil), then)
+			ResolveSlugs(third, district)
+			for i, s := range third {
+				if s.Slug != second[i].Slug || s.Names != second[i].Names {
+					t.Errorf("third run, r%d: %q %+v, second %q %+v", s.OSMID, s.Slug, s.Names, second[i].Slug, second[i].Names)
+				}
+			}
+		})
+	}
+}
+
+func sortedIDs(m map[int64]Named) []int64 {
+	ids := make([]int64, 0, len(m))
+	for id := range m {
+		ids = append(ids, id)
+	}
+	slices.Sort(ids)
+	return ids
+}
+
+// The local name follows the stored affix state too, also where the English
+// name has no affix to tell it.
+func TestResolveSlugsStoredLocal(t *testing.T) {
+	district := func(base string) string { return "x-" + base }
+	n := LevelNames(tags("name:en", "Tan Thanh", "name:vi", "Xã Tân Thành"), vietnam, vietnam.District)
+	s := []Sibling{{OSMID: 1, Names: n, Stored: "x-tan-thanh", StoredEn: "Tan Thanh", StoredLocal: "Xã Tân Thành"}}
+	ResolveSlugs(s, district)
+	if s[0].Names.En != "Tan Thanh" || s[0].Names.Local != "Xã Tân Thành" {
+		t.Errorf("stored with the local affix: %+v", s[0].Names)
+	}
+	s = []Sibling{{OSMID: 1, Names: n, Stored: "x-tan-thanh", StoredEn: "Tan Thanh", StoredLocal: "Tân Thành"}}
+	ResolveSlugs(s, district)
+	if s[0].Names.Local != "Tân Thành" {
+		t.Errorf("stored stripped: %+v", s[0].Names)
 	}
 }
 

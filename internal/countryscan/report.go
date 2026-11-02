@@ -270,7 +270,7 @@ func (r *Result) writeNames(b *strings.Builder) {
 			w("  (A district's slug is built from its province's; the duplicates above are within one province.)\n")
 		}
 		if n.AccentLoss > 0 {
-			w("- **Accents:** `osmfile.Slug` drops accented letters; with accents folded (NFD, đ → d) the slug is different for %d names, e.g. %s. Stage 2 should fold accents.\n", n.AccentLoss, join(mdTexts(n.AccentEx)))
+			w("- **Accents:** a slug without folding (as before stage 2) drops accented letters; `osmfile.Slug` folds them (NFD, đ → d), which changes the slug of %d names, e.g. %s.\n", n.AccentLoss, join(mdTexts(n.AccentEx)))
 		}
 		w("\n")
 	}

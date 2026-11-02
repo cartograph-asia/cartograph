@@ -25,14 +25,6 @@ import (
 	"github.com/cartograph-asia/cartograph/internal/countryscan"
 )
 
-// extracts maps a country to its Geofabrik extract in map/data (map/download.sh).
-var extracts = map[string]string{
-	"bn": "malaysia-singapore-brunei", "kh": "cambodia", "cn": "china", "id": "indonesia", "jp": "japan",
-	"la": "laos", "my": "malaysia-singapore-brunei", "mn": "mongolia", "mm": "myanmar", "kp": "north-korea",
-	"ph": "philippines", "sg": "malaysia-singapore-brunei", "kr": "south-korea", "tw": "taiwan",
-	"th": "thailand", "tl": "east-timor", "vn": "vietnam",
-}
-
 func main() {
 	var (
 		code     = flag.String("country", "", "ISO 3166-1 code of the country to scan, e.g. vn")
@@ -79,11 +71,13 @@ func main() {
 
 func scanOne(ctx context.Context, c countries.Country, pbf string, noCut, docker bool, water, cache, out string, res, capN, workers int) error {
 	if pbf == "" {
-		name, ok := extracts[c.Code]
-		if !ok {
+		// The extract's Geofabrik name in map/data (map/download.sh) comes
+		// from the import settings, so scan and import read the same file.
+		imp, ok := countries.ImportOf(c.Code)
+		if !ok || imp.Extract == "" {
 			return fmt.Errorf("no extract known for %s", c.Code)
 		}
-		pbf = filepath.Join("map", "data", name+"-latest.osm.pbf")
+		pbf = filepath.Join("map", "data", imp.Extract+"-latest.osm.pbf")
 	}
 	read := pbf
 	if !noCut {

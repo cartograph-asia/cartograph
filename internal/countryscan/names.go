@@ -4,8 +4,6 @@ import (
 	"sort"
 	"strings"
 	"unicode"
-
-	"golang.org/x/text/unicode/norm"
 )
 
 // Script names, as printed in the report.
@@ -122,15 +120,15 @@ func localName(t tagSet, lang string) (name, key string) {
 	return "", ""
 }
 
-// foldSlug turns a name into a URL slug the way a name with accents needs:
-// accents and marks are dropped (NFD), đ becomes d, then lower-case ASCII
-// letters and digits are separated by single hyphens. osmfile.Slug alone
-// drops the accented letters ("Hà Nội" becomes "h-n-i").
-func foldSlug(s string) string {
-	s = strings.NewReplacer("đ", "d", "Đ", "D", "ø", "o", "Ø", "O", "ł", "l", "Ł", "L", "ß", "ss", "æ", "ae", "Æ", "AE").Replace(s)
+// plainSlug is the slug without accent folding, as osmfile.Slug made it
+// before stage 2: lower-case ASCII letters and digits separated by single
+// hyphens, so an accented letter is dropped ("Hà Nội" becomes "h-n-i"). It is
+// kept only for the report's accent line, which counts the names whose slug
+// folding changes; the scan's slugs come from osmfile.Slug, like the import's.
+func plainSlug(s string) string {
 	var b strings.Builder
 	dash := false
-	for _, r := range norm.NFD.String(strings.ToLower(s)) {
+	for _, r := range strings.ToLower(s) {
 		switch {
 		case r >= 'a' && r <= 'z' || r >= '0' && r <= '9':
 			if dash && b.Len() > 0 {
@@ -138,8 +136,6 @@ func foldSlug(s string) string {
 			}
 			b.WriteRune(r)
 			dash = false
-		case unicode.Is(unicode.Mn, r):
-			// a combining mark stays with its letter
 		default:
 			dash = true
 		}

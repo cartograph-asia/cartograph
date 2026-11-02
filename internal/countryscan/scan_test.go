@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/cartograph-asia/cartograph/internal/countries"
+	"github.com/cartograph-asia/cartograph/internal/geo/osmfile"
 )
 
 var (
@@ -58,16 +59,18 @@ func TestReportIsDeterministic(t *testing.T) {
 	}
 }
 
-func TestFoldSlug(t *testing.T) {
-	for in, want := range map[string]string{
-		"Hà Nội":                "ha-noi",
-		"Thành phố Hồ Chí Minh": "thanh-pho-ho-chi-minh",
-		"Đà Nẵng":               "da-nang",
-		"Chon Buri":             "chon-buri",
-		"ชลบุรี":                "",
+// The accent line compares the folding slug the import uses with the slug
+// before stage 2.
+func TestAccentSlugs(t *testing.T) {
+	for in, want := range map[string][2]string{
+		"Hà Nội":                {"h-n-i", "ha-noi"},
+		"Thành phố Hồ Chí Minh": {"th-nh-ph-h-ch-minh", "thanh-pho-ho-chi-minh"},
+		"Đà Nẵng":               {"n-ng", "da-nang"},
+		"Chon Buri":             {"chon-buri", "chon-buri"},
+		"ชลบุรี":                {"", ""},
 	} {
-		if got := foldSlug(in); got != want {
-			t.Errorf("foldSlug(%q) = %q, want %q", in, got, want)
+		if got := [2]string{plainSlug(in), osmfile.Slug(in)}; got != want {
+			t.Errorf("slugs of %q = %q, want %q", in, got, want)
 		}
 	}
 }

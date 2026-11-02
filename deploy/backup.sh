@@ -23,6 +23,10 @@ here=$(cd "$(dirname "$0")" && pwd)
 dest=${BACKUP_DIR:-$HOME/cartograph-backups}
 key="$dest/backup-key.asc"
 mkdir -p "$dest/db" "$dest/photos"
+# rclone writes the mirror inside a container, whose umask is Docker's (022),
+# and the directories may have been made over ssh by install-backup-mac.sh:
+# closing them here keeps hidden photos away from other users of the host.
+chmod 700 "$dest" "$dest/db" "$dest/photos"
 [ -f "$key" ] || { echo "$(date -Is) ERROR: $key is missing (the Mac's public backup key)"; exit 1; }
 
 day=$(date +%Y%m%d)

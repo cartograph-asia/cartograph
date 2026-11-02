@@ -1,4 +1,4 @@
-<img src="web/public/logo.svg" alt="" width="96" height="96" />
+<img src="web/public/logo.png" alt="" width="96" height="96" />
 
 # Cartograph
 

@@ -6,9 +6,12 @@ import "github.com/cartograph-asia/cartograph/internal/countries"
 type Result struct {
 	Country countries.Country
 	Extract string // base name of the file read
-	Res     int
-	Workers int
-	Water   bool // water polygons were used
+	// Neighbours are the base names of the neighbours' cuts read for
+	// boundaries (Options.Neighbours); the report names them only when set.
+	Neighbours []string
+	Res        int
+	Workers    int
+	Water      bool // water polygons were used
 
 	Shape        Shape
 	CountryCells int // cells whose centre is in the outline, sea included

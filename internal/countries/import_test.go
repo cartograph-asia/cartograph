@@ -55,6 +55,58 @@ func TestExtracts(t *testing.T) {
 	}
 }
 
+// Neighbours name the extracts whose cuts complete a country's boundaries
+// (map/data/scan/<name>-latest.osm.pbf.cut.osm.pbf), so each must be an
+// extract the settings already know. An extract read for boundaries only
+// and never imported (China's "bhutan", docs/countries/
+// incomplete-relations.md) is added to boundaryOnly by the PR that needs it.
+func TestNeighboursAreKnownExtracts(t *testing.T) {
+	for _, e := range neighbourErrors(Imports, nil) {
+		t.Error(e)
+	}
+	// The rule itself, on settings that break it.
+	bad := map[string]Import{
+		"aa": {Extract: "aa-land", Neighbours: []string{"bb-land", "nowhere", "aa-land", "bb-land", "bhutan"}},
+		"bb": {Extract: "bb-land"},
+	}
+	got := neighbourErrors(bad, map[string]bool{"bhutan": true})
+	if len(got) != 3 {
+		t.Errorf("errors on bad settings: %q, want 3 (unknown, own extract, twice)", got)
+	}
+}
+
+func neighbourErrors(imps map[string]Import, boundaryOnly map[string]bool) []string {
+	known := map[string]bool{}
+	for _, imp := range imps {
+		known[imp.Extract] = true
+	}
+	var out []string
+	for code, imp := range imps {
+		seen := map[string]bool{}
+		for _, n := range imp.Neighbours {
+			switch {
+			case !known[n] && !boundaryOnly[n]:
+				out = append(out, code+": neighbour "+n+" is not the Extract of any country's settings")
+			case n == imp.Extract:
+				out = append(out, code+": neighbour "+n+" is the country's own extract")
+			case seen[n]:
+				out = append(out, code+": neighbour "+n+" listed twice")
+			}
+			seen[n] = true
+		}
+	}
+	return out
+}
+
+// Only Thailand keeps the old duplicate rule for districts.
+func TestLegacyDuplicateSlugThailandOnly(t *testing.T) {
+	for code, imp := range Imports {
+		if imp.LegacyDuplicateSlug != (code == "th") {
+			t.Errorf("%s: LegacyDuplicateSlug %v", code, imp.LegacyDuplicateSlug)
+		}
+	}
+}
+
 func TestChinaAndMongoliaHold(t *testing.T) {
 	for _, code := range []string{"cn", "mn"} {
 		if Imports[code].Hold == "" {
@@ -77,6 +129,8 @@ func TestThailandSettings(t *testing.T) {
 		Local:        []string{"name:th", "name"},
 		LocalScripts: []string{"Thai"},
 		LandPlots:    598411,
+
+		LegacyDuplicateSlug: true,
 	}
 	if got := Imports["th"]; !reflect.DeepEqual(got, want) {
 		t.Errorf("Thailand's settings\n got %+v\nwant %+v", got, want)

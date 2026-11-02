@@ -200,3 +200,36 @@ func polygonToCells(outer [][2]float64, holes [][][2]float64, res int) ([]h3go.C
 	}
 	return cells, nil
 }
+
+// PolygonCellIDs is PolygonCells without the strings and centres: the raw
+// 64-bit indexes of the cells at res whose centre lies inside the polygon,
+// for callers that count or intersect millions of cells.
+func PolygonCellIDs(outer [][2]float64, holes [][][2]float64, res int) ([]uint64, error) {
+	cs, err := polygonToCells(outer, holes, res)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]uint64, len(cs))
+	for i, c := range cs {
+		out[i] = uint64(c)
+	}
+	return out, nil
+}
+
+// CellID returns the raw index of the cell at res that contains the point.
+func CellID(lat, lng float64, res int) (uint64, error) {
+	c, err := h3go.LatLngToCell(h3go.NewLatLng(lat, lng), res)
+	if err != nil {
+		return 0, fmt.Errorf("h3: latlng to cell: %w", err)
+	}
+	return uint64(c), nil
+}
+
+// IDCentre returns the centre of the cell with the raw index id.
+func IDCentre(id uint64) (lat, lng float64, err error) {
+	ll, err := h3go.Cell(id).LatLng()
+	if err != nil {
+		return 0, 0, fmt.Errorf("h3: cell to latlng: %w", err)
+	}
+	return ll.Lat, ll.Lng, nil
+}

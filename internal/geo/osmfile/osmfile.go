@@ -293,3 +293,16 @@ func ReadPlacesRaw(name string, bound orb.Bound) ([]*osm.Node, error) {
 	})
 	return out, err
 }
+
+// Relations calls fn for every relation of the file that keep accepts. keep
+// runs on several goroutines and must not write shared state; fn is called
+// one object at a time.
+func Relations(name string, keep func(*osm.Relation) bool, fn func(*osm.Relation)) error {
+	return scan(name, scanOpts{relations: true, filterRelation: keep}, func(o osm.Object) { fn(o.(*osm.Relation)) })
+}
+
+// Nodes calls fn for every node of the file that keep accepts, with the same
+// rules as Relations.
+func Nodes(name string, keep func(*osm.Node) bool, fn func(*osm.Node)) error {
+	return scan(name, scanOpts{nodes: true, filterNode: keep}, func(o osm.Object) { fn(o.(*osm.Node)) })
+}

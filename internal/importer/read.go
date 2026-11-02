@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"slices"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/paulmach/orb"
@@ -67,6 +68,7 @@ type regionSet struct {
 	partial       map[int64]osmfile.PartialInfo
 	outsideParent int // province-level relations left out by Level.Parent
 	vanished      []int64
+	excluded      []int64 // relations left out by Level.Exclude, by OSM id
 	dropped       dropped
 	relations     int // relations read
 }
@@ -85,8 +87,16 @@ type regionSet struct {
 func readRegions(path string, more []string, c country, clip orb.Bound, tol float64) (*regionSet, error) {
 	imp := c.Imp
 	pl, dl := imp.Province, imp.District
+	// keep runs on the decoder's goroutines.
+	var mu sync.Mutex
+	excluded := map[int64]bool{}
 	keep := func(r *osm.Relation) bool {
 		id := int64(r.ID)
+		if osmfile.Excluded(r, pl) || osmfile.Excluded(r, dl) {
+			mu.Lock()
+			excluded[id] = true
+			mu.Unlock()
+		}
 		return osmfile.MatchLevel(r, pl) || osmfile.MatchLevel(r, dl) ||
 			(pl.Parent != 0 && id == pl.Parent) || (dl.Parent != 0 && id == dl.Parent)
 	}
@@ -106,6 +116,10 @@ func readRegions(path string, more []string, c country, clip orb.Bound, tol floa
 		return nil, err
 	}
 	set := &regionSet{partial: a.Partial, relations: len(raw.Relations)}
+	for id := range excluded {
+		set.excluded = append(set.excluded, id)
+	}
+	slices.Sort(set.excluded)
 	built := make(map[int64]osmfile.Boundary, len(a.Built))
 	for _, b := range a.Built {
 		built[b.OSMID] = b

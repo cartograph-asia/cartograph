@@ -24,9 +24,21 @@ import (
 // MatchLevel reports whether r belongs to level l by its tags: a
 // boundary=administrative relation at one of l.AdminLevels whose ISO3166-2
 // starts with l.ISOPrefix and "-" (case-insensitive; no check when the prefix
-// is empty), or one of l.Include, whatever its tags. l.Parent is a geometric
-// rule and is left to the caller. A zero Level matches nothing.
+// is empty), or one of l.Include, whatever its tags; never one of l.Exclude
+// (Excluded tells those apart). l.Parent is a geometric rule and is left to
+// the caller. A zero Level matches nothing.
 func MatchLevel(r *osm.Relation, l countries.Level) bool {
+	return !slices.Contains(l.Exclude, int64(r.ID)) && matchRule(r, l)
+}
+
+// Excluded reports whether r would belong to level l by its tags but is one
+// of l.Exclude, which the dry run reports.
+func Excluded(r *osm.Relation, l countries.Level) bool {
+	return slices.Contains(l.Exclude, int64(r.ID)) && matchRule(r, l)
+}
+
+// matchRule is MatchLevel without l.Exclude.
+func matchRule(r *osm.Relation, l countries.Level) bool {
 	if len(l.AdminLevels) == 0 {
 		return false
 	}

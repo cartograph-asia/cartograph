@@ -202,6 +202,14 @@ func TestMatchLevel(t *testing.T) {
 	if MatchLevel(&osm.Relation{ID: 8, Tags: tags("boundary", "administrative", "admin_level", "4")}, ph) {
 		t.Error("a relation without the ISO code counted")
 	}
+	// Vietnam: a relation named in Exclude never counts, and Excluded tells it.
+	vn := countries.Level{AdminLevels: []int{6}, Exclude: []int64{7}}
+	if MatchLevel(admin("6", ""), vn) || !Excluded(admin("6", ""), vn) {
+		t.Error("Exclude did not exclude")
+	}
+	if Excluded(admin("5", ""), vn) || Excluded(&osm.Relation{ID: 8, Tags: tags("boundary", "administrative", "admin_level", "6")}, vn) {
+		t.Error("Excluded counted a relation outside the rule or not listed")
+	}
 	// Brunei: no district level.
 	if MatchLevel(admin("6", ""), countries.Level{}) {
 		t.Error("the zero level matched")

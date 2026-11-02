@@ -201,6 +201,9 @@ func (pl *regionPlan) writeReport(w io.Writer) {
 	dr := set.dropped
 	fmt.Fprintf(w, "Districts dropped: no English name %d, centre outside the provinces %d, not assembled %d, stored for another country %d, outside the parent %d\n",
 		dr.NoEnglish, dr.Outside, dr.NotAssembled, dr.OtherCountry, dr.OutsideParent)
+	if len(pl.c.Imp.Province.Exclude) > 0 || len(pl.c.Imp.District.Exclude) > 0 {
+		fmt.Fprintf(w, "Relations excluded: %d, by settings (Level.Exclude) %v\n", len(set.excluded), set.excluded)
+	}
 	gone.write(w, "Stored rows of this country not in this run (kept as they are)")
 	slugs.write(w, "New slugs")
 	renamed.write(w, "Renamed relations keeping their stored slug")

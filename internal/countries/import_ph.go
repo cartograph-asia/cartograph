@@ -14,29 +14,33 @@ package countries
 //     The 18 level-3 regions (Calabarzon, Central Visayas, …) are whole but
 //     not used.
 //   - Metro Manila and the independent cities are not held at level 4. OSM
-//     maps the National Capital Region at level 3 only (r147488, PH-00, the
-//     16 cities and Pateros at level 6), and the highly urbanised and
-//     independent component cities outside their provinces at level 6 only:
-//     no level-4 relation contains them, they are holes in the provinces
-//     (Cebu City in Cebu, Davao City in Davao del Sur, Baguio in Benguet, …).
-//     Measured on the cut: 19 such cities beside Metro Manila (Davao City,
-//     Puerto Princesa, Zamboanga City, Iligan, Butuan, General Santos,
-//     Cagayan de Oro, Cebu City, Bacolod, Olongapo, Tacloban, Lucena, Naga,
-//     Cotabato City, Iloilo City, Angeles, Baguio, Lapu-Lapu, Mandaue) and
-//     Metro Manila's 17. Their plots get nothing: their cells are outside
-//     every province, so they are not land plots of this import (the
-//     scan's 367,912 does not count them either, its outline is the union
-//     of the level-4 relations), they get no plot number, and an upload
-//     there is refused as outside the covered countries. Dagupan, Santiago,
-//     Ormoc and Isabela City lie inside their provinces' relations and get
-//     plots. Whether the cities come in as provinces of their own (Include
-//     of r147488 and the 19 level-6 relations, word "city" by KindByAffix)
-//     is Adrian's to decide; adding them later only appends plots and
+//     maps the National Capital Region at level 3 only (r147488, PH-00; its
+//     16 cities and Pateros at level 6), and the other 17 highly urbanised
+//     cities and two independent component cities at level 6 only
+//     (border_type=highly_urbanized_city, independent_component_city): no
+//     level-4 relation contains them, they are holes in their provinces
+//     (Cebu City in Cebu, Davao City in Davao del Sur, Baguio in Benguet,
+//     …). Measured on the cut with the importer's land rule: 12,588 land
+//     plots, 3.4 % of the country, lie there: Davao City 2,805, Puerto
+//     Princesa 2,692, Zamboanga City 1,832, Iligan 867, Butuan 790, General
+//     Santos 634, Cagayan de Oro 509, Cebu City 367, Bacolod 201, Olongapo
+//     141, Tacloban 134, Lucena 111, Naga 103, Cotabato City 103, Iloilo
+//     City 89, Angeles 87, Baguio 77, Lapu-Lapu 75, Mandaue 38, Metro Manila
+//     933. These plots get nothing: their cells lie outside every province,
+//     so they are not land plots of this import (the scan's 367,912 does not
+//     count them either, its outline is the union of the level-4
+//     relations), they get no plot number, and an upload there is refused
+//     as outside the covered countries. Ormoc and Dagupan (independent
+//     component cities) and the component cities lie inside their
+//     provinces' relations and get plots. Whether the cities come in as
+//     provinces of their own is Adrian's to decide: Include of Metro Manila
+//     as one relation (r147488 is whole; Pasig and Mandaluyong do not close
+//     in the extract) and of the 19 level-6 cities, word "city" by
+//     KindByAffix, 103 provinces. Adding them later only appends plots and
 //     numbers.
 //   - No district level for now (decision 2): the level-6 municipalities and
-//     cities cover only 52 % of the land in the extract, the level-5
-//     relations are Metro Manila's four districts and a few congressional
-//     districts.
+//     cities cover only 52 % of the land plots, level 5 holds a few
+//     congressional districts and Metro Manila's four districts.
 //   - Kind word: "province" for all but the Special Geographic Area, whose
 //     whole name is its word ("special geographic area"). No name is
 //     stripped: "Mountain Province" (PH-MOU) is the province's name, and no

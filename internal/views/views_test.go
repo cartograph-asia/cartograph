@@ -147,6 +147,7 @@ func TestCameraLine(t *testing.T) {
 		{Camera{Label: "Nikon D850", ExposureS: 0.4}, "Nikon D850 · 0.4 s"},
 		{Camera{Label: "Pixel 9", Focal35MM: 24}, "Pixel 9 · 24 mm equiv."},
 		{Camera{Label: "Unknown camera", Lens: "ignored on the line"}, "Unknown camera"},
+		{Camera{Label: "Odd file", ExposureS: 1e-300, ISO: 100}, "Odd file · ISO 100"},
 	} {
 		if got := c.c.Line(); got != c.want {
 			t.Errorf("Line() = %q, want %q", got, c.want)

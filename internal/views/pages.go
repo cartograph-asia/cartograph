@@ -315,7 +315,7 @@ func (c Camera) Line() string {
 	if c.FNumber > 0 {
 		parts = append(parts, "f/"+strconv.FormatFloat(c.FNumber, 'f', -1, 64))
 	}
-	if c.ExposureS > 0 {
+	if c.ExposureS >= minExposure {
 		parts = append(parts, exposure(c.ExposureS))
 	}
 	if c.ISO > 0 {
@@ -323,6 +323,10 @@ func (c Camera) Line() string {
 	}
 	return strings.Join(parts, " · ")
 }
+
+// minExposure is the shortest exposure the line shows; a file claiming less
+// (no camera goes below about 1/32000 s) would print as a garbled fraction.
+const minExposure = 1e-6
 
 // exposure formats seconds the way cameras show them: "1/250 s" below a
 // second, "0.5 s"-style decimals for fractions like 0.4, "2 s" above.

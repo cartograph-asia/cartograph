@@ -101,6 +101,10 @@ func (r *Result) Report() string {
 
 	w("# Country scan: %s\n\n", c.NameEn)
 	w("Written by `go run ./cmd/countryscan -country %s` from `%s`; stage 1 of `docs/COUNTRY_IMPORT_BRIEF.md`. ", c.Code, r.Extract)
+	if len(r.Neighbours) > 0 {
+		w("Boundaries completed with the ways and nodes of the neighbours' cuts `%s` (relations and places from the own file only). ",
+			strings.Join(r.Neighbours, "`, `"))
+	}
 	w("Nothing was imported. The same extract gives the same report; run it again after an extract update and compare.\n\n")
 
 	r.writeSummary(&b)

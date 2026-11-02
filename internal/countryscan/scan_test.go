@@ -231,3 +231,26 @@ func TestReportEscapesOSMText(t *testing.T) {
 		t.Fatalf("code block broken:\n%s", sketch)
 	}
 }
+
+// A scan with neighbours' cuts reads their ways and nodes only: with the
+// fixture as its own neighbour every figure stays, and the report differs
+// only by the sentence naming the neighbours.
+func TestNeighboursOnlyNamedInReport(t *testing.T) {
+	plain := scanFixture(t).Report()
+	c, _ := countries.ByCode("th")
+	r, err := Scan(context.Background(), Options{Country: c, PBF: fixture, Neighbours: []string{fixture}, Water: fixtureWater, Workers: 4})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(r.Neighbours, []string{"pattaya.osm.gz"}) {
+		t.Errorf("neighbours %v", r.Neighbours)
+	}
+	sentence := "Boundaries completed with the ways and nodes of the neighbours' cuts `pattaya.osm.gz` (relations and places from the own file only). "
+	with := r.Report()
+	if !strings.Contains(with, sentence) || strings.Replace(with, sentence, "", 1) != plain {
+		t.Errorf("report with neighbours is not the plain report plus one sentence:\n%s", with)
+	}
+	if strings.Contains(plain, "neighbours") {
+		t.Error("the plain report mentions neighbours")
+	}
+}

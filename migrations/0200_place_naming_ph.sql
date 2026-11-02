@@ -1,7 +1,11 @@
 -- How plots in the Philippines are named (docs/COUNTRY_IMPORT_STAGE2_BRIEF.md,
 -- WP H), chosen from the Places section of docs/countries/philippines.md,
--- the 49,321 imported places, the 368,516 land plots and Thailand's row in
--- 0075_place_naming.sql.
+-- the 49,321 imported places, the 381,108 land plots (368,516 in the 83
+-- provinces, 12,592 in Metro Manila and the 19 independent cities, which come
+-- in as provinces of their own) and Thailand's row in 0075_place_naming.sql.
+-- The figures on the rule's reach (81.8 %, medians, percentiles) were measured
+-- on the 368,516 plots of the provinces, before the cities came in; the
+-- urban figures were measured again on all 381,108.
 --
 -- What the place nodes are. The unit every Filipino address ends in is the
 -- barangay; OSM maps it as place=village in the countryside and as
@@ -12,17 +16,19 @@
 -- 3,969 puroks ("Purok 4"), sitios and some 2,000 subdivisions ("BF Homes
 -- Phase 3"); a plot is not named after them. The country has no district
 -- level in the import (decision 2), so the rule that prefers places of the
--- plot's own district never applies here.
+-- plot's own district never applies here. Metro Manila and the independent
+-- cities are provinces of their own (decision of 2026-11-02, see
+-- internal/countries/import_ph.go), and their city nodes count.
 --
 -- Inside a city. A plot is urban when a place=city lies within radius_km
--- (9,228 of the land plots; Metro Manila and the independent cities, whose
--- city nodes these are, have no plots of their own, see
--- internal/countries/import_ph.go). There the barangay is the quarter: half
--- of the quarters lie less than 0.50 km from the next one, nine tenths less
--- than 2.36 km. A quarter wins over every nearer village or town, so the
--- radius stays near that spacing: 2 km names 4,953 urban plots after a
--- quarter (1 km 2,646, 3 km 6,749, with more of them a quarter 2–3 km off
--- beside a village a few hundred metres away). Neighbourhoods are left out
+-- (11,011 of the 381,108 land plots, 1,783 of them in Metro Manila and the
+-- cities; 9,228 of the 368,516 plots of the provinces alone). There the
+-- barangay is the quarter: half of the quarters lie less than 0.50 km from
+-- the next one, nine tenths less than 2.36 km. A quarter wins over every
+-- nearer village or town, so the radius stays near that spacing: 2 km names
+-- 6,342 urban plots after a quarter (1 km 3,637, 3 km 8,360, with more of
+-- them a quarter 2–3 km off beside a village a few hundred metres away;
+-- without the cities 4,953, 2,646 and 6,749). Neighbourhoods are left out
 -- (the scan's proposal of {quarter,neighbourhood,suburb} would name 1,639
 -- plots after puroks and subdivisions), and so are suburbs, which mix
 -- barangays with the districts of Manila and Davao.
@@ -47,4 +53,4 @@ insert into place_overrides (country, name, kind, note) values
   ('ph', 'Poblacion', 'quarter',
    'The town-centre barangay of a municipality. 667 nodes are named just "Poblacion" (489 quarters, 100 suburbs, 50 villages, 28 neighbourhoods) and 509 "Poblacion I", "Poblacion 2" and so on; by these rules they name about 900 plots. Without a district level the plot name does not say which town ("Poblacion · Batangas 12"). Keep them as OSM has them, or write "Poblacion, <town>" with the nearest place=town?'),
   ('ph', 'Barangay 1', 'quarter',
-   'Numbered barangays and zones of the cities and some towns: 601 quarters, 317 neighbourhoods and 22 villages named "Barangay <n>" (34 quarters "Barangay 1" alone), 324 "Zone <n>". They name about 340 plots; most of Manila''s, Pasay''s and Caloocan''s lie in Metro Manila and name none yet. Keep, or name such plots after the next place with a real name?');
+   'Numbered barangays and zones of the cities and some towns: 601 quarters, 317 neighbourhoods and 22 villages named "Barangay <n>" (34 quarters "Barangay 1" alone), 324 "Zone <n>". They named about 340 plots before Metro Manila and the cities came in, and name more now (most of Manila''s, Pasay''s and Caloocan''s lie in Metro Manila). Keep, or name such plots after the next place with a real name?');

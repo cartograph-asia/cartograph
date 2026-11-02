@@ -11,7 +11,11 @@ package importer
 // change to Thailand's import has been decided (a line in docs/decisions.md),
 // and review the diff:
 //
-//	TEST_DATABASE_URL=... go test ./internal/importer -run TestGoldenPattayaImport -update
+//	TEST_DATABASE_URL=... go test ./internal/importer -run TestGolden -update
+//
+// A second scenario (golden_plots_test.go, pattaya-import-plots.json) runs the
+// same import with plots already in the database and a second time; -update
+// regenerates both files.
 
 import (
 	"bytes"
@@ -33,12 +37,39 @@ import (
 	"github.com/cartograph-asia/cartograph/migrations"
 )
 
-var update = flag.Bool("update", false, "rewrite testdata/golden/pattaya-import.json (on purpose only)")
+var update = flag.Bool("update", false, "rewrite the files in testdata/golden (on purpose only)")
 
-// goldenPath is testdata/golden/pattaya-import.json in the source tree.
-func goldenPath() string {
+// goldenPath is testdata/golden/<name> in the source tree.
+func goldenPath(name string) string {
 	_, file, _, _ := runtime.Caller(0)
-	return filepath.Join(filepath.Dir(file), "..", "..", "testdata", "golden", "pattaya-import.json")
+	return filepath.Join(filepath.Dir(file), "..", "..", "testdata", "golden", name)
+}
+
+// checkGolden compares got with testdata/golden/<name>, or rewrites the file
+// under -update.
+func checkGolden(t *testing.T, name string, got []byte) {
+	t.Helper()
+	path := goldenPath(name)
+	if *update {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, got, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("wrote %s (%d bytes)", path, len(got))
+		return
+	}
+	want, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("%v (generate it with -update, on purpose only)", err)
+	}
+	if !bytes.Equal(got, want) {
+		out := filepath.Join(t.TempDir(), name)
+		_ = os.WriteFile(out, got, 0o644)
+		t.Fatalf("the import of the Pattaya fixture differs from %s; Thailand's import must not change.\n"+
+			"Compare: diff %s %s", path, path, out)
+	}
 }
 
 // testDB opens a fresh, migrated schema in TEST_DATABASE_URL; the test is
@@ -93,27 +124,7 @@ func TestGoldenPattayaImport(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	path := goldenPath()
-	if *update {
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(path, got, 0o644); err != nil {
-			t.Fatal(err)
-		}
-		t.Logf("wrote %s (%d bytes)", path, len(got))
-		return
-	}
-	want, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("%v (generate it with -update, on purpose only)", err)
-	}
-	if !bytes.Equal(got, want) {
-		out := filepath.Join(t.TempDir(), "pattaya-import.json")
-		_ = os.WriteFile(out, got, 0o644)
-		t.Fatalf("the import of the Pattaya fixture differs from %s; Thailand's import must not change.\n"+
-			"Compare: diff %s %s", path, path, out)
-	}
+	checkGolden(t, "pattaya-import.json", got)
 }
 
 // Snapshot of the import: deterministic (sorted, no serial ids, no
@@ -139,6 +150,8 @@ type snapRegion struct {
 	Urban          bool    `json:"urban"`
 	LandCells      int     `json:"land_cells"`
 	BBox           string  `json:"bbox"` // min_lng,min_lat,max_lng,max_lat, 6 decimals
+	ClaimedCells   int     `json:"claimed_cells,omitempty"`
+	LastSurveyedAt *string `json:"last_surveyed_at,omitempty"` // UTC, to the second
 	BoundarySHA256 string  `json:"boundary_sha256"`
 }
 
@@ -166,6 +179,8 @@ type snapPlot struct {
 	PlaceNameLocal *string `json:"place_name_local"`
 	Region         *string `json:"region"`
 	District       *string `json:"district"`
+	Number         *int    `json:"number"` // plot_numbers, null where the plot has none
+	PhotoCount     int     `json:"photo_count"`
 }
 
 func importSnapshot(ctx context.Context, d *db.DB) ([]byte, error) {
@@ -206,7 +221,7 @@ func importSnapshot(ctx context.Context, d *db.DB) ([]byte, error) {
 		pr.osm_id, r.urban, r.land_cells,
 		to_char(r.min_lng, 'FM990.000000') || ',' || to_char(r.min_lat, 'FM990.000000') || ',' ||
 		to_char(r.max_lng, 'FM990.000000') || ',' || to_char(r.max_lat, 'FM990.000000'),
-		r.boundary
+		r.boundary, r.claimed_cells, to_char(r.last_surveyed_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
 		from regions r left join regions pr on pr.id = r.parent_id
 		order by r.osm_id`)
 	if err != nil {
@@ -216,7 +231,7 @@ func importSnapshot(ctx context.Context, d *db.DB) ([]byte, error) {
 		var r snapRegion
 		var boundary string
 		if err := rows.Scan(&r.OSMID, &r.Kind, &r.KindName, &r.AdminLevel, &r.Country, &r.Slug, &r.NameEn, &r.NameLocal,
-			&r.ParentOSMID, &r.Urban, &r.LandCells, &r.BBox, &boundary); err != nil {
+			&r.ParentOSMID, &r.Urban, &r.LandCells, &r.BBox, &boundary, &r.ClaimedCells, &r.LastSurveyedAt); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -285,15 +300,16 @@ func importSnapshot(ctx context.Context, d *db.DB) ([]byte, error) {
 		return nil, err
 	}
 
-	rows, err = p.Query(ctx, `select p.cell, p.place_name, p.place_name_local, r.slug, dr.slug
+	rows, err = p.Query(ctx, `select p.cell, p.place_name, p.place_name_local, r.slug, dr.slug, pn.number, p.photo_count
 		from plots p left join regions r on r.id = p.region_id left join regions dr on dr.id = p.district_id
+		left join plot_numbers pn on pn.cell = p.cell
 		order by p.cell`)
 	if err != nil {
 		return nil, err
 	}
 	for rows.Next() {
 		var x snapPlot
-		if err := rows.Scan(&x.Cell, &x.PlaceName, &x.PlaceNameLocal, &x.Region, &x.District); err != nil {
+		if err := rows.Scan(&x.Cell, &x.PlaceName, &x.PlaceNameLocal, &x.Region, &x.District, &x.Number, &x.PhotoCount); err != nil {
 			rows.Close()
 			return nil, err
 		}

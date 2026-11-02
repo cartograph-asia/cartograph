@@ -18,7 +18,8 @@ import (
 )
 
 // commonsSurveyor is a development account that holds photos from Wikimedia
-// Commons (docs/SEED_PHOTOS_BRIEF.md), with an example.test address.
+// Commons (docs/SEED_PHOTOS_BRIEF.md), with an example.test address. The photos
+// are dealt out over all of Thailand, so a bio names the home, not a route.
 type commonsSurveyor struct {
 	name, display, bio string
 	home               string // region slug, or empty
@@ -26,12 +27,12 @@ type commonsSurveyor struct {
 }
 
 var commonsSurveyors = []commonsSurveyor{
-	{"north-trails", "Napat Srisuk", "Chiang Mai to Mai Hong Son and back, on a rented Honda. Slow roads, long lunches.", "chiang-mai", 58 * 24 * time.Hour},
-	{"isan-rider", "", "Khon Kaen, Udon, Ubon: the northeast has more to see than the guidebooks say.", "khon-kaen", 49 * 24 * time.Hour},
-	{"andaman-ann", "Ann P.", "Phuket, Krabi, Phang Nga. Rainy season is the best season.", "phuket", 41 * 24 * time.Hour},
-	{"krung-thep-lek", "", "Bangkok by bicycle and ferry; a plot a day where the canals allow.", "bangkok", 33 * 24 * time.Hour},
-	{"gulf-coast-ton", "Ton", "Hua Hin to Surat Thani along the railway.", "surat-thani", 24 * 24 * time.Hour},
-	{"central-plains-nok", "", "Ayutthaya, Sukhothai, Phitsanulok: temples at dawn, then the fields.", "phitsanulok", 15 * 24 * time.Hour},
+	{"north-trails", "Napat Srisuk", "Lives in Chiang Mai, travels the whole country with a camera and no plan. Slow roads, long lunches.", "chiang-mai", 58 * 24 * time.Hour},
+	{"isan-rider", "", "Khon Kaen is home; the rest of Thailand is a weekend away by bus or motorbike.", "khon-kaen", 49 * 24 * time.Hour},
+	{"andaman-ann", "Ann P.", "Phuket is home. Rainy season is the best season, wherever the trip goes.", "phuket", 41 * 24 * time.Hour},
+	{"krung-thep-lek", "", "Bangkok by bicycle and ferry at home, the rest of the country by night train.", "bangkok", 33 * 24 * time.Hour},
+	{"gulf-coast-ton", "Ton", "Surat Thani is home. Trips go by train, one plot at every station.", "surat-thani", 24 * 24 * time.Hour},
+	{"central-plains-nok", "", "Phitsanulok is home. Temples at dawn, then the fields, in every province.", "phitsanulok", 15 * 24 * time.Hour},
 }
 
 // CommonsStats reports what SeedCommons did.

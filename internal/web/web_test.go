@@ -664,13 +664,13 @@ func TestStaticPages(t *testing.T) {
 	must(t, body, "<h1>Data &amp; licence</h1>", "<ul>", `<a href="/about/plots">About the plots</a>`, `href="mailto:hello@cartograph.asia"`)
 	body = get(t, h, "/about").body
 	must(t, body, "<h1>About</h1>", `<p class="lede">Cartograph is a photo survey`, "<ol>", `<a href="/map">map</a>`)
-	body = get(t, h, "/legal-notice").body
-	must(t, body, "<title>Legal notice · cartograph.asia</title>", "<h1>Legal notice</h1>", "(Impressum)", "§ 5 DDG",
-		`<a href="/legal-notice">Legal notice</a>`)
-	mustNot(t, body, `href="/impressum"`)
-	r := get(t, h, "/impressum")
-	if r.status != http.StatusMovedPermanently || r.header.Get("Location") != "/legal-notice" {
-		t.Errorf("/impressum: %d to %q", r.status, r.header.Get("Location"))
+	// The legal pages are drafts in docs/drafts/ until they are filled in
+	// (docs/DEPLOY.md, Going live): not served and not linked.
+	mustNot(t, body, `href="/legal-notice"`, `href="/privacy"`, `href="/impressum"`)
+	for _, u := range []string{"/legal-notice", "/privacy", "/impressum"} {
+		if r := get(t, h, u); r.status != http.StatusNotFound {
+			t.Errorf("%s: %d, want 404 while the page is a draft", u, r.status)
+		}
 	}
 }
 

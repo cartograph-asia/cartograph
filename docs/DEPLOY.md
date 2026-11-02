@@ -73,7 +73,15 @@ Push the previous commit: `git push -f deploy <commit>:main`. Migrations are nev
 
 Until the switch, the stack can run on another local port than the one the host Caddy proxies to, and be checked through an ssh tunnel. To go live:
 
-1. `docs/pages/legal-notice.md` and `docs/pages/privacy.md`: the address, the supervisory authority and the date filled in, nothing in brackets left. Release.
+1. The legal pages (went live without them on 2026-11-02, see below).
 2. `SMTP_PASSWORD` in `RUNTIME/deploy/.env`; the api's log says `smtp ok` at start.
 3. `HTTP_PORT` in `.env` to the port in `deploy/cartograph.asia.caddy`, then `RUNTIME/deploy/prod.sh up -d`.
 4. Check `https://cartograph.asia`: the front page, `/map`, a sign-in mail, an upload, `/robots.txt`.
+
+## Legal notice and privacy
+
+The site went live on 2026-11-02 without them (Adrian). The drafts wait in `docs/drafts/legal-notice.md` and `docs/drafts/privacy.md`, outside the embedded pages: they are not served, not linked, and `/legal-notice`, `/privacy` and `/impressum` answer 404 (a test holds this). To publish them:
+
+1. Fill in the address, the supervisory authority and the date; nothing in brackets left, the DRAFT line removed.
+2. Undo the commit that took them offline (`git log --oneline -- docs/drafts`) with `git revert --no-commit <commit>`, but keep `docs/decisions.md` as it is (`git checkout HEAD -- docs/decisions.md`; the log only grows). That brings back the files in `docs/pages/`, the routes, the `/impressum` redirect, the footer and map links and their test; then move the filled-in text over and update this section.
+3. Release.

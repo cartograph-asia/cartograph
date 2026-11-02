@@ -40,6 +40,7 @@ with an index on `lower(camera)`. A row exists only when the photo had at least 
 - `internal/photos`: `Meta.Camera *Camera` filled by `ReadMeta`/`ReadMetaFrom` from the same EXIF block, nil without any camera tag; the cleaning and the label (decision 3) live here.
 - `internal/db`: `NewPhoto.Camera`, written by `ClaimPhoto` in the same transaction as the photo; `Views.Photo` reads it.
 - `internal/api` (the upload) and `cmd/seed` pass `meta.Camera` on; the synthetic seed photos have none.
+- `cmd/seed` (development data): `SeedCameras` gives the photos of the development Surveyors (addresses at `example.test`) that have no camera data fake camera data from a list of twelve models (phones, mirrorless cameras, a compact, an action camera) with plausible lens settings, ISO and exposure for daylight in Thailand. A Surveyor uses one camera in four photos of five; the same photo always gets the same data; photos that have data and the photos of real accounts are left alone, so a second run does nothing. It works on whatever photos are there, so the Commons seed (`docs/SEED_PHOTOS_BRIEF.md`) is covered without a change. The list has the label cases statistics find hard on purpose: "samsung" in lower case, "NIKON CORPORATION", "RICOH IMAGING COMPANY, LTD.", a model that repeats its make.
 - `internal/views`: `Photo.Camera *Camera` with a `Line()` that formats the line of decision 5; `viewstest` gets a camera on the featured photo.
 - `internal/web`: the line in `photo.html`.
 
@@ -47,6 +48,7 @@ with an index on `lower(camera)`. A row exists only when the photo had at least 
 
 - **photos:** the iPhone photo `testdata/IMG_1911.jpeg` gives make, model, lens, 6.8 mm, 48 mm, f/1.8, 1/16129 s, ISO 64, flash off; a photo without camera tags gives nil; label cases (Apple + "iPhone 17 Pro", Canon + "Canon EOS R5", "NIKON CORPORATION" + "NIKON D850", only a model, only a make); control characters, spaces and 300 characters are cleaned; no serial or owner field is exposed by `Camera`.
 - **db:** `ClaimPhoto` with and without a camera; the row goes with the photo; absurd numbers are refused by the checks and a null in their place never fails a claim; `Views.Photo` returns the camera.
+- **seed:** every fake camera has a label and valid numbers; a photo always gets the same data; a Surveyor's own camera is in about four photos of five; `SeedCameras` fills the seeded photos once, does nothing the second time, keeps existing data and leaves a real account's photo without.
 - **api:** an upload of a photo with camera tags stores them; one without stores no row.
 - **web:** the line appears with data and not without; a model like `<script>alert(1)</script>` is shown as text; vocabulary and page tests; no `style` attribute.
 

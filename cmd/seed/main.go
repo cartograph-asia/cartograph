@@ -87,6 +87,11 @@ func run(n int) error {
 	}
 	slog.Info("seeded", "surveyors_created", st.Surveyors, "photos_created", st.Photos, "photos_present", st.Skipped,
 		"featured_set", st.Featured, "took", time.Since(start).Round(time.Millisecond))
+	filled, err := SeedCameras(ctx, d)
+	if err != nil {
+		return err
+	}
+	slog.Info("seeded cameras", "photos_filled", filled)
 	return nil
 }
 

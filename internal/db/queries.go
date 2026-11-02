@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/cartograph-asia/cartograph/internal/photos"
 )
@@ -273,16 +274,28 @@ func (d *DB) SurveyableBounds(ctx context.Context) (Bounds, bool, error) {
 	return Bounds{West: *w, South: *s, East: *e, North: *n}, true, nil
 }
 
+// execer is what a pool and a transaction share.
+type execer interface {
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+}
+
+// AddCamera stores camera data for an existing photo, for the development seed
+// (cmd/seed); a photo that has some keeps it. Uploads go through ClaimPhoto.
+func (d *DB) AddCamera(ctx context.Context, photoID uuid.UUID, c *photos.Camera) error {
+	return insertCamera(ctx, d.Pool, photoID, c)
+}
+
 // insertCamera stores the camera data of a new photo; nothing for nil. Zero
 // values are stored as null, so they are never taken for a measurement.
-func insertCamera(ctx context.Context, tx pgx.Tx, id uuid.UUID, c *photos.Camera) error {
+func insertCamera(ctx context.Context, tx execer, id uuid.UUID, c *photos.Camera) error {
 	if c == nil {
 		return nil
 	}
 	_, err := tx.Exec(ctx, `
 		insert into photo_camera (photo_id, camera, make, model, lens, focal_length_mm, focal_length_35mm,
 		                          f_number, exposure_time_s, iso, flash_fired)
-		values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+		values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		on conflict (photo_id) do nothing`,
 		id, c.Label, nullString(c.Make), nullString(c.Model), nullString(c.Lens),
 		nullFloat(c.FocalMM), nullInt16(c.Focal35MM), nullFloat(c.FNumber), nullFloat(c.ExposureS), nullInt(c.ISO), c.Flash)
 	if err != nil {

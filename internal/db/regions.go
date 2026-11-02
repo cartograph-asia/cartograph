@@ -24,7 +24,7 @@ type Region struct {
 	Country    string // ISO 3166-1 alpha-2, lower case
 	Slug       string
 	NameEn     string
-	NameLocal     string           // may be empty
+	NameLocal  string           // may be empty
 	Boundary   orb.MultiPolygon // simplified, WGS 84
 	LandCells  int
 }
@@ -326,11 +326,11 @@ type querier interface {
 
 // PlotLocation is where a plot is: its region and display names.
 type PlotLocation struct {
-	RegionID int
-	Region   string  // region name_en
-	PlaceEn  string  // the naming place (see PlaceNaming), else the region's name
-	PlaceLocal  *string // Thai name of the same; nil if unknown
-	Near     bool    // PlaceEn is an OSM place, not the region fallback
+	RegionID   int
+	Region     string  // region name_en
+	PlaceEn    string  // the naming place (see PlaceNaming), else the region's name
+	PlaceLocal *string // Thai name of the same; nil if unknown
+	Near       bool    // PlaceEn is an OSM place, not the region fallback
 	// DistrictID is the district (admin_level 6) containing the centre; nil
 	// where none is imported. District is its name_en.
 	DistrictID *int
@@ -454,13 +454,13 @@ func (d *DB) BackfillPlots(ctx context.Context) (updated, outside int, err error
 
 // Place is one row for ReplacePlaces.
 type Place struct {
-	OSMType  string
-	OSMID    int64
-	Kind     string
-	NameEn   string
-	NameLocal   string
-	Lat, Lng float64
-	RegionID *int
+	OSMType   string
+	OSMID     int64
+	Kind      string
+	NameEn    string
+	NameLocal string
+	Lat, Lng  float64
+	RegionID  *int
 }
 
 // ReplacePlaces upserts places by (osm_type, osm_id) and deletes the places

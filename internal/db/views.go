@@ -39,8 +39,8 @@ const mediumSide = 1200
 // shows its free-text surveyor name.
 const photoCols = `ph.id, ph.key_thumb, coalesce(ph.key_medium, ''), ph.key_large,
 	coalesce(ph.width, 0), coalesce(ph.height, 0), ph.cell,
-	coalesce(pl.place_name, r.name_en, ''), coalesce(pl.place_name_th, ''),
-	coalesce(r.slug, ''), coalesce(r.name_en, ''), coalesce(r.name_th, ''),
+	coalesce(pl.place_name, r.name_en, ''), coalesce(pl.place_name_local, ''),
+	coalesce(r.slug, ''), coalesce(r.name_en, ''), coalesce(r.name_local, ''),
 	coalesce(s.name, ph.surveyor), ph.taken_at, ph.uploaded_at, pl.first_photo is not distinct from ph.id,
 	coalesce(pn.number, 0), coalesce(dr.name_en, ''), coalesce(s.display_name, '')`
 
@@ -65,7 +65,7 @@ func scanPhoto(row pgx.CollectableRow) (views.PhotoItem, error) {
 // photoDest returns the scan destinations of photoCols.
 func photoDest(p *views.PhotoItem, id *uuid.UUID) []any {
 	return []any{id, &p.Keys.Thumb, &p.Keys.Medium, &p.Keys.Large, &p.Width, &p.Height, &p.Plot.Cell,
-		&p.Plot.Place, &p.Plot.PlaceTh, &p.Plot.Region.Slug, &p.Plot.Region.NameEn, &p.Plot.Region.NameTh,
+		&p.Plot.Place, &p.Plot.PlaceLocal, &p.Plot.Region.Slug, &p.Plot.Region.NameEn, &p.Plot.Region.NameLocal,
 		&p.Surveyor.Name, &p.TakenAt, &p.UploadedAt, &p.FirstSurvey, &p.Plot.Number, &p.Plot.District, &p.Surveyor.Display}
 }
 
@@ -239,12 +239,12 @@ type regionRow struct {
 	b    views.Bounds
 }
 
-const regionCols = `id, kind, slug, name_en, coalesce(name_th, ''), claimed_cells, land_cells, last_surveyed_at,
+const regionCols = `id, kind, slug, name_en, coalesce(name_local, ''), claimed_cells, land_cells, last_surveyed_at,
 	min_lat, min_lng, max_lat, max_lng`
 
 func scanRegion(r pgx.CollectableRow) (regionRow, error) {
 	var x regionRow
-	err := r.Scan(&x.id, &x.kind, &x.ref.Slug, &x.ref.NameEn, &x.ref.NameTh, &x.cov.Claimed, &x.cov.Land, &x.last,
+	err := r.Scan(&x.id, &x.kind, &x.ref.Slug, &x.ref.NameEn, &x.ref.NameLocal, &x.cov.Claimed, &x.cov.Land, &x.last,
 		&x.b.MinLat, &x.b.MinLng, &x.b.MaxLat, &x.b.MaxLng)
 	if x.last != nil {
 		t := x.last.UTC()
@@ -415,7 +415,7 @@ func (v *Views) surveyor(ctx context.Context, name string) (*surveyorRow, error)
 	var s surveyorRow
 	var slug, en, th *string
 	err := v.d.Pool.QueryRow(ctx, `
-		select s.id, s.name, coalesce(s.display_name, ''), s.joined_at, s.bio, r.slug, r.name_en, r.name_th
+		select s.id, s.name, coalesce(s.display_name, ''), s.joined_at, s.bio, r.slug, r.name_en, r.name_local
 		from surveyors s left join regions r on r.id = s.home_region_id
 		where lower(s.name) = lower($1)`, name,
 	).Scan(&s.id, &s.profile.Name, &s.profile.Display, &s.profile.JoinedAt, &s.profile.Bio, &slug, &en, &th)
@@ -427,7 +427,7 @@ func (v *Views) surveyor(ctx context.Context, name string) (*surveyorRow, error)
 	}
 	s.profile.JoinedAt = s.profile.JoinedAt.UTC()
 	if slug != nil {
-		s.profile.HomeRegion = &views.RegionRef{Slug: *slug, NameEn: *en, NameTh: deref(th)}
+		s.profile.HomeRegion = &views.RegionRef{Slug: *slug, NameEn: *en, NameLocal: deref(th)}
 	}
 	return &s, nil
 }
@@ -498,8 +498,8 @@ func (v *Views) Surveyor(ctx context.Context, name string, q views.SurveyorQuery
 	if q.Region != "" {
 		var id int
 		var ref views.RegionRef
-		err := v.d.Pool.QueryRow(ctx, `select id, slug, name_en, coalesce(name_th, '') from regions where slug = lower($1)`, q.Region).
-			Scan(&id, &ref.Slug, &ref.NameEn, &ref.NameTh)
+		err := v.d.Pool.QueryRow(ctx, `select id, slug, name_en, coalesce(name_local, '') from regions where slug = lower($1)`, q.Region).
+			Scan(&id, &ref.Slug, &ref.NameEn, &ref.NameLocal)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, views.ErrNotFound
 		}
@@ -597,14 +597,14 @@ func (v *Views) Surveyor(ctx context.Context, name string, q views.SurveyorQuery
 // Surveyor's, most plots first.
 func (v *Views) surveyorRegions(ctx context.Context, id uuid.UUID) ([]views.SurveyorRegion, error) {
 	rows, err := v.d.Pool.Query(ctx, `
-		select r.slug, r.name_en, coalesce(r.name_th, ''), count(distinct ph.cell), count(*), r.land_cells
+		select r.slug, r.name_en, coalesce(r.name_local, ''), count(distinct ph.cell), count(*), r.land_cells
 		from visible_photos ph join plots pl on pl.cell = ph.cell join regions r on r.id = pl.region_id
 		where ph.surveyor_id = $1 group by r.id order by 4 desc, r.name_en, r.id`, id)
 	if err != nil {
 		return nil, fmt.Errorf("db: surveyor regions: %w", err)
 	}
 	out, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (x views.SurveyorRegion, err error) {
-		err = r.Scan(&x.Region.Slug, &x.Region.NameEn, &x.Region.NameTh, &x.Plots, &x.Photos, &x.Land)
+		err = r.Scan(&x.Region.Slug, &x.Region.NameEn, &x.Region.NameLocal, &x.Plots, &x.Photos, &x.Land)
 		return
 	})
 	if err != nil {
@@ -640,8 +640,8 @@ func (v *Views) SurveyorPlots(ctx context.Context, name string) (*views.Surveyor
 		return nil, err
 	}
 	rows, err := v.d.Pool.Query(ctx, `
-		select ph.cell, coalesce(pl.place_name, r.name_en, ''), coalesce(pl.place_name_th, ''),
-		       coalesce(r.slug, ''), coalesce(r.name_en, ''), coalesce(r.name_th, ''),
+		select ph.cell, coalesce(pl.place_name, r.name_en, ''), coalesce(pl.place_name_local, ''),
+		       coalesce(r.slug, ''), coalesce(r.name_en, ''), coalesce(r.name_local, ''),
 		       coalesce(pn.number, 0), coalesce(dr.name_en, ''), count(*), pl.first_surveyor_id is not distinct from $1
 		from visible_photos ph
 		join plots pl on pl.cell = ph.cell
@@ -649,7 +649,7 @@ func (v *Views) SurveyorPlots(ctx context.Context, name string) (*views.Surveyor
 		left join regions r on r.id = pl.region_id
 		left join regions dr on dr.id = pl.district_id
 		where ph.surveyor_id = $1
-		group by ph.cell, pl.place_name, pl.place_name_th, pl.first_surveyor_id, r.id, pn.number, dr.id
+		group by ph.cell, pl.place_name, pl.place_name_local, pl.first_surveyor_id, r.id, pn.number, dr.id
 		order by ph.cell`, s.id)
 	if err != nil {
 		return nil, fmt.Errorf("db: surveyor plots: %w", err)
@@ -657,7 +657,7 @@ func (v *Views) SurveyorPlots(ctx context.Context, name string) (*views.Surveyor
 	out := &views.SurveyorPlotList{Surveyor: views.SurveyorRef{Name: s.profile.Name, Display: s.profile.Display}}
 	out.Plots, err = pgx.CollectRows(rows, func(r pgx.CollectableRow) (x views.SurveyorPlot, err error) {
 		p := &x.Plot
-		err = r.Scan(&p.Cell, &p.Place, &p.PlaceTh, &p.Region.Slug, &p.Region.NameEn, &p.Region.NameTh, &p.Number, &p.District, &x.Photos, &x.First)
+		err = r.Scan(&p.Cell, &p.Place, &p.PlaceLocal, &p.Region.Slug, &p.Region.NameEn, &p.Region.NameLocal, &p.Number, &p.District, &x.Photos, &x.First)
 		return
 	})
 	if err != nil {
@@ -683,8 +683,8 @@ func (v *Views) Plot(ctx context.Context, cell string) (*views.Plot, error) {
 	var firstDisplay string
 	var claimedAt *time.Time
 	err = v.d.Pool.QueryRow(ctx, `
-		select pl.photo_count, pl.claimed_at, pl.place_name, pl.place_name_th,
-		       coalesce(s.name, pl.first_surveyor), coalesce(s.display_name, ''), r.slug, r.name_en, r.name_th, dr.name_en
+		select pl.photo_count, pl.claimed_at, pl.place_name, pl.place_name_local,
+		       coalesce(s.name, pl.first_surveyor), coalesce(s.display_name, ''), r.slug, r.name_en, r.name_local, dr.name_en
 		from plots pl
 		left join surveyors s on s.id = pl.first_surveyor_id
 		left join regions r on r.id = pl.region_id
@@ -703,9 +703,9 @@ func (v *Views) Plot(ctx context.Context, cell string) (*views.Plot, error) {
 			out.FirstSurveyor = &views.SurveyorRef{Name: *firstName, Display: firstDisplay}
 		}
 		if slug != nil {
-			out.Plot.Region = views.RegionRef{Slug: *slug, NameEn: *en, NameTh: deref(th)}
+			out.Plot.Region = views.RegionRef{Slug: *slug, NameEn: *en, NameLocal: deref(th)}
 		}
-		out.Plot.Place, out.Plot.PlaceTh, out.Plot.District = deref(place), deref(placeTh), deref(district)
+		out.Plot.Place, out.Plot.PlaceLocal, out.Plot.District = deref(place), deref(placeTh), deref(district)
 	}
 	if out.Plot.Place == "" || out.Plot.Region.Slug == "" || out.Plot.District == "" {
 		// Blank plot, or a surveyed plot not yet backfilled: locate it now.
@@ -724,7 +724,7 @@ func (v *Views) Plot(ctx context.Context, cell string) (*views.Plot, error) {
 				}
 			}
 			if out.Plot.Place == "" {
-				out.Plot.Place, out.Plot.PlaceTh = loc.PlaceEn, deref(loc.PlaceTh)
+				out.Plot.Place, out.Plot.PlaceLocal = loc.PlaceEn, deref(loc.PlaceLocal)
 			}
 			if out.Plot.District == "" {
 				out.Plot.District = loc.District
@@ -846,8 +846,8 @@ func plural(n int, word string) string {
 
 func (v *Views) regionRef(ctx context.Context, id int) (views.RegionRef, error) {
 	var r views.RegionRef
-	err := v.d.Pool.QueryRow(ctx, `select slug, name_en, coalesce(name_th, '') from regions where id = $1`, id).
-		Scan(&r.Slug, &r.NameEn, &r.NameTh)
+	err := v.d.Pool.QueryRow(ctx, `select slug, name_en, coalesce(name_local, '') from regions where id = $1`, id).
+		Scan(&r.Slug, &r.NameEn, &r.NameLocal)
 	if err != nil {
 		return r, fmt.Errorf("db: region ref: %w", err)
 	}
@@ -1005,13 +1005,13 @@ func (v *Views) Region(ctx context.Context, slug string, page int) (*views.Regio
 
 // RegionRefs implements views.Source.
 func (v *Views) RegionRefs(ctx context.Context) ([]views.RegionRef, error) {
-	rows, err := v.d.Pool.Query(ctx, `select slug, name_en, coalesce(name_th, '') from regions where kind = 'province' order by name_en`)
+	rows, err := v.d.Pool.Query(ctx, `select slug, name_en, coalesce(name_local, '') from regions where kind = 'province' order by name_en`)
 	if err != nil {
 		return nil, fmt.Errorf("db: region refs: %w", err)
 	}
 	out, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (views.RegionRef, error) {
 		var x views.RegionRef
-		return x, r.Scan(&x.Slug, &x.NameEn, &x.NameTh)
+		return x, r.Scan(&x.Slug, &x.NameEn, &x.NameLocal)
 	})
 	if err != nil {
 		return nil, fmt.Errorf("db: region refs: %w", err)

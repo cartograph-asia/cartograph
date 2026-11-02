@@ -66,11 +66,11 @@ func (d *DB) naming(country string) *PlaceNaming {
 
 // placeCandidate is a place near a plot.
 type placeCandidate struct {
-	id             int64
-	kind           string
-	nameEn, nameTh string
-	lat, lng       float64
-	km             float64 // distance from the plot centre
+	id                int64
+	kind              string
+	nameEn, nameLocal string
+	lat, lng          float64
+	km                float64 // distance from the plot centre
 }
 
 // placesNear returns the places within radiusKm of (lat, lng), using the
@@ -80,7 +80,7 @@ func placesNear(ctx context.Context, q querier, lat, lng, radiusKm float64) ([]p
 	dLat := radiusKm / kmPerDeg
 	dLng := dLat / math.Cos(lat*math.Pi/180)
 	rows, err := q.Query(ctx, `
-		select id, kind, name_en, coalesce(name_th, ''), lat, lng from places
+		select id, kind, name_en, coalesce(name_local, ''), lat, lng from places
 		where lat between $1 and $2 and lng between $3 and $4`, lat-dLat, lat+dLat, lng-dLng, lng+dLng)
 	if err != nil {
 		return nil, fmt.Errorf("db: places near: %w", err)
@@ -88,7 +88,7 @@ func placesNear(ctx context.Context, q querier, lat, lng, radiusKm float64) ([]p
 	out, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (placeCandidate, error) {
 		var c placeCandidate
 		var plat, plng float64
-		err := r.Scan(&c.id, &c.kind, &c.nameEn, &c.nameTh, &plat, &plng)
+		err := r.Scan(&c.id, &c.kind, &c.nameEn, &c.nameLocal, &plat, &plng)
 		c.lat, c.lng = plat, plng
 		c.km = kmPerDeg * math.Hypot(plat-lat, (plng-lng)*math.Cos(lat*math.Pi/180))
 		return c, err

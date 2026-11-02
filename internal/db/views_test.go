@@ -198,7 +198,7 @@ func TestViews(t *testing.T) {
 		t.Fatalf("latest %+v", h.Latest)
 	}
 	it := h.Latest[0]
-	if it.Plot.Place == "" || it.Plot.Region != (views.RegionRef{Slug: "chon-buri", NameEn: "Chon Buri", NameTh: "ชลบุรี"}) ||
+	if it.Plot.Place == "" || it.Plot.Region != (views.RegionRef{Slug: "chon-buri", NameEn: "Chon Buri", NameLocal: "ชลบุรี"}) ||
 		it.Surveyor.Name != "adrian" || it.Keys.Medium == "" || it.Width != 2000 || !it.UploadedAt.Equal(t0.Add(-30*time.Minute)) {
 		t.Fatalf("item %+v", it)
 	}

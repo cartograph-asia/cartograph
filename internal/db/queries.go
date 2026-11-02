@@ -110,7 +110,7 @@ func (d *DB) ClaimPhoto(ctx context.Context, p NewPhoto) (claimed bool, err erro
 	err = pgx.BeginFunc(ctx, d.Pool, func(tx pgx.Tx) error {
 		err := tx.QueryRow(ctx, `
 			insert into plots (cell, first_photo, first_surveyor, first_surveyor_id, claimed_at, photo_count,
-			                   parent5, parent6, region_id, place_name, place_name_th, district_id)
+			                   parent5, parent6, region_id, place_name, place_name_local, district_id)
 			values ($1, $2, $3, $4, $5, 1, $6, $7, $8, $9, $10, $11)
 			on conflict (cell) do update set
 			  photo_count       = plots.photo_count + 1,
@@ -120,7 +120,7 @@ func (d *DB) ClaimPhoto(ctx context.Context, p NewPhoto) (claimed bool, err erro
 			  claimed_at        = case when plots.photo_count = 0 then excluded.claimed_at else plots.claimed_at end
 			returning photo_count = 1`,
 			p.Cell, p.ID, p.Surveyor, nullUUID(p.SurveyorID), p.UploadedAt, p.Parent5, p.Parent6,
-			loc.RegionID, loc.PlaceEn, loc.PlaceTh, loc.DistrictID,
+			loc.RegionID, loc.PlaceEn, loc.PlaceLocal, loc.DistrictID,
 		).Scan(&claimed)
 		if err != nil {
 			return fmt.Errorf("upsert plot: %w", err)

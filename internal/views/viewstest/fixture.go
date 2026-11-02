@@ -16,9 +16,9 @@ var Now = time.Date(2026, 11, 1, 9, 0, 0, 0, time.UTC)
 
 // Regions of the fixture.
 var (
-	ChonBuri = views.RegionRef{Slug: "chon-buri", NameEn: "Chon Buri", NameTh: "ชลบุรี"}
-	Rayong   = views.RegionRef{Slug: "rayong", NameEn: "Rayong", NameTh: "ระยอง"}
-	Bangkok  = views.RegionRef{Slug: "bangkok", NameEn: "Bangkok", NameTh: "กรุงเทพมหานคร"}
+	ChonBuri = views.RegionRef{Slug: "chon-buri", NameEn: "Chon Buri", NameLocal: "ชลบุรี"}
+	Rayong   = views.RegionRef{Slug: "rayong", NameEn: "Rayong", NameLocal: "ระยอง"}
+	Bangkok  = views.RegionRef{Slug: "bangkok", NameEn: "Bangkok", NameLocal: "กรุงเทพมหานคร"}
 )
 
 // region is a fixture region with its land cell count and bounds.
@@ -41,7 +41,7 @@ type plot struct {
 }
 
 func p(cell, place, placeTh, district string, r views.RegionRef, number int, lat, lng float64) plot {
-	return plot{views.PlotRef{Cell: cell, Place: place, PlaceTh: placeTh, District: district, Region: r, Number: number}, lat, lng}
+	return plot{views.PlotRef{Cell: cell, Place: place, PlaceLocal: placeTh, District: district, Region: r, Number: number}, lat, lng}
 }
 
 // Plots of the fixture. The first seven are Pattaya Beach and its ring;

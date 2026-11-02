@@ -22,6 +22,7 @@ x-api-env: &api-env
   S3_USE_SSL: ${S3_USE_SSL:-false}
   IMG_BASE_URL: ${IMG_BASE_URL:-http://localhost:8080/img}
   MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-25}
+  UPLOAD_CONCURRENCY: ${UPLOAD_CONCURRENCY:-2}
   TILES_URL: ${TILES_URL:-/tiles/asia.pmtiles}
   BASE_URL: ${BASE_URL:-http://localhost:8080}
   SMTP_HOST: ${SMTP_HOST:-}
@@ -93,7 +94,7 @@ services:
   # populated front page. Each step is idempotent. For all of Thailand set
   # IMPORT_PBF, IMPORT_WATER and IMPORT_BBOX as in .env.example.
   regions:
-    image: cartograph-api:local
+    image: cartograph-api:${API_TAG:-local}
     pull_policy: never
     depends_on:
       postgres:
@@ -111,7 +112,7 @@ services:
     restart: "no"
 
   places:
-    image: cartograph-api:local
+    image: cartograph-api:${API_TAG:-local}
     pull_policy: never
     depends_on:
       regions:
@@ -126,7 +127,7 @@ services:
     restart: "no"
 
   seed:
-    image: cartograph-api:local
+    image: cartograph-api:${API_TAG:-local}
     pull_policy: never
     depends_on:
       places:
@@ -139,7 +140,7 @@ services:
     restart: "no"
 
   api:
-    image: cartograph-api:local
+    image: cartograph-api:${API_TAG:-local}
     build:
       context: ..
       dockerfile: deploy/Dockerfile.api
@@ -166,6 +167,7 @@ services:
       start_period: 40s
 
   web:
+    image: cartograph-web:${WEB_TAG:-local}
     build:
       context: ../web
       dockerfile: ../deploy/Dockerfile.web

@@ -37,6 +37,8 @@ var StaticPages = []struct{ Path, File string }{
 	{"/about/plots", "pages/about-plots.md"},
 	{"/principles", "PRINCIPLES.md"},
 	{"/licence", "pages/licence.md"},
+	{"/legal-notice", "pages/legal-notice.md"},
+	{"/privacy", "pages/privacy.md"},
 }
 
 // Config configures the renderer.

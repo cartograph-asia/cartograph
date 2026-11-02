@@ -26,7 +26,8 @@ func NewHandlers(src views.Source, rd *Renderer) *Handlers {
 //
 //	/  /latest  /latest.rss  /surveyors  /regions
 //	/surveyor/{name}[.rss]  /plot/{cell}  /plot/{slug}/{number}  /photo/{id}  /region/{slug}[.rss]
-//	/about  /about/plots  /principles  /licence (StaticPages)  /static/*
+//	/about  /about/plots  /principles  /licence  /legal-notice  /privacy (StaticPages)  /static/*
+//	/impressum (redirects to /legal-notice)
 //
 // The account pages (/signin, /signin/link, /signin/name, /settings, /signout) belong to
 // internal/auth, which renders through Renderer.RenderFunc.
@@ -44,6 +45,10 @@ func (h *Handlers) Routes(r chi.Router) {
 	for _, sp := range StaticPages {
 		r.Get(sp.Path, h.static(sp.Path))
 	}
+	// German visitors type the German word; the page is the legal notice.
+	r.Get("/impressum", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/legal-notice", http.StatusMovedPermanently)
+	})
 	r.Handle(StaticPrefix+"*", h.rd.assets)
 }
 

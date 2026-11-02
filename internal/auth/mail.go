@@ -164,47 +164,31 @@ func (m *SMTPMailer) SendSignInLink(ctx context.Context, to, link string) error 
 	return m.send(ctx, to, msg)
 }
 
-func (m *SMTPMailer) send(ctx context.Context, to string, msg []byte) error {
-	from, err := mail.ParseAddress(m.cfg.From)
+// Check connects, greets, starts TLS and authenticates, then quits without
+// sending anything: the start-up check that the SMTP settings work.
+func (m *SMTPMailer) Check(ctx context.Context) error {
+	c, _, err := m.connect(ctx)
 	if err != nil {
-		return fmt.Errorf("smtp: MAIL_FROM: %w", err)
-	}
-	addr := net.JoinHostPort(m.cfg.Host, strconv.Itoa(m.cfg.Port))
-	var d net.Dialer
-	conn, err := d.DialContext(ctx, "tcp", addr)
-	if err != nil {
-		return fmt.Errorf("smtp: dial %s: %w", addr, err)
-	}
-	if dl, ok := ctx.Deadline(); ok {
-		_ = conn.SetDeadline(dl)
-	}
-	c, err := smtp.NewClient(conn, m.cfg.Host)
-	if err != nil {
-		conn.Close()
-		return fmt.Errorf("smtp: greeting: %w", err)
+		return err
 	}
 	defer c.Close()
+	return c.Quit()
+}
 
-	// Greet with the sender's domain rather than net/smtp's "localhost",
-	// which some relays refuse.
-	if at := strings.LastIndexByte(from.Address, '@'); at >= 0 {
-		if err := c.Hello(from.Address[at+1:]); err != nil {
-			return fmt.Errorf("smtp: EHLO: %w", err)
-		}
+// Sender is MAIL_FROM's address, for the log.
+func (m *SMTPMailer) Sender() string {
+	if a, err := mail.ParseAddress(m.cfg.From); err == nil {
+		return a.Address
 	}
-	if ok, _ := c.Extension("STARTTLS"); ok {
-		if err := c.StartTLS(&tls.Config{ServerName: m.cfg.Host, MinVersion: tls.VersionTLS12}); err != nil {
-			return fmt.Errorf("smtp: starttls: %w", err)
-		}
-	} else if !isLocalhost(m.cfg.Host) {
-		return errors.New("smtp: server does not offer STARTTLS")
+	return ""
+}
+
+func (m *SMTPMailer) send(ctx context.Context, to string, msg []byte) error {
+	c, from, err := m.connect(ctx)
+	if err != nil {
+		return err
 	}
-	if m.cfg.User != "" {
-		// PlainAuth refuses to send credentials without TLS (except to localhost).
-		if err := c.Auth(smtp.PlainAuth("", m.cfg.User, m.cfg.Password, m.cfg.Host)); err != nil {
-			return fmt.Errorf("smtp: auth: %w", err)
-		}
-	}
+	defer c.Close()
 	if err := c.Mail(from.Address); err != nil {
 		return fmt.Errorf("smtp: MAIL FROM: %w", err)
 	}
@@ -222,6 +206,55 @@ func (m *SMTPMailer) send(ctx context.Context, to string, msg []byte) error {
 		return fmt.Errorf("smtp: end of data: %w", err)
 	}
 	return c.Quit()
+}
+
+// connect dials, greets, starts TLS (required unless on localhost) and
+// authenticates. The caller closes the client.
+func (m *SMTPMailer) connect(ctx context.Context) (*smtp.Client, *mail.Address, error) {
+	from, err := mail.ParseAddress(m.cfg.From)
+	if err != nil {
+		return nil, nil, fmt.Errorf("smtp: MAIL_FROM: %w", err)
+	}
+	addr := net.JoinHostPort(m.cfg.Host, strconv.Itoa(m.cfg.Port))
+	var d net.Dialer
+	conn, err := d.DialContext(ctx, "tcp", addr)
+	if err != nil {
+		return nil, nil, fmt.Errorf("smtp: dial %s: %w", addr, err)
+	}
+	if dl, ok := ctx.Deadline(); ok {
+		_ = conn.SetDeadline(dl)
+	}
+	c, err := smtp.NewClient(conn, m.cfg.Host)
+	if err != nil {
+		conn.Close()
+		return nil, nil, fmt.Errorf("smtp: greeting: %w", err)
+	}
+	fail := func(e error) (*smtp.Client, *mail.Address, error) {
+		c.Close()
+		return nil, nil, e
+	}
+
+	// Greet with the sender's domain rather than net/smtp's "localhost",
+	// which some relays refuse.
+	if at := strings.LastIndexByte(from.Address, '@'); at >= 0 {
+		if err := c.Hello(from.Address[at+1:]); err != nil {
+			return fail(fmt.Errorf("smtp: EHLO: %w", err))
+		}
+	}
+	if ok, _ := c.Extension("STARTTLS"); ok {
+		if err := c.StartTLS(&tls.Config{ServerName: m.cfg.Host, MinVersion: tls.VersionTLS12}); err != nil {
+			return fail(fmt.Errorf("smtp: starttls: %w", err))
+		}
+	} else if !isLocalhost(m.cfg.Host) {
+		return fail(errors.New("smtp: server does not offer STARTTLS"))
+	}
+	if m.cfg.User != "" {
+		// PlainAuth refuses to send credentials without TLS (except to localhost).
+		if err := c.Auth(smtp.PlainAuth("", m.cfg.User, m.cfg.Password, m.cfg.Host)); err != nil {
+			return fail(fmt.Errorf("smtp: auth: %w", err))
+		}
+	}
+	return c, from, nil
 }
 
 func isLocalhost(host string) bool {

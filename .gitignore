@@ -7,3 +7,10 @@ backup/
 .claude/worktrees/
 # Notes about real hosts (paths, ports, users): local only, never in this public repository
 *.local.md
+# Binaries from `go build ./cmd/...` in the repository root
+/api
+/regions
+/places
+/seed
+/fixture
+/webpreview

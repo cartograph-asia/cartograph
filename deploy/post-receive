@@ -1,0 +1,134 @@
+#!/bin/bash
+# Deploy of cartograph.asia on the production host (docs/DEPLOY.md). Lives in
+# this repository as deploy/post-receive; the host has a copy in the bare
+# repository's hooks/post-receive.
+#
+# On a push to main:
+#   1. check out the pushed commit into a temporary directory
+#   2. build the api and web images, tagged with the commit
+#   3. probe: start the new api on a test port against the running database
+#      and photo store; it must answer /healthz and render / (migrations run
+#      here, which is safe: they are never destructive, CLAUDE.md)
+#   4. copy the release to $RUNTIME (keeping .env, release and the base map),
+#      record the tags in deploy/release and switch the stack
+#   5. keep the last $KEEP_IMAGES images of each kind
+# If a step fails, the running version stays as it was.
+set -euo pipefail
+
+# Host-specific settings (CARTOGRAPH_RUNTIME, CARTOGRAPH_PROBE_PORT, …) can
+# live next to the bare repository, outside this public repository.
+if [ -f "$(pwd)/cartograph-deploy.env" ]; then
+	# shellcheck disable=SC1091
+	. "$(pwd)/cartograph-deploy.env"
+fi
+
+RUNTIME=${CARTOGRAPH_RUNTIME:-/srv/cartograph}
+PROJECT=${CARTOGRAPH_PROJECT:-cartograph}
+PROBE=cartograph-probe
+PROBE_PORT=${CARTOGRAPH_PROBE_PORT:-18070}
+KEEP_IMAGES=3
+
+rev=""
+while read -r _ new ref; do
+	[ "$ref" != refs/heads/main ] || rev=$new
+done
+[ -n "$rev" ] || exit 0
+[ "$rev" != 0000000000000000000000000000000000000000 ] || exit 0
+
+# Give up on a step that hangs (e.g. a dependency that never becomes ready).
+limit() {
+	local seconds=$1
+	shift
+	if command -v timeout >/dev/null; then timeout "$seconds" "$@"; else "$@"; fi
+}
+
+REPO=$(pwd)
+BUILD=$(mktemp -d)
+cleanup() {
+	docker rm -f "$PROBE" >/dev/null 2>&1 || true
+	rm -rf "$BUILD"
+}
+trap cleanup EXIT
+git --git-dir="$REPO" archive "$rev" | tar -x -C "$BUILD"
+tag=${rev:0:12}
+
+if [ ! -f "$RUNTIME/deploy/.env" ]; then
+	echo "ERROR: $RUNTIME/deploy/.env is missing (make it from deploy/.env.prod.example)"
+	exit 1
+fi
+
+echo "==> 1/5 checked out ${tag}"
+
+echo "==> 2/5 building images"
+docker build -q -f "$BUILD/deploy/Dockerfile.api" -t "cartograph-api:${tag}" "$BUILD" >/dev/null
+docker build -q -f "$BUILD/deploy/Dockerfile.web" -t "cartograph-web:${tag}" "$BUILD/web" >/dev/null
+
+echo "==> 3/5 probe on 127.0.0.1:${PROBE_PORT}"
+# The probe runs inside the stack's network with the production settings,
+# as the api would, but under its own name and port. The database and the
+# photo store are started first if they do not run yet (the first deploy);
+# when they run unchanged, this does nothing.
+cp "$RUNTIME/deploy/.env" "$BUILD/deploy/.env"
+export API_TAG=$tag WEB_TAG=$tag CARTOGRAPH_PROJECT=$PROJECT
+# On the first deploy nothing runs yet: start the database and the photo
+# store from this release. Later they run from $RUNTIME and are left alone
+# here (starting them from $BUILD would mount its files, which are deleted
+# when the hook ends).
+if [ ! -f "$RUNTIME/deploy/docker-compose.yml" ]; then
+	if ! limit 300 "$BUILD/deploy/prod.sh" up -d --no-build postgres garage garage-init; then
+		echo "ERROR: the database or the photo store did not start; see: deploy/prod.sh logs garage postgres"
+		exit 1
+	fi
+fi
+"$BUILD/deploy/prod.sh" run -d --no-deps --name "$PROBE" -p "127.0.0.1:${PROBE_PORT}:8000" api >/dev/null
+ok=""
+for _ in $(seq 1 60); do
+	if curl -fsS "http://127.0.0.1:${PROBE_PORT}/healthz" >/dev/null 2>&1; then
+		ok=1
+		break
+	fi
+	# A probe that refused its settings has exited already: no need to wait.
+	[ "$(docker inspect -f '{{.State.Running}}' "$PROBE" 2>/dev/null)" = true ] || break
+	sleep 2
+done
+if [ -z "$ok" ]; then
+	echo "ERROR: the probe did not become healthy; its log:"
+	docker logs --tail 40 "$PROBE" || true
+	exit 1
+fi
+if ! curl -fsS -o /dev/null "http://127.0.0.1:${PROBE_PORT}/"; then
+	echo "ERROR: the probe does not render /; its log:"
+	docker logs --tail 40 "$PROBE" || true
+	exit 1
+fi
+docker rm -f "$PROBE" >/dev/null
+
+echo "==> 4/5 switching ${RUNTIME} to ${tag}"
+checksum() { { sha256sum "$1" 2>/dev/null || shasum -a 256 "$1" 2>/dev/null; } | cut -d' ' -f1; }
+old_caddyfile=$(checksum "$RUNTIME/deploy/Caddyfile" || true)
+mkdir -p "$RUNTIME"
+rsync -a --delete \
+	--exclude '/deploy/.env' --exclude '/deploy/release' --exclude '*.local.md' \
+	--exclude '/map/*.pmtiles' --exclude '/map/data/' \
+	"$BUILD/" "$RUNTIME/"
+printf 'API_TAG=%s\nWEB_TAG=%s\n' "$tag" "$tag" > "$RUNTIME/deploy/release.new"
+mv "$RUNTIME/deploy/release.new" "$RUNTIME/deploy/release"
+if ! limit 600 "$RUNTIME/deploy/prod.sh" up -d --no-build --remove-orphans; then
+	echo "ERROR: switching the stack did not finish; see: deploy/prod.sh ps"
+	exit 1
+fi
+# rsync replaced the Caddyfile; the bind mount still shows the old file
+# until the container is recreated.
+new_caddyfile=$(checksum "$RUNTIME/deploy/Caddyfile")
+if [ "$old_caddyfile" != "$new_caddyfile" ]; then
+	"$RUNTIME/deploy/prod.sh" up -d --no-build --force-recreate caddy
+fi
+
+echo "==> 5/5 pruning old images"
+for repo in cartograph-api cartograph-web; do
+	docker images "$repo" --format '{{.Tag}} {{.CreatedAt}}' | grep -v '^local ' | sort -k2 -r |
+		awk -v keep="$KEEP_IMAGES" 'NR > keep { print $1 }' |
+		while read -r old; do docker rmi "$repo:$old" >/dev/null 2>&1 || true; done
+done
+
+echo "==> deployed ${tag}"

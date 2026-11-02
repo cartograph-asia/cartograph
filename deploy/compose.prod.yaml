@@ -1,0 +1,79 @@
+# Production override (docs/DEPLOY_BRIEF.md, section 3). Used on the host as
+#
+#   docker compose -f docker-compose.yml -f compose.prod.yaml up -d
+#
+# with a deploy/.env made from .env.prod.example. It changes only what differs
+# from development:
+#
+#   - every secret and URL is required (${VAR:?}): a missing value stops
+#     compose with its message instead of starting with a development default;
+#   - the importers run only on request (--profile tools), the seed never;
+#   - only Cartograph's Caddy publishes a port, on 127.0.0.1, for the host's
+#     Caddy in front of it (deploy/cartograph.asia.caddy);
+#   - memory limits for a shared host, and one photo processed at a time.
+#
+# Needs Docker Compose 2.24 or newer for !override.
+
+x-prod-env: &prod-env
+  DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL (postgres://cartograph:<POSTGRES_PASSWORD>@postgres:5432/cartograph?sslmode=disable)}
+  S3_ACCESS_KEY: ${S3_ACCESS_KEY:?set S3_ACCESS_KEY (a fresh Garage key, see .env.prod.example)}
+  S3_SECRET_KEY: ${S3_SECRET_KEY:?set S3_SECRET_KEY}
+  IMG_BASE_URL: ${IMG_BASE_URL:?set IMG_BASE_URL (https://cartograph.asia/img)}
+  TILES_URL: ${TILES_URL:?set TILES_URL (/tiles/asia-YYYY-MM-DD.pmtiles)}
+  BASE_URL: ${BASE_URL:?set BASE_URL (https://cartograph.asia)}
+  SMTP_HOST: ${SMTP_HOST:?set SMTP_HOST}
+  SMTP_USER: ${SMTP_USER:?set SMTP_USER (the mailbox's primary address)}
+  SMTP_PASSWORD: ${SMTP_PASSWORD:?set SMTP_PASSWORD}
+  MAIL_FROM: ${MAIL_FROM:?set MAIL_FROM}
+  MAIL_DEV_LOG: ""
+  ADMIN_EMAILS: ${ADMIN_EMAILS:?set ADMIN_EMAILS}
+  SIGNUP: ${SIGNUP:-invite}
+  CRAWLERS: ${CRAWLERS:-block}
+
+services:
+  postgres:
+    mem_limit: ${POSTGRES_MEM_LIMIT:-512m}
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+
+  garage:
+    mem_limit: ${GARAGE_MEM_LIMIT:-384m}
+    environment:
+      GARAGE_RPC_SECRET: ${GARAGE_RPC_SECRET:?set GARAGE_RPC_SECRET (openssl rand -hex 32)}
+      GARAGE_ADMIN_TOKEN: ${GARAGE_ADMIN_TOKEN:?set GARAGE_ADMIN_TOKEN (openssl rand -base64 32)}
+
+  garage-init:
+    environment:
+      GARAGE_ADMIN_TOKEN: ${GARAGE_ADMIN_TOKEN:?set GARAGE_ADMIN_TOKEN}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:?set S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:?set S3_SECRET_KEY}
+
+  # The importers run once, by hand:
+  #   docker compose -f docker-compose.yml -f compose.prod.yaml --profile tools run --rm regions
+  #   … run --rm places
+  # with IMPORT_PBF / IMPORT_WATER / IMPORT_BBOX for Thailand in .env.
+  regions:
+    profiles: ["tools"]
+    environment: *prod-env
+  places:
+    profiles: ["tools"]
+    environment: *prod-env
+  # Development data only; it never runs in production.
+  seed:
+    profiles: ["never"]
+    environment: *prod-env
+
+  api:
+    mem_limit: ${API_MEM_LIMIT:-1g}
+    environment:
+      <<: *prod-env
+      GOMEMLIMIT: ${API_GOMEMLIMIT:-768MiB}
+      UPLOAD_CONCURRENCY: ${UPLOAD_CONCURRENCY:-1}
+
+  web:
+    mem_limit: ${WEB_MEM_LIMIT:-64m}
+
+  caddy:
+    mem_limit: ${CADDY_MEM_LIMIT:-128m}
+    ports: !override
+      - "127.0.0.1:${HTTP_PORT:?set HTTP_PORT (the local port the host Caddy proxies to)}:80"

@@ -24,7 +24,9 @@ chmod 700 "$GNUPGHOME"
 uid="Cartograph backup <backup@cartograph.asia>"
 if ! gpg --list-secret-keys "$uid" >/dev/null 2>&1; then
 	pass=$(openssl rand -base64 32)
-	security add-generic-password -U -a "$USER" -s cartograph-backup -w "$pass"
+	# Through security's stdin, not its arguments: ps shows those to every
+	# local user. The base64 passphrase has no spaces or quotes.
+	printf 'add-generic-password -U -a %s -s cartograph-backup -w %s\n' "$USER" "$pass" | security -i
 	printf '%s' "$pass" | gpg --batch --pinentry-mode loopback --passphrase-fd 0 \
 		--quick-generate-key "$uid" cv25519 encr never
 	echo "created the backup key; its passphrase is in the login keychain (cartograph-backup)"
@@ -33,11 +35,12 @@ gpg --armor --export "$uid" > "$conf/backup-key.asc"
 ssh -o BatchMode=yes "$host" 'mkdir -p cartograph-backups/db cartograph-backups/photos'
 scp -q "$conf/backup-key.asc" "$host:cartograph-backups/backup-key.asc"
 
-cat > "$conf/backup.env" <<EOF
-BACKUP_HOST=$host
-BACKUP_REMOTE=cartograph-backups
-BACKUP_LOCAL=$local_dir
-EOF
+# Quoted: pull-backups.sh sources this file, and disk names have spaces.
+{
+	printf 'BACKUP_HOST=%q\n' "$host"
+	printf 'BACKUP_REMOTE=cartograph-backups\n'
+	printf 'BACKUP_LOCAL=%q\n' "$local_dir"
+} > "$conf/backup.env"
 install -m 755 "$here/pull-backups.sh" "$HOME/.local/bin/cartograph-pull-backups"
 
 plist=$HOME/Library/LaunchAgents/asia.cartograph.backup.plist

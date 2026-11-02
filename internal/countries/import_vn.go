@@ -8,11 +8,14 @@ package countries
 //   - Provinces: the 34 level-4 relations with ISO 3166-2 VN-xx, every one
 //     with name:en and a Vietnamese name ("Tỉnh Cao Bằng", "Thành phố Hà
 //     Nội"). name:en ends in " Province" (24) or " City" (2: Bắc Ninh,
-//     Quang Ninh; "Ho Chi Minh City" is the third), which goes; the
-//     local prefixes Tỉnh (province) and Thành phố (city) go too. The kind
-//     word follows the name as OSM has it: "Thành phố" or " City" makes a
-//     city (nine: Hà Nội, Hồ Chí Minh, Hải Phòng, Đà Nẵng, Cần Thơ, Huế, and
-//     Bắc Ninh, Quảng Ninh, Đồng Nai, which OSM names "Thành phố" too).
+//     Quang Ninh; "Ho Chi Minh City" is the third). " Province" goes, " City"
+//     stays: it is part of the common name (Ho Chi Minh City, slug
+//     ho-chi-minh-city-vietnam), and it stays in every province that
+//     carries it. The local prefixes Tỉnh (province) and Thành phố (city) go.
+//     The kind word follows the name as OSM has it: "Thành phố" or " City"
+//     makes a city (nine: Hà Nội, Hồ Chí Minh, Hải Phòng, Đà Nẵng, Cần Thơ,
+//     Huế, and Bắc Ninh, Quảng Ninh, Đồng Nai, which OSM names "Thành phố"
+//     too).
 //   - Districts: the level-6 relations of the country, communes (Xã),
 //     wards (Phường) and special zones (Đặc khu, the island districts), 3,319
 //     of them with Khánh Hòa whole. Each has a Vietnamese name with its
@@ -31,6 +34,10 @@ package countries
 //     the kind word. Slugs fold the accents (Cần Thơ → can-tho-vietnam).
 //   - Places: the default six kinds; 3,295 hamlets stay out as they do in
 //     Thailand and Laos.
+//   - Excluded: r6753263, China's "Nansha District" (level 6, in the
+//     extract for its islands), which an earlier run imported as a Khánh Hòa
+//     commune. Vietnam's own Trường Sa special zone (r3479413) is not
+//     excluded.
 //   - Neighbours: Khánh Hòa (r1887959) takes 16 territorial-sea ways
 //     around the Spratly features from the Philippines' cut
 //     (docs/countries/incomplete-relations.md).
@@ -46,12 +53,13 @@ var importVN = Import{
 		Kind:        "province",
 		KindByAffix: map[string]string{"Thành phố": "city", "City": "city"},
 		Strip: Affixes{
-			EnSuffix:    []string{" Province", " City"},
+			EnSuffix:    []string{" Province"},
 			LocalPrefix: []string{"Tỉnh ", "Thành phố "},
 		},
 	},
 	District: Level{
 		AdminLevels: []int{6},
+		Exclude:     []int64{6753263},
 		Kind:        "commune",
 		KindByAffix: map[string]string{
 			"Xã": "commune", "Commune": "commune",

@@ -29,6 +29,10 @@ func vietnam(t *testing.T) countries.Import {
 
 func TestVietnamSettings(t *testing.T) {
 	vn := vietnam(t)
+	// China's Nansha District is never a Khánh Hòa commune; Trường Sa is not excluded.
+	if !slices.Equal(vn.District.Exclude, []int64{6753263}) || len(vn.District.Include) != 0 || len(vn.Province.Exclude) != 0 {
+		t.Errorf("Vietnam's Exclude/Include: %+v / %+v", vn.District, vn.Province)
+	}
 	if vn.Extract != "vietnam" || vn.Province.Count != [2]int{34, 34} || vn.Province.ISOPrefix != "VN" ||
 		vn.LocalLang != "vi" || !vn.SlugSuffix || !slices.Equal(vn.Neighbours, []string{"philippines"}) || len(vn.Partial) != 0 {
 		t.Errorf("Vietnam's settings: %+v", vn)
@@ -53,10 +57,10 @@ func TestVietnamNames(t *testing.T) {
 			vn.Province, "Khánh Hòa", "", "province", "khanh-hoa-vietnam"},
 		{"capital: the prefix of name makes the city", vnTags("name", "Thành phố Hà Nội", "name:en", "Hà Nội", "name:vi", "Hà Nội"),
 			vn.Province, "Hà Nội", "", "city", "ha-noi-vietnam"},
-		{"City goes from the English name", vnTags("name", "Thành phố Hồ Chí Minh", "name:en", "Ho Chi Minh City", "name:vi", "Thành phố Hồ Chí Minh"),
-			vn.Province, "Ho Chi Minh", "Hồ Chí Minh", "city", "ho-chi-minh-vietnam"},
+		{"City stays in the English name", vnTags("name", "Thành phố Hồ Chí Minh", "name:en", "Ho Chi Minh City", "name:vi", "Thành phố Hồ Chí Minh"),
+			vn.Province, "Ho Chi Minh City", "Hồ Chí Minh", "city", "ho-chi-minh-city-vietnam"},
 		{"English without accents keeps the local name", vnTags("name", "Thành phố Quảng Ninh", "name:en", "Quang Ninh City"),
-			vn.Province, "Quang Ninh", "Quảng Ninh", "city", "quang-ninh-vietnam"},
+			vn.Province, "Quang Ninh City", "Quảng Ninh", "city", "quang-ninh-city-vietnam"},
 		{"folding: Cần Thơ", vnTags("name", "Thành phố Cần Thơ", "name:en", "Cần Thơ", "name:vi", "Thành phố Cần Thơ"),
 			vn.Province, "Cần Thơ", "", "city", "can-tho-vietnam"},
 		{"folding: Đồng Tháp", vnTags("name", "Tỉnh Đồng Tháp", "name:en", "Đồng Tháp Province"),

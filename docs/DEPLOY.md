@@ -36,9 +36,15 @@ Below, `HOST` is the ssh name of the production host, `RUNTIME` the directory th
 
 6. **Host Caddy**: `deploy/cartograph.asia.caddy` to `/etc/caddy/sites/`, then `caddy reload` (see the file's header).
 
-7. **Backups**:
-   - on the host, in the deploy user's crontab: `30 3 * * * RUNTIME/deploy/backup.sh >> $HOME/.local/state/cartograph-backup.log 2>&1`
-   - on the Mac, once: `deploy/install-backup-mac.sh /Volumes/<disk>/backups/cartograph HOST`. It creates the backup key (passphrase in the login keychain), copies its public half to the host and installs the daily launchd job.
+7. **Backups**: on the Mac, once: `deploy/install-backup-mac.sh /Volumes/<disk>/backups/cartograph HOST`. It creates the backup key (passphrase in the login keychain), copies its public half to the host and installs `cartograph-pull-backups` in `~/.local/bin`. Nothing is scheduled, on the host or the Mac.
+
+## Taking a backup
+
+```sh
+cartograph-pull-backups
+```
+
+The Mac runs `deploy/backup.sh` on the host over ssh (a fresh encrypted dump, the photo mirror brought up to date) and copies both to the backup disk. Every dump pulled stays there; delete old ones by hand. The host keeps its dumps for 3 days.
 
 ## Releasing
 

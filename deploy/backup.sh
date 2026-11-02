@@ -1,18 +1,16 @@
 #!/bin/bash
-# Nightly backup on the production host (docs/DEPLOY_BRIEF.md, section 7),
-# run from the deploy user's crontab:
+# Backup on the production host, on demand: Adrian's Mac runs it over ssh
+# from deploy/pull-backups.sh and then copies the result. Nothing on the host
+# schedules it, and the server holds no credentials for the Mac.
 #
-#   30 3 * * * $HOME/cartograph/deploy/backup.sh >> $HOME/.local/state/cartograph-backup.log 2>&1
+# It writes into $BACKUP_DIR (default ~/cartograph-backups):
 #
-# It writes into $BACKUP_DIR (default ~/cartograph-backups), which Adrian's Mac
-# pulls with deploy/pull-backups.sh; the server holds no credentials for the
-# Mac.
-#
-#   db/cartograph-YYYYMMDD.dump.gpg  pg_dump -Fc of the whole database,
-#                                    encrypted to the public key in
-#                                    $BACKUP_DIR/backup-key.asc (its private
-#                                    half lives only on the Mac); the last 3
-#                                    nights are kept here
+#   db/cartograph-YYYYMMDD-HHMMSS.dump.gpg
+#                                    pg_dump -Fc of the whole database (UTC
+#                                    time in the name), encrypted to the public
+#                                    key in $BACKUP_DIR/backup-key.asc (its
+#                                    private half lives only on the Mac); dumps
+#                                    older than 3 days are deleted here
 #   photos/                          a mirror of the photo bucket, without
 #                                    deleting: a photo removed on the site
 #                                    stays in the backup
@@ -29,8 +27,8 @@ mkdir -p "$dest/db" "$dest/photos"
 chmod 700 "$dest" "$dest/db" "$dest/photos"
 [ -f "$key" ] || { echo "$(date -Is) ERROR: $key is missing (the Mac's public backup key)"; exit 1; }
 
-day=$(date +%Y%m%d)
-out="$dest/db/cartograph-$day.dump.gpg"
+stamp=$(date -u +%Y%m%d-%H%M%S)
+out="$dest/db/cartograph-$stamp.dump.gpg"
 "$here/prod.sh" exec -T postgres pg_dump -U cartograph -d cartograph -Fc |
 	gpg --batch --yes --trust-model always --recipient-file "$key" --encrypt --output "$out.tmp"
 mv "$out.tmp" "$out"

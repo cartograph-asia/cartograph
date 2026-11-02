@@ -1,6 +1,6 @@
 # Restoring from a backup
 
-The production backups reach the Mac every morning (`deploy/pull-backups.sh`): encrypted database dumps in `<backup dir>/db/cartograph-YYYYMMDD.dump.gpg` and a mirror of the photo bucket in `<backup dir>/photos/`. This is how to bring them back, into a fresh stack on the Mac (the restore test) or onto a new host.
+The production backups reach the Mac when it asks for them (`cartograph-pull-backups`, from `deploy/pull-backups.sh`): encrypted database dumps in `<backup dir>/db/cartograph-YYYYMMDD-HHMMSS.dump.gpg` and a mirror of the photo bucket in `<backup dir>/photos/`. This is how to bring them back, into a fresh stack on the Mac (the restore test) or onto a new host.
 
 ## 1. Decrypt the dump
 
@@ -10,7 +10,7 @@ The key lives in its own keyring, its passphrase in the login keychain:
 export GNUPGHOME=~/.config/cartograph/gnupg
 gpg --batch --pinentry-mode loopback \
   --passphrase "$(security find-generic-password -s cartograph-backup -w)" \
-  --decrypt <backup dir>/db/cartograph-YYYYMMDD.dump.gpg > /tmp/cartograph.dump
+  --decrypt <backup dir>/db/cartograph-YYYYMMDD-HHMMSS.dump.gpg > /tmp/cartograph.dump
 ```
 
 Without the Mac, there is no way to read the dumps: keep a copy of `~/.config/cartograph/gnupg` and the passphrase somewhere safe (a password manager).

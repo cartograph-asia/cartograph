@@ -167,7 +167,14 @@ type LandCell struct {
 // located to shape by idx, so overlapping neighbours never count a cell
 // twice), is not in water, and lies inside clip unless clip is empty.
 func LandCells(shape RegionShape, idx *RegionIndex, water *Water, clip orb.Bound) ([]LandCell, error) {
-	var out []LandCell
+	out, _, err := LandCellsOf(shape, idx, water, clip, nil)
+	return out, err
+}
+
+// LandCellsOf is LandCells that also counts the land cells whose centre lies
+// inside shape but which idx gives to a region for which held(id) is true
+// (a border plot another country holds). held may be nil.
+func LandCellsOf(shape RegionShape, idx *RegionIndex, water *Water, clip orb.Bound, held func(id int) bool) (out []LandCell, heldCells int, err error) {
 	for _, poly := range shape.Geometry {
 		holes := make([][][2]float64, 0, len(poly)-1)
 		for _, h := range poly[1:] {
@@ -175,7 +182,7 @@ func LandCells(shape RegionShape, idx *RegionIndex, water *Water, clip orb.Bound
 		}
 		cells, err := h3.PolygonCells(ringPairs(poly[0]), holes, h3.PlotRes)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		for _, c := range cells {
 			p := orb.Point{c.Lng, c.Lat}
@@ -183,6 +190,9 @@ func LandCells(shape RegionShape, idx *RegionIndex, water *Water, clip orb.Bound
 				continue
 			}
 			if id, ok := idx.Contains(p); !ok || id != shape.ID {
+				if ok && held != nil && held(id) && !water.Contains(p) {
+					heldCells++
+				}
 				continue
 			}
 			if water.Contains(p) {
@@ -191,7 +201,7 @@ func LandCells(shape RegionShape, idx *RegionIndex, water *Water, clip orb.Bound
 			out = append(out, LandCell{Cell: c.Cell, Centre: p})
 		}
 	}
-	return out, nil
+	return out, heldCells, nil
 }
 
 func ringPairs(r orb.Ring) [][2]float64 {

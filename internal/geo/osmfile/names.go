@@ -2,6 +2,7 @@ package osmfile
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -119,6 +120,27 @@ func DistinctLocal(en, local string) string {
 	return local
 }
 
+// LatinLocal reports whether imp's local names may be written in Latin
+// script (LocalScripts names "Latin", or is empty and takes any name): only
+// then is a local name equal to the English one the same name, and the
+// importer stores it as NULL (DistinctLocal). Where the local script is
+// another (Thai, Lao, Han), such a name is a Latin name:xx tag, kept as OSM
+// has it, as Thailand's import always did; so the rule never changes a Thai
+// name.
+func LatinLocal(imp countries.Import) bool {
+	return len(imp.LocalScripts) == 0 || slices.Contains(imp.LocalScripts, "Latin")
+}
+
+// PlaceNames returns a place node's English and local names: NamesFor, then
+// DistinctLocal where LatinLocal holds. Place names are not stripped.
+func PlaceNames(t osm.Tags, imp countries.Import) (en, local string) {
+	en, local = NamesFor(t, imp)
+	if LatinLocal(imp) {
+		local = DistinctLocal(en, local)
+	}
+	return en, local
+}
+
 // KindWord returns the display word for a relation of level l from its names
 // before stripping: the word of the first l.KindByAffix entry that the
 // English or the local name starts or ends with, else l.Kind. Longer affixes
@@ -230,18 +252,28 @@ func PlaceKindsFor(imp countries.Import) map[string]bool {
 // Named is one relation's names after the rules of its level.
 type Named struct {
 	RawEn, RawLocal string // NamesFor: before stripping (what ResolveSlugs restores)
-	En, Local       string // StripName, then DistinctLocal
+	En, Local       string // StripName, then DistinctLocal (where LatinLocal)
 	Kind            string // KindWord of the raw names
+	keepEqual       bool   // LatinLocal was false: a local name equal to En stays
+}
+
+// local is DistinctLocal unless the settings keep equal names.
+func (n Named) local(en, local string) string {
+	if n.keepEqual {
+		return local
+	}
+	return DistinctLocal(en, local)
 }
 
 // LevelNames applies the name rules of level l in their order: NamesFor,
-// KindWord on the names as OSM has them, StripName, DistinctLocal.
+// KindWord on the names as OSM has them, StripName, DistinctLocal (only
+// where LatinLocal holds).
 func LevelNames(t osm.Tags, imp countries.Import, l countries.Level) Named {
-	n := Named{}
+	n := Named{keepEqual: !LatinLocal(imp)}
 	n.RawEn, n.RawLocal = NamesFor(t, imp)
 	n.Kind = KindWord(n.RawEn, n.RawLocal, l)
 	n.En, n.Local = StripName(n.RawEn, n.RawLocal, l)
-	n.Local = DistinctLocal(n.En, n.Local)
+	n.Local = n.local(n.En, n.Local)
 	return n
 }
 
@@ -293,7 +325,7 @@ func ResolveSlugs(sibs []Sibling, full func(base string) string) {
 			continue
 		}
 		s.Names.En = s.Names.RawEn
-		s.Names.Local = DistinctLocal(s.Names.RawEn, s.Names.RawLocal)
+		s.Names.Local = s.Names.local(s.Names.RawEn, s.Names.RawLocal)
 		slugOf(s, Slug(s.Names.En))
 	}
 	n = shared()

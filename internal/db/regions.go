@@ -219,6 +219,7 @@ type regionCache struct {
 	districts *geo.RegionIndex
 	urban     map[int]bool            // district ids that are all urban (see MarkUrbanDistricts)
 	naming    map[string]*PlaceNaming // place_naming by country
+	open      map[string]bool         // countries with provinces (see OpenCountries)
 	loadedAt  time.Time
 }
 
@@ -255,9 +256,14 @@ func (d *DB) ReloadRegions(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	open, err := d.loadOpenCountries(ctx)
+	if err != nil {
+		return err
+	}
 	idx, didx := geo.NewRegionIndex(shapes), geo.NewRegionIndex(ds)
 	d.regions.mu.Lock()
 	d.regions.idx, d.regions.districts, d.regions.urban, d.regions.naming = idx, didx, urban, naming
+	d.regions.open = open
 	d.regions.loadedAt = time.Now()
 	d.regions.mu.Unlock()
 	return nil

@@ -54,7 +54,7 @@ No new components: the photo grid, the outline map, the source line in the lede 
 
 From a clean `docker compose up` with the Pattaya fixtures: signed in as a Surveyor whose home region is Chon Buri, `/blank` shows six blank Chon Buri plots with outlines and links; reloading shows others; clearing the home region in `/settings` makes the page derive Chon Buri from the Surveyor's photos and say so; a new Surveyor without photos gets "Anywhere" and the hint; a visitor can use `/blank?region=chon-buri`. `go test ./...` green with `TEST_DATABASE_URL` set; `/security-review` run.
 
-## Decided later questions (Adrian, 2026-11-02)
+## Open questions, decided (Adrian, 2026-11-02)
 
 - **Near me: later.** v1 takes the region from the home region, the Surveyor's photos or the visitor's choice only. A button that asks the browser for its position once (on a click, stored nowhere) is a small step of its own after v1.
 - **Plots with one photo: with the points.** "Plots that would like a second look" comes with the points system (`GAMIFICATION.md`, the second photo scores 2), not in v1.

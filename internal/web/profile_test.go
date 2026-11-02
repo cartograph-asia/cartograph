@@ -18,7 +18,8 @@ func TestProfileQuery(t *testing.T) {
 
 	for _, bad := range []string{
 		"?order=random", "?order=", "?order=oldest&order=taken", "?region=atlantis", "?region=../x", "?region=",
-		"?year=1999", "?year=24", "?year=abcd", "?year=3000", "?one=all", "?one=", "?page=0", "?page=99",
+		"?year=1999", "?year=24", "?year=abcd", "?year=3000",
+		"?uploaded=1999", "?uploaded=", "?uploaded=26", "?uploaded=3000", "?uploaded=2026&uploaded=2025", "?one=all", "?one=", "?page=0", "?page=99",
 	} {
 		if r := get(t, h, "/surveyor/adrian"+bad); r.status != http.StatusNotFound {
 			t.Errorf("%s: status %d, want 404", bad, r.status)
@@ -27,10 +28,11 @@ func TestProfileQuery(t *testing.T) {
 
 	// The same view spelled differently is redirected to its canonical form.
 	for from, to := range map[string]string{
-		"/surveyor/adrian?page=1":                       "/surveyor/adrian",
-		"/surveyor/adrian?one=plot&order=oldest":        "/surveyor/adrian?one=plot&order=oldest",
-		"/surveyor/adrian?region=Chon-Buri&order=taken": "/surveyor/adrian?order=taken&region=chon-buri",
-		"/surveyor/ADRIAN?year=2026&page=1":             "/surveyor/adrian?year=2026",
+		"/surveyor/adrian?page=1":                         "/surveyor/adrian",
+		"/surveyor/adrian?one=plot&order=oldest":          "/surveyor/adrian?one=plot&order=oldest",
+		"/surveyor/adrian?region=Chon-Buri&order=taken":   "/surveyor/adrian?order=taken&region=chon-buri",
+		"/surveyor/ADRIAN?year=2026&page=1":               "/surveyor/adrian?year=2026",
+		"/surveyor/adrian?uploaded=2026&year=2026&page=1": "/surveyor/adrian?uploaded=2026&year=2026",
 	} {
 		r := get(t, h, from)
 		switch {
@@ -85,18 +87,21 @@ func TestProfileSections(t *testing.T) {
 		{Region: viewstest.Rayong, Plots: 2, Photos: 2, Land: 4818},
 	}
 	s.Years = []views.SurveyorYear{{Year: 2026, Photos: 7}, {Year: 2025, Photos: 1}}
+	s.UploadYears = []views.SurveyorYear{{Year: 2026, Photos: 6}, {Year: 2025, Photos: 2}}
 	s.Profile.HomeRegion = &viewstest.ChonBuri
 	s.HomeCoverage = &views.Coverage{Claimed: 6, Land: 5921}
 	body = render(t, views.PageSurveyor, s)
-	must(t, body, `<h3 class="kicker">Where</h3>`, `<h3 class="kicker">When</h3>`,
+	must(t, body, `<h3 class="kicker">Where</h3>`, `<h3 class="kicker">When taken</h3>`, `<h3 class="kicker">When uploaded</h3>`,
 		`<a href="/surveyor/adrian?region=chon-buri">Chon Buri</a> <span class="n">6 plots of 5,921 · 9 photos</span>`,
 		`<a href="/surveyor/adrian?region=rayong">Rayong</a>`,
 		`<a href="/surveyor/adrian?year=2026">2026</a> <span class="n">7 photos</span>`, `<a href="/surveyor/adrian?year=2025">2025</a>`,
+		`<a href="/surveyor/adrian?uploaded=2026">2026</a> <span class="n">6 photos</span>`, `<a href="/surveyor/adrian?uploaded=2025">2025</a>`,
 		`6 of 5,921 plots of <a href="/region/chon-buri">Chon Buri</a> surveyed by adrian`, `<svg class="bar"`)
 
 	// With one region, one year and nothing in the home region the page stays as short as before.
 	s = viewstest.Surveyor()
 	s.Regions, s.Years, s.Stats.Days = s.Regions[:1], s.Years[:min(1, len(s.Years))], 0
+	s.UploadYears = s.UploadYears[:min(1, len(s.UploadYears))]
 	s.HomeCoverage = &views.Coverage{Land: 5921}
 	body = render(t, views.PageSurveyor, s)
 	mustNot(t, body, "Where and when", `class="tally"`, "days with photos", `<div class="cov big">`)
@@ -110,9 +115,17 @@ func TestProfileSections(t *testing.T) {
 	must(t, body, "Showing 0 photos in Rayong taken in 2026.", `<a href="/surveyor/adrian">Show all</a>`, "No photos of adrian match this view.")
 	mustNot(t, body, "has not uploaded a photo yet")
 
+	// Both years at once, and the way back resets them all.
+	s, err = viewstest.NewFake().Surveyor(context.Background(), "adrian", views.SurveyorQuery{Year: 2026, Uploaded: 2026})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body = render(t, views.PageSurveyor, s)
+	must(t, body, "taken in 2026 and uploaded in 2026.", `<a href="/surveyor/adrian">Show all</a>`)
+
 	// Somebody without photos has no controls.
 	s = viewstest.Surveyor()
-	s.Photos, s.PlotCells, s.Regions, s.Years, s.Stats = nil, nil, nil, nil, views.SurveyorStats{}
+	s.Photos, s.PlotCells, s.Regions, s.Years, s.UploadYears, s.Stats = nil, nil, nil, nil, nil, views.SurveyorStats{}
 	body = render(t, views.PageSurveyor, s)
 	must(t, body, "has not uploaded a photo yet")
 	mustNot(t, body, "Oldest uploaded", ".gpx", "Show all")
@@ -123,7 +136,7 @@ var inlineStyle = regexp.MustCompile(`\sstyle=`)
 func TestProfileViewsAreClean(t *testing.T) {
 	h := newServer(t, 4)
 	for _, p := range []string{
-		"/surveyor/adrian", "/surveyor/adrian?order=taken", "/surveyor/adrian?one=plot", "/surveyor/adrian?region=chon-buri&year=2026",
+		"/surveyor/adrian", "/surveyor/adrian?order=taken", "/surveyor/adrian?one=plot", "/surveyor/adrian?region=chon-buri&year=2026", "/surveyor/adrian?uploaded=2026",
 	} {
 		r := get(t, h, p)
 		if r.status != http.StatusOK {

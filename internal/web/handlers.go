@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/cartograph-asia/cartograph/internal/countries"
 	"github.com/cartograph-asia/cartograph/internal/views"
 )
 
@@ -30,6 +31,7 @@ func NewHandlers(src views.Source, rd *Renderer) *Handlers {
 //	/  /latest  /latest.rss  /surveyors  /regions
 //	/surveyor/{name}[.rss|.gpx|.geojson]  /plot/{cell}  /plot/{slug}/{number}  /photo/{id}  /region/{slug}[.rss]
 //	/about  /about/plots  /principles  /licence (StaticPages)  /static/*
+//	/{country}[.rss]  (last: every static route above wins; see internal/countries)
 //
 // The account pages (/signin, /signin/link, /signin/name, /settings, /signout) belong to
 // internal/auth, which renders through Renderer.RenderFunc.
@@ -48,6 +50,8 @@ func (h *Handlers) Routes(r chi.Router) {
 		r.Get(sp.Path, h.static(sp.Path))
 	}
 	r.Handle(StaticPrefix+"*", h.rd.assets)
+	r.Get("/{country}", h.country)
+	r.Get("/{country}/", h.countrySlash)
 }
 
 // NotFound renders the 404 page; mount it with r.NotFound for page paths.
@@ -88,7 +92,7 @@ func page(r *http.Request) (int, bool) {
 
 // canonicalParams are the query parameters of the pages that carry one;
 // canonical compares these and ignores any other.
-var canonicalParams = []string{"page", "order", "region", "year", "one"}
+var canonicalParams = []string{"page", "order", "region", "year", "uploaded", "one"}
 
 func knownQuery(vs url.Values) string {
 	known := url.Values{}
@@ -183,7 +187,7 @@ func (h *Handlers) surveyor(w http.ResponseWriter, r *http.Request) {
 // firstYear is the earliest year a profile can be filtered by.
 const firstYear = 2000
 
-// surveyorQuery reads a profile's ?order=&region=&year=&one=&page=. A value it
+// surveyorQuery reads a profile's ?order=&region=&year=&uploaded=&one=&page=. A value it
 // does not know, or a parameter given twice, is not a page (false).
 func surveyorQuery(r *http.Request) (views.SurveyorQuery, bool) {
 	var q views.SurveyorQuery
@@ -209,14 +213,22 @@ func surveyorQuery(r *http.Request) (views.SurveyorQuery, bool) {
 	} else {
 		q.Region = v
 	}
-	if v, present, valid := one("year"); !valid {
-		return q, false
-	} else if present {
-		y, err := strconv.Atoi(v)
-		if err != nil || len(v) != 4 || y < firstYear || y > time.Now().Year() {
-			return q, false
+	year := func(key string, dst *int) bool {
+		v, present, valid := one(key)
+		if !valid {
+			return false
 		}
-		q.Year = y
+		if present {
+			y, err := strconv.Atoi(v)
+			if err != nil || len(v) != 4 || y < firstYear || y > time.Now().Year() {
+				return false
+			}
+			*dst = y
+		}
+		return true
+	}
+	if !year("year", &q.Year) || !year("uploaded", &q.Uploaded) {
+		return q, false
 	}
 	if v, present, valid := one("one"); !valid || present && v != "plot" {
 		return q, false
@@ -276,6 +288,33 @@ func (h *Handlers) region(w http.ResponseWriter, r *http.Request) {
 	}
 	d, err := h.src.Region(r.Context(), slug, n)
 	h.show(w, r, views.PageRegion, d, err)
+}
+
+// country serves /{country} and /{country}.rss. Only slugs in the list of
+// countries answer; anything else is the 404 page like any unknown path.
+func (h *Handlers) country(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "country")
+	if base, ok := strings.CutSuffix(slug, ".rss"); ok {
+		h.feed(w, r, func() (*views.Feed, error) { return h.src.CountryFeed(r.Context(), base) })
+		return
+	}
+	n, ok := page(r)
+	if !ok {
+		h.NotFound(w, r)
+		return
+	}
+	d, err := h.src.Country(r.Context(), slug, n)
+	h.show(w, r, views.PageCountry, d, err)
+}
+
+// countrySlash redirects /thailand/ to /thailand; other paths with a
+// trailing slash stay not found.
+func (h *Handlers) countrySlash(w http.ResponseWriter, r *http.Request) {
+	if c, ok := countries.BySlug(chi.URLParam(r, "country")); ok {
+		http.Redirect(w, r, "/"+c.Slug, http.StatusMovedPermanently)
+		return
+	}
+	h.NotFound(w, r)
 }
 
 func (h *Handlers) latestFeed(w http.ResponseWriter, r *http.Request) {

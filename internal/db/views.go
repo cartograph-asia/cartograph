@@ -128,7 +128,7 @@ func (v *Views) base(title, canonical, desc, feed string) views.Page {
 
 // Home implements views.Source.
 func (v *Views) Home(ctx context.Context) (*views.Home, error) {
-	h := &views.Home{Page: v.base("", "/", "A photo for every plot of land in Asia, surveyed by its people.", "/latest.rss")}
+	h := &views.Home{Page: v.base("", "/", "A photo for every plot of land in Southeast and East Asia, surveyed by its people.", "/latest.rss")}
 	err := v.d.Pool.QueryRow(ctx, `select
 		(select count(*) from plots where photo_count > 0),
 		(select count(*) from visible_photos),
@@ -144,7 +144,7 @@ func (v *Views) Home(ctx context.Context) (*views.Home, error) {
 	if h.Featured, err = v.featured(ctx); err != nil {
 		return nil, err
 	}
-	if h.Regions, err = v.regionSummaries(ctx, true); err != nil {
+	if h.Regions, err = v.regionSummaries(ctx, true, ""); err != nil {
 		return nil, err
 	}
 	if h.NewSurveyors, err = v.newSurveyors(ctx); err != nil {
@@ -253,15 +253,15 @@ func scanRegion(r pgx.CollectableRow) (regionRow, error) {
 	return x, err
 }
 
-// regionSummaries returns provinces (only those with a surveyed plot if
-// activeOnly) by most recent activity, then name, with their top surveyors.
-func (v *Views) regionSummaries(ctx context.Context, activeOnly bool) ([]views.RegionSummary, error) {
-	where := "where kind = 'province'"
+// regionSummaries returns provinces (of one country, "" for all; only those
+// with a surveyed plot if activeOnly) by most recent activity, then name, with their top surveyors.
+func (v *Views) regionSummaries(ctx context.Context, activeOnly bool, country string) ([]views.RegionSummary, error) {
+	where := "where kind = 'province' and ($1 = '' or country = $1)"
 	if activeOnly {
 		where += " and claimed_cells > 0"
 	}
 	rows, err := v.d.Pool.Query(ctx, `select `+regionCols+` from regions `+where+`
-		order by last_surveyed_at desc nulls last, name_en`)
+		order by last_surveyed_at desc nulls last, name_en`, country)
 	if err != nil {
 		return nil, fmt.Errorf("db: regions: %w", err)
 	}
@@ -394,11 +394,15 @@ func (v *Views) Surveyors(ctx context.Context, page int) (*views.SurveyorList, e
 
 // Regions implements views.Source.
 func (v *Views) Regions(ctx context.Context) (*views.RegionList, error) {
-	rs, err := v.regionSummaries(ctx, false)
+	rs, err := v.regionSummaries(ctx, false, "")
 	if err != nil {
 		return nil, err
 	}
-	return &views.RegionList{Page: v.base("Regions", "/regions", "Survey coverage by province.", ""), Regions: rs}, nil
+	cs, err := v.countrySummaries(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &views.RegionList{Page: v.base("Regions", "/regions", "Survey coverage by country and province.", ""), Countries: cs, Regions: rs}, nil
 }
 
 // surveyorRow is a surveyor looked up by name.
@@ -445,6 +449,10 @@ func takenOn(ph string) string {
 
 var takenLocal = takenOn("ph")
 
+// uploadedOn is the date a photo with alias ph was uploaded, on Bangkok's
+// clock like every date the pages show (internal/web's zone).
+func uploadedOn(ph string) string { return ph + ".uploaded_at at time zone 'Asia/Bangkok'" }
+
 // surveyorOrder maps a views.SurveyorQuery order to its ORDER BY clause.
 var surveyorOrder = map[string]string{
 	views.OrderNewest: newestFirst,
@@ -466,6 +474,11 @@ func surveyorWhere(q views.SurveyorQuery, regionID *int, next int, ph, pl string
 	if q.Year != 0 {
 		sql += fmt.Sprintf(" and extract(year from %s) = $%d", takenOn(ph), next)
 		args = append(args, q.Year)
+		next++
+	}
+	if q.Uploaded != 0 {
+		sql += fmt.Sprintf(" and extract(year from %s) = $%d", uploadedOn(ph), next)
+		args = append(args, q.Uploaded)
 	}
 	return sql, args
 }
@@ -532,7 +545,10 @@ func (v *Views) Surveyor(ctx context.Context, name string, q views.SurveyorQuery
 	if out.Regions, err = v.surveyorRegions(ctx, s.id); err != nil {
 		return nil, err
 	}
-	if out.Years, err = v.surveyorYears(ctx, s.id); err != nil {
+	if out.Years, err = v.surveyorYears(ctx, s.id, takenLocal); err != nil {
+		return nil, err
+	}
+	if out.UploadYears, err = v.surveyorYears(ctx, s.id, uploadedOn("ph")); err != nil {
 		return nil, err
 	}
 	if h := s.profile.HomeRegion; h != nil {
@@ -597,11 +613,13 @@ func (v *Views) surveyorRegions(ctx context.Context, id uuid.UUID) ([]views.Surv
 	return out, nil
 }
 
-// surveyorYears is the "When" list: the years their photos were taken.
-func (v *Views) surveyorYears(ctx context.Context, id uuid.UUID) ([]views.SurveyorYear, error) {
+// surveyorYears is a "When" list: the years of date (takenLocal or
+// uploadedOn) over their photos, newest first; photos without the date are
+// left out.
+func (v *Views) surveyorYears(ctx context.Context, id uuid.UUID, date string) ([]views.SurveyorYear, error) {
 	rows, err := v.d.Pool.Query(ctx, `
-		select extract(year from `+takenLocal+`)::int as y, count(*) from visible_photos ph
-		where ph.surveyor_id = $1 and `+takenLocal+` is not null group by y order by y desc`, id)
+		select extract(year from `+date+`)::int as y, count(*) from visible_photos ph
+		where ph.surveyor_id = $1 and `+date+` is not null group by y order by y desc`, id)
 	if err != nil {
 		return nil, fmt.Errorf("db: surveyor years: %w", err)
 	}
@@ -950,6 +968,9 @@ func (v *Views) Region(ctx context.Context, slug string, page int) (*views.Regio
 		return nil, err
 	}
 	out := &views.Region{Region: r.ref, Kind: r.kind, Coverage: r.cov, Bounds: r.b, LastSurveyedAt: r.last}
+	if out.Country, err = v.regionCountry(ctx, r.id); err != nil {
+		return nil, err
+	}
 	out.Counters.Plots = r.cov.Claimed
 	err = v.d.Pool.QueryRow(ctx, `select count(*), count(distinct `+surveyorKey+`)`+photoFrom+`where pl.region_id = $1`, r.id).
 		Scan(&out.Counters.Photos, &out.Counters.Surveyors)

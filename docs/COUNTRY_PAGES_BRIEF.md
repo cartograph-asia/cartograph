@@ -54,7 +54,7 @@ Province pages gain a link back: the kicker reads "Province in Thailand" with th
 
 ### `/regions`
 
-A "Countries" block above the provinces: one row per country in the list, in list order by name. Countries with data show the same row as a province (name, coverage, bar, top Surveyors); countries without data show the name and "Not open yet" and still link to their page. The provinces list below is unchanged except that its note no longer says "Thailand's".
+A "Countries" block above the provinces: one row per country in the list: countries with data first (newest activity, then name), the others by name below. Countries with data show the same row as a province (name, coverage, bar, top Surveyors); countries without data show the name and "Not open yet" and still link to their page. The provinces list below is unchanged except that its note no longer says "Thailand's".
 
 ### A country that is in the list but has no data
 

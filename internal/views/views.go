@@ -130,6 +130,14 @@ type RegionRef struct {
 	NameTh string // e.g. "ชลบุรี"; may be empty
 }
 
+// CountryRef identifies a country for links and labels (/{slug}).
+type CountryRef struct {
+	Slug   string // URL slug, e.g. "thailand"
+	NameEn string // e.g. "Thailand"
+	Native string // the country's own name; may be empty
+	Lang   string // BCP 47 tag of Native, e.g. "th"
+}
+
 // PlotRef identifies a plot for links and labels.
 type PlotRef struct {
 	Cell    string    // H3 res-8 index; for links (/plot/{cell}), maps and the plot page's details line only

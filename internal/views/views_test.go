@@ -2,7 +2,9 @@ package views
 
 import (
 	"context"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestPagination(t *testing.T) {
@@ -129,5 +131,24 @@ func TestRegionKindName(t *testing.T) {
 		if got := (Region{Kind: kind}).KindName(); got != want {
 			t.Errorf("KindName(%q) = %q, want %q", kind, got, want)
 		}
+	}
+}
+
+func TestSortCountries(t *testing.T) {
+	old, recent := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC), time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
+	cs := []CountrySummary{
+		{Country: CountryRef{NameEn: "Brunei"}},
+		{Country: CountryRef{NameEn: "Vietnam"}, Open: true, LastSurveyedAt: &old},
+		{Country: CountryRef{NameEn: "Cambodia"}, Open: true},
+		{Country: CountryRef{NameEn: "Thailand"}, Open: true, LastSurveyedAt: &recent},
+		{Country: CountryRef{NameEn: "Laos"}, Open: true},
+	}
+	SortCountries(cs)
+	var got []string
+	for _, c := range cs {
+		got = append(got, c.Country.NameEn)
+	}
+	if want := "Thailand Vietnam Cambodia Laos Brunei"; strings.Join(got, " ") != want {
+		t.Errorf("order %v, want %s", got, want)
 	}
 }

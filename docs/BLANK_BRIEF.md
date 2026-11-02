@@ -14,7 +14,7 @@ The core loop is "see a blank plot near you, go there, take the photo, see the p
    3. otherwise no region: plots are drawn from the whole surveyable area.
 2. **A suggestion, not a filter.** The page says where its plots come from and lets the Surveyor change it: "Plots in Chon Buri (your home region)", "Plots in Chon Buri (where you surveyed most)", "Plots anywhere". Nobody is bound to a region; a traveller can pick another one.
 3. **Random and said so.** The plots are drawn at random from the region's blank plots on every load, and the page states it ("Chosen at random from the blank plots of Chon Buri. Reload for others."). No ranking, no "for you" (Principle 2).
-4. **No IP lookup, no stored guess.** The derived region is computed on read from the Surveyor's photos and stored nowhere. No GeoIP database, no cookie for visitors, no location request. A "near me" variant would use the browser's geolocation on a click and is an open question.
+4. **No IP lookup, no stored guess.** The derived region is computed on read from the Surveyor's photos and stored nowhere. No GeoIP database, no cookie for visitors, no location request. A "near me" variant would use the browser's geolocation on a click; it comes after v1 (see below).
 5. **No pressure, no points.** Showing a plot scores nothing and nothing is counted or remembered about what was shown (Principles 6 and 8).
 
 ## What the page shows
@@ -54,9 +54,9 @@ No new components: the photo grid, the outline map, the source line in the lede 
 
 From a clean `docker compose up` with the Pattaya fixtures: signed in as a Surveyor whose home region is Chon Buri, `/blank` shows six blank Chon Buri plots with outlines and links; reloading shows others; clearing the home region in `/settings` makes the page derive Chon Buri from the Surveyor's photos and say so; a new Surveyor without photos gets "Anywhere" and the hint; a visitor can use `/blank?region=chon-buri`. `go test ./...` green with `TEST_DATABASE_URL` set; `/security-review` run.
 
-## Open questions
+## Decided later questions (Adrian, 2026-11-02)
 
-- **Near me.** A button that asks the browser for its position once and draws blank plots around it, without storing it. Wanted for v1 or later?
-- **Plots with one photo.** The same page could add "Plots that would like a second look" (the second photo scores 2 points in `GAMIFICATION.md`). Include now or with the points?
-- **Name and address.** `/blank`, "Blank plots" are working names; "Plots waiting for a photo" is the longer alternative.
-- **Region choice below province.** Home regions are provinces today. Districts could be offered once they have pages.
+- **Near me: later.** v1 takes the region from the home region, the Surveyor's photos or the visitor's choice only. A button that asks the browser for its position once (on a click, stored nowhere) is a small step of its own after v1.
+- **Plots with one photo: with the points.** "Plots that would like a second look" comes with the points system (`GAMIFICATION.md`, the second photo scores 2), not in v1.
+- **Name and address: `/blank`, "Blank plots".** The working names stay.
+- **Below province: later.** `?region=` takes province slugs only; districts become a choice once they have pages.

@@ -647,11 +647,18 @@ button {
 .maplibregl-ctrl-group button:focus:last-child {
   border-radius: 0;
 }
+/* The attribution has no background: collapsed it is only its (i) button,
+   opened the credits are text on the map, kept readable by a halo in the
+   paper colour. main.ts starts it collapsed. */
 .maplibregl-ctrl-attrib,
 .maplibregl-ctrl.maplibregl-ctrl-attrib {
   font: var(--step-small) / 1.4 var(--font-text);
   color: var(--ink-muted);
-  background: rgba(246, 242, 234, 0.88);
+  background: none;
+  text-shadow:
+    0 0 2px var(--paper),
+    0 0 4px var(--paper),
+    0 0 6px var(--paper);
 }
 .maplibregl-ctrl-attrib a {
   color: var(--ink-muted);
@@ -659,13 +666,19 @@ button {
 .maplibregl-ctrl-attrib.maplibregl-compact {
   border-radius: 0;
   min-height: 24px;
+  background: none;
 }
 .maplibregl-ctrl-attrib.maplibregl-compact-show {
   padding: 2px 28px 2px 8px;
 }
-.maplibregl-ctrl-attrib-button {
+.maplibregl-ctrl-attrib-button,
+.maplibregl-ctrl-attrib.maplibregl-compact-show .maplibregl-ctrl-attrib-button {
   border-radius: 0;
   background-color: transparent;
+}
+/* The focus ring is for the keyboard, not for a tap. */
+.maplibregl-ctrl-attrib-button:focus:not(:focus-visible) {
+  box-shadow: none;
 }
 
 .maplibregl-ctrl-top-right {

@@ -1,4 +1,4 @@
-import { addProtocol, Map as MapLibreMap, MercatorCoordinate, NavigationControl, setWorkerUrl } from 'maplibre-gl';
+import { addProtocol, AttributionControl, Map as MapLibreMap, MercatorCoordinate, NavigationControl, setWorkerUrl } from 'maplibre-gl';
 import type { CameraOptions, LngLatBoundsLike } from 'maplibre-gl';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 import { Protocol } from 'pmtiles';
@@ -50,10 +50,21 @@ const map = new MapLibreMap({
   pitchWithRotate: false,
   touchPitch: false,
   maxPitch: 0,
-  attributionControl: { compact: true },
+  attributionControl: false, // added below, to start it collapsed
 });
 map.touchZoomRotate.disableRotation();
 map.keyboard.disableRotation();
+// The credits start collapsed to their (i) button, where MapLibre would show
+// them until the first move. A tap on the button opens them (OSM's attribution
+// guidance accepts a visible, clickable (i)).
+map.addControl(new AttributionControl({ compact: true }), 'bottom-right');
+// MapLibre opens the control again while the style and its sources arrive, so
+// it is collapsed once the map has loaded, not when it is added.
+map.once('load', () => {
+  const el = map.getContainer().querySelector('.maplibregl-ctrl-attrib');
+  el?.classList.remove('maplibregl-compact-show');
+  el?.removeAttribute('open');
+});
 map.addControl(new NavigationControl({ showCompass: false }), 'top-right');
 map.on('error', (e) => console.warn('map error:', e.error?.message ?? e));
 

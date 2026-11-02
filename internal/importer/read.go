@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"slices"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/paulmach/orb"
@@ -31,13 +32,14 @@ type province struct {
 	districts []*district // the run's districts with their centre in it
 
 	// land cells, see regionPlan.landCells
-	indexID    int      // id in the combined index (stored id, or negative for a new province)
-	land       int      // land cells
-	held       int      // land cells another country holds (border cells skipped)
-	inDistrict int      // land cells inside one of its districts
-	cells      []uint64 // the land cells along the Hilbert curve, until numbered
-	newNumbers int      // cells without a number (dry run: counted; run: added)
-	id         int      // region id once stored
+	indexID    int           // id in the combined index (stored id, or negative for a new province)
+	land       int           // land cells
+	held       int           // land cells another country holds (border cells skipped)
+	inDistrict int           // land cells inside one of its districts
+	dcells     districtCells // land cells by district, until the districts have their parents
+	cells      []uint64      // the land cells along the Hilbert curve, until numbered
+	newNumbers int           // cells without a number (dry run: counted; run: added)
+	id         int           // region id once stored
 }
 
 // district is one district relation of a run.
@@ -47,9 +49,14 @@ type district struct {
 	names    osmfile.Named
 	kindName string
 	shape    orb.MultiPolygon
-	province *province
+	bound    orb.Bound
+	province *province // its parent: see assignParents (readRegions: the province holding its centre)
 	slug     string
 	stored   *db.StoredRegion
+
+	centred  *province         // the province holding its centre
+	share    map[*province]int // its land cells by the run's province that holds them (landCells)
+	majority *province         // the parent a fresh import gives it (assignParents)
 }
 
 // dropped counts the district relations a run leaves out.
@@ -67,6 +74,7 @@ type regionSet struct {
 	partial       map[int64]osmfile.PartialInfo
 	outsideParent int // province-level relations left out by Level.Parent
 	vanished      []int64
+	excluded      []int64 // relations left out by Level.Exclude, by OSM id
 	dropped       dropped
 	relations     int // relations read
 }
@@ -85,8 +93,16 @@ type regionSet struct {
 func readRegions(path string, more []string, c country, clip orb.Bound, tol float64) (*regionSet, error) {
 	imp := c.Imp
 	pl, dl := imp.Province, imp.District
+	// keep runs on the decoder's goroutines.
+	var mu sync.Mutex
+	excluded := map[int64]bool{}
 	keep := func(r *osm.Relation) bool {
 		id := int64(r.ID)
+		if osmfile.Excluded(r, pl) || osmfile.Excluded(r, dl) {
+			mu.Lock()
+			excluded[id] = true
+			mu.Unlock()
+		}
 		return osmfile.MatchLevel(r, pl) || osmfile.MatchLevel(r, dl) ||
 			(pl.Parent != 0 && id == pl.Parent) || (dl.Parent != 0 && id == dl.Parent)
 	}
@@ -106,6 +122,10 @@ func readRegions(path string, more []string, c country, clip orb.Bound, tol floa
 		return nil, err
 	}
 	set := &regionSet{partial: a.Partial, relations: len(raw.Relations)}
+	for id := range excluded {
+		set.excluded = append(set.excluded, id)
+	}
+	slices.Sort(set.excluded)
 	built := make(map[int64]osmfile.Boundary, len(a.Built))
 	for _, b := range a.Built {
 		built[b.OSMID] = b
@@ -198,8 +218,9 @@ func readRegions(path string, more []string, c country, clip orb.Bound, tol floa
 		dcands = append(dcands, candidate{b, simple})
 	}
 
-	// Districts belong to the province that holds their centre; an index of
-	// this run's provinces only, as before the country import.
+	// Districts are kept when one of the run's provinces holds their centre
+	// (an index of this run's provinces only, as before the country import)
+	// and belong to it until assignParents decides by their land cells.
 	shapes := make([]geo.RegionShape, len(set.provinces))
 	for i, p := range set.provinces {
 		shapes[i] = geo.RegionShape{ID: i, Geometry: p.shape}
@@ -218,7 +239,8 @@ func readRegions(path string, more []string, c country, clip orb.Bound, tol floa
 		}
 		p := set.provinces[pi]
 		d := &district{osmID: x.b.OSMID, level: adminLevel(x.b.Tags, dl), names: n,
-			kindName: osmfile.KindName(n.RawEn, n.RawLocal, dl, "district"), shape: x.shape, province: p}
+			kindName: osmfile.KindName(n.RawEn, n.RawLocal, dl, "district"), shape: x.shape, bound: x.shape.Bound(),
+			province: p, centred: p}
 		set.districts = append(set.districts, d)
 		p.districts = append(p.districts, d)
 	}
@@ -233,6 +255,41 @@ func centre(mp orb.MultiPolygon) orb.Point {
 		c = mp[0][0][0]
 	}
 	return c
+}
+
+// assignParents gives every district its province. The parent a fresh
+// import gives (majority) is the run's province that holds most of the
+// district's land cells (landCells: cells at plot resolution whose centre
+// lies in the district and that the combined index gives to one of the
+// run's provinces), on a tie the lower OSM id; a district without a land
+// cell keeps the province holding its centre. The centre alone misplaces a
+// district whose centroid lies across a winding border (Vietnam's Mỹ Đức,
+// a commune of Hà Nội whose centroid lies in Phú Thọ). A district stored
+// for c keeps its stored parent when that is one of the run's provinces, as
+// it keeps its slug, which was built from the parent's; the report lists
+// where majority differs.
+func assignParents(set *regionSet, c country, stored map[int64]*db.StoredRegion, byID map[int]*db.StoredRegion) {
+	byOSM := make(map[int64]*province, len(set.provinces))
+	for _, p := range set.provinces {
+		byOSM[p.osmID] = p
+		p.districts = nil
+	}
+	for _, d := range set.districts {
+		d.majority = d.centred
+		best := 0
+		for p, n := range d.share {
+			if n > best || n == best && p.osmID < d.majority.osmID {
+				d.majority, best = p, n
+			}
+		}
+		d.province = d.majority
+		if s := stored[d.osmID]; s != nil && s.Country == c.Code && s.ParentID != nil {
+			if sp := byID[*s.ParentID]; sp != nil && byOSM[sp.OSMID] != nil {
+				d.province = byOSM[sp.OSMID]
+			}
+		}
+		d.province.districts = append(d.province.districts, d)
+	}
 }
 
 // memberInside reports whether the first node found of r's member ways lies
@@ -258,22 +315,25 @@ func adminLevel(t osm.Tags, l countries.Level) int {
 }
 
 // resolveSlugs gives every province and district its slug: a stored row of
-// the same country keeps its slug, a new one gets one by the settings
-// (osmfile.ResolveSlugs: Slug of the English name, the country suffix on
-// provinces when SlugSuffix, a district's from its province's slug,
-// duplicates by decision 7). Districts stored for another country are left
-// out (that country's import placed them first).
+// the same country keeps its slug and whether its names carry their affixes,
+// a new one gets one by the settings (osmfile.ResolveSlugs: Slug of the
+// English name, the country suffix on provinces when SlugSuffix, a
+// district's from its province's slug, duplicates by decision 7, decided on
+// what a fresh import gives). Districts must have their parents
+// (assignParents). Districts stored for another country are left out (that
+// country's import placed them first).
 func resolveSlugs(set *regionSet, c country, stored map[int64]*db.StoredRegion) {
-	own := func(s *db.StoredRegion) string {
+	sibling := func(osmID int64, names osmfile.Named, s *db.StoredRegion) osmfile.Sibling {
+		out := osmfile.Sibling{OSMID: osmID, Names: names}
 		if s != nil && s.Country == c.Code {
-			return s.Slug
+			out.Stored, out.StoredEn, out.StoredLocal = s.Slug, s.NameEn, s.NameLocal
 		}
-		return ""
+		return out
 	}
 	sibs := make([]osmfile.Sibling, len(set.provinces))
 	for i, p := range set.provinces {
 		p.stored = stored[p.osmID]
-		sibs[i] = osmfile.Sibling{OSMID: p.osmID, Names: p.names, Stored: own(p.stored)}
+		sibs[i] = sibling(p.osmID, p.names, p.stored)
 	}
 	osmfile.ResolveSlugs(sibs, func(base string) string {
 		if c.Imp.SlugSuffix {
@@ -312,7 +372,7 @@ func resolveSlugs(set *regionSet, c country, stored map[int64]*db.StoredRegion) 
 		ds := p.districts
 		sibs := make([]osmfile.Sibling, len(ds))
 		for i, d := range ds {
-			sibs[i] = osmfile.Sibling{OSMID: d.osmID, Names: d.names, Stored: own(d.stored)}
+			sibs[i] = sibling(d.osmID, d.names, d.stored)
 		}
 		osmfile.ResolveSlugs(sibs, func(base string) string { return p.slug + "-" + base })
 		for i, d := range ds {

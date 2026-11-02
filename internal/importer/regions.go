@@ -14,11 +14,13 @@ import (
 	"log/slog"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"sync"
 	"time"
 
 	"github.com/paulmach/orb"
+	"github.com/paulmach/orb/planar"
 
 	"github.com/cartograph-asia/cartograph/internal/db"
 	"github.com/cartograph-asia/cartograph/internal/geo"
@@ -156,10 +158,12 @@ func planRegions(ctx context.Context, d *db.DB, o Options) (*regionPlan, error) 
 	if err := pl.loadStored(ctx, d); err != nil {
 		return nil, err
 	}
-	resolveSlugs(pl.set, c, pl.byOSM)
 	if err := pl.landCells(ctx, d); err != nil {
 		return nil, err
 	}
+	assignParents(pl.set, c, pl.byOSM, pl.byID)
+	resolveSlugs(pl.set, c, pl.byOSM)
+	pl.districtCover()
 	pl.checks = pl.runChecks()
 	slog.Info("planned regions", "country", c.Code, "provinces", len(pl.set.provinces), "districts", len(pl.set.districts),
 		"took", time.Since(start).Round(time.Millisecond))
@@ -273,9 +277,22 @@ func (pl *regionPlan) landCells(ctx context.Context, d *db.DB) error {
 	land := 0
 	for i, err := range errs {
 		if err != nil {
-			return fmt.Errorf("land cells of %s: %w", ps[i].slug, err)
+			return fmt.Errorf("land cells of r%d %s: %w", ps[i].osmID, ps[i].names.En, err)
 		}
 		land += ps[i].land
+	}
+	for _, d := range pl.set.districts {
+		d.share = map[*province]int{}
+	}
+	for _, p := range ps {
+		for d, n := range p.dcells.one {
+			d.share[p] += n
+		}
+		for _, x := range p.dcells.more {
+			for _, d := range x.ds {
+				d.share[p] += x.n
+			}
+		}
 	}
 	slog.Info("counted land cells", "provinces", len(ps), "cells", land, "took", time.Since(t).Round(time.Millisecond))
 	return nil
@@ -291,18 +308,7 @@ func (pl *regionPlan) provinceCells(ctx context.Context, d *db.DB, p *province, 
 	// order does not depend on what was imported first.
 	geo.HilbertSort(cells, p.shape.Bound())
 	p.land, p.held = len(cells), n
-	if len(p.districts) > 0 {
-		shapes := make([]geo.RegionShape, len(p.districts))
-		for i, d := range p.districts {
-			shapes[i] = geo.RegionShape{ID: i, Geometry: d.shape}
-		}
-		didx := geo.NewRegionIndex(shapes)
-		for _, c := range cells {
-			if _, ok := didx.Contains(c.Centre); ok {
-				p.inDistrict++
-			}
-		}
-	}
+	p.dcells = countDistrictCells(cells, pl.set.districts, p.shape.Bound())
 	p.cells = make([]uint64, len(cells))
 	for i, c := range cells {
 		if p.cells[i], err = strconv.ParseUint(c.Cell, 16, 64); err != nil {
@@ -312,6 +318,88 @@ func (pl *regionPlan) provinceCells(ctx context.Context, d *db.DB, p *province, 
 	// What AssignPlotNumbers would add; a real run replaces it by what it added.
 	p.newNumbers, err = d.CountUnnumbered(ctx, cellStrings(p.cells))
 	return err
+}
+
+// districtCells counts one province's land cells by the districts whose
+// boundary holds their centre: once for each district, where districts
+// overlap once for each set of them, so that the district cover counts a
+// cell once.
+type districtCells struct {
+	one  map[*district]int     // cells in exactly one district
+	more map[string]*cellShare // cells in several, by their OSM ids
+}
+
+type cellShare struct {
+	ds []*district
+	n  int
+}
+
+// countDistrictCells counts cells (one province's land cells, inside bound)
+// by the districts of ds that hold their centre, whichever province they
+// belong to.
+func countDistrictCells(cells []geo.LandCell, ds []*district, bound orb.Bound) districtCells {
+	var near []*district
+	for _, d := range ds {
+		if d.bound.Intersects(bound) {
+			near = append(near, d)
+		}
+	}
+	out := districtCells{one: map[*district]int{}}
+	var in []*district
+	for _, c := range cells {
+		in = in[:0]
+		for _, d := range near {
+			if d.bound.Contains(c.Centre) && planar.MultiPolygonContains(d.shape, c.Centre) {
+				in = append(in, d)
+			}
+		}
+		switch len(in) {
+		case 0:
+		case 1:
+			out.one[in[0]]++
+		default:
+			key := ""
+			for _, d := range in {
+				key += strconv.FormatInt(d.osmID, 10) + ","
+			}
+			if out.more == nil {
+				out.more = map[string]*cellShare{}
+			}
+			x := out.more[key]
+			if x == nil {
+				x = &cellShare{ds: slices.Clone(in)}
+				out.more[key] = x
+			}
+			x.n++
+		}
+	}
+	return out
+}
+
+// districtCover counts every province's land cells that lie in one of its
+// districts (the report's district cover), once the districts have their
+// parents and those stored for another country are left out, and drops
+// the counts.
+func (pl *regionPlan) districtCover() {
+	kept := make(map[*district]bool, len(pl.set.districts))
+	for _, d := range pl.set.districts {
+		kept[d] = true
+	}
+	mine := func(d *district, p *province) bool { return kept[d] && d.province == p }
+	for _, p := range pl.set.provinces {
+		p.inDistrict = 0
+		for d, n := range p.dcells.one {
+			if mine(d, p) {
+				p.inDistrict += n
+			}
+		}
+		for _, x := range p.dcells.more {
+			if slices.ContainsFunc(x.ds, func(d *district) bool { return mine(d, p) }) {
+				p.inDistrict += x.n
+			}
+		}
+		p.dcells = districtCells{}
+	}
 }
 
 // cellStrings turns raw cell ids back into the 15-character hex strings the

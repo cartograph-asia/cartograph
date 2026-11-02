@@ -6,7 +6,7 @@ What Cartograph stores about you, why, for how long, and how to have it deleted.
 
 ## Who is responsible
 
-Adrian Altner, [street and house number], [postcode and town], Germany, [hello@cartograph.asia](mailto:hello@cartograph.asia) (the controller under the GDPR). See the [Impressum](/impressum).
+Adrian Altner, [street and house number], [postcode and town], Germany, [hello@cartograph.asia](mailto:hello@cartograph.asia) (the controller under the GDPR). See the [legal notice](/legal-notice).
 
 ## Visiting the site
 

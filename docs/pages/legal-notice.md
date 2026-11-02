@@ -1,6 +1,6 @@
-# Impressum
+# Legal notice
 
-Who runs Cartograph, as German law (§ 5 DDG) requires.
+Who runs Cartograph: the provider information (Impressum) that German law requires (§ 5 DDG).
 
 **DRAFT – Adrian fills in the address before the site goes live; nothing in brackets may stay.**
 

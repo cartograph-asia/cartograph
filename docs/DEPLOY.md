@@ -67,7 +67,7 @@ Push the previous commit: `git push -f deploy <commit>:main`. Migrations are nev
 
 Until the switch, the stack can run on another local port than the one the host Caddy proxies to, and be checked through an ssh tunnel. To go live:
 
-1. `docs/pages/impressum.md` and `docs/pages/privacy.md`: the address, the supervisory authority and the date filled in, nothing in brackets left. Release.
+1. `docs/pages/legal-notice.md` and `docs/pages/privacy.md`: the address, the supervisory authority and the date filled in, nothing in brackets left. Release.
 2. `SMTP_PASSWORD` in `RUNTIME/deploy/.env`; the api's log says `smtp ok` at start.
 3. `HTTP_PORT` in `.env` to the port in `deploy/cartograph.asia.caddy`, then `RUNTIME/deploy/prod.sh up -d`.
 4. Check `https://cartograph.asia`: the front page, `/map`, a sign-in mail, an upload, `/robots.txt`.

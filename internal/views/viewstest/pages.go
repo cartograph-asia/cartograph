@@ -57,6 +57,12 @@ func PrototypePhoto() *views.Photo { return must(NewFake().Photo(ctx, photoID(0)
 // Region returns Chon Buri.
 func Region() *views.Region { return must(NewFake().Region(ctx, "chon-buri", 1)) }
 
+// Country returns Thailand, the one country the fixture has regions in.
+func Country() *views.Country { return must(NewFake().Country(ctx, "thailand", 1)) }
+
+// CountryNotOpen returns Vietnam, a country in the list without regions.
+func CountryNotOpen() *views.Country { return must(NewFake().Country(ctx, "vietnam", 1)) }
+
 // Feed returns /latest.rss.
 func Feed() *views.Feed { return must(NewFake().LatestFeed(ctx)) }
 

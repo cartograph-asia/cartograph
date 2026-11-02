@@ -8,8 +8,17 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cartograph-asia/cartograph/internal/countries"
 	"github.com/cartograph-asia/cartograph/internal/views"
 )
+
+// fixtureCountry is the country of every fixture region; the other
+// countries in the list are "not open yet" in the Fake.
+const fixtureCountry = "th"
+
+func countryRef(c countries.Country) views.CountryRef {
+	return views.CountryRef{Slug: c.Slug, NameEn: c.NameEn, Native: c.Native, Lang: c.Lang}
+}
 
 // Fake is an in-memory views.Source over the fixture data. It follows the
 // Source conventions (pagination, case-insensitive names, ErrNotFound) so
@@ -247,8 +256,9 @@ func (f *Fake) Surveyors(ctx context.Context, page int) (*views.SurveyorList, er
 // Regions implements views.Source.
 func (f *Fake) Regions(ctx context.Context) (*views.RegionList, error) {
 	return &views.RegionList{
-		Page:    base("Regions", "/regions", "Survey coverage by province.", ""),
-		Regions: f.regionSummaries(false),
+		Page:      base("Regions", "/regions", "Survey coverage by country and province.", ""),
+		Countries: f.countrySummaries(),
+		Regions:   f.regionSummaries(false),
 	}, nil
 }
 
@@ -460,6 +470,7 @@ func (f *Fake) Region(ctx context.Context, slug string, page int) (*views.Region
 		Page: base(r.ref.NameEn, withPage(path, pg.Page),
 			fmt.Sprintf("Survey coverage of %s: %.2f %% of %d plots.", r.ref.NameEn, sum.Coverage.Percent(), r.land), path+".rss"),
 		Region:         r.ref,
+		Country:        f.countryOfFixture(),
 		Kind:           "province", // every fixture region is a province
 		Coverage:       sum.Coverage,
 		Bounds:         r.bounds,
@@ -479,6 +490,98 @@ func (f *Fake) Region(ctx context.Context, slug string, page int) (*views.Region
 	}
 	out.Counters.Surveyors = len(people)
 	return out, nil
+}
+
+func (f *Fake) countryOfFixture() views.CountryRef {
+	c, _ := countries.ByCode(fixtureCountry)
+	return countryRef(c)
+}
+
+// fixtureTotals sums the fixture provinces, which all lie in fixtureCountry.
+func (f *Fake) fixtureTotals() (cov views.Coverage, last *time.Time, b views.Bounds, active int) {
+	for i, r := range regions {
+		s := f.regionSummary(r)
+		cov.Claimed += s.Coverage.Claimed
+		cov.Land += s.Coverage.Land
+		if s.LastSurveyedAt != nil {
+			active++
+			if last == nil || s.LastSurveyedAt.After(*last) {
+				last = s.LastSurveyedAt
+			}
+		}
+		if i == 0 {
+			b = r.bounds
+			continue
+		}
+		b.MinLat, b.MinLng = min(b.MinLat, r.bounds.MinLat), min(b.MinLng, r.bounds.MinLng)
+		b.MaxLat, b.MaxLng = max(b.MaxLat, r.bounds.MaxLat), max(b.MaxLng, r.bounds.MaxLng)
+	}
+	return
+}
+
+func (f *Fake) countrySummaries() []views.CountrySummary {
+	out := make([]views.CountrySummary, 0, len(countries.All))
+	for _, c := range countries.All {
+		s := views.CountrySummary{Country: countryRef(c)}
+		if c.Code == fixtureCountry {
+			s.Open = true
+			s.Coverage, s.LastSurveyedAt, _, _ = f.fixtureTotals()
+			s.TopSurveyors = f.activity(f.all(), Now.Add(-views.ActiveDays*24*time.Hour), views.TopSurveyors)
+		}
+		out = append(out, s)
+	}
+	views.SortCountries(out)
+	return out
+}
+
+// Country implements views.Source.
+func (f *Fake) Country(ctx context.Context, slug string, page int) (*views.Country, error) {
+	c, ok := countries.BySlug(slug)
+	if !ok {
+		return nil, views.ErrNotFound
+	}
+	path := "/" + c.Slug
+	if c.Code != fixtureCountry {
+		if page > 1 {
+			return nil, views.ErrNotFound
+		}
+		out := &views.Country{Page: base(c.NameEn, path, "Cartograph does not cover "+c.NameEn+" yet.", ""), Country: countryRef(c)}
+		out.NoIndex = true
+		return out, nil
+	}
+	idx := f.all()
+	items, pg, err := paginate(f.newestFirst(idx), page, f.perPage())
+	if err != nil {
+		return nil, err
+	}
+	cov, last, bounds, active := f.fixtureTotals()
+	out := &views.Country{
+		Page: base(c.NameEn, withPage(path, pg.Page),
+			fmt.Sprintf("Survey coverage of %s: %.2f %% of %d plots.", c.NameEn, cov.Percent(), cov.Land), path+".rss"),
+		Country:        countryRef(c),
+		Open:           true,
+		Coverage:       cov,
+		Bounds:         bounds,
+		Provinces:      f.regionSummaries(false),
+		Latest:         items,
+		Pagination:     pg,
+		ActiveRecent:   f.activity(idx, Now.Add(-views.ActiveDays*24*time.Hour), views.RegionTop),
+		ActiveAllTime:  f.activity(idx, time.Time{}, views.RegionTop),
+		LastSurveyedAt: last,
+	}
+	out.Counters = f.counters()
+	out.Counters.Surveyors = len(f.activity(idx, time.Time{}, len(f.d.photos)))
+	out.Counters.Regions = active
+	return out, nil
+}
+
+// CountryFeed implements views.Source.
+func (f *Fake) CountryFeed(ctx context.Context, slug string) (*views.Feed, error) {
+	c, ok := countries.BySlug(slug)
+	if !ok || c.Code != fixtureCountry {
+		return nil, views.ErrNotFound
+	}
+	return f.feed(views.Wordmark+": "+c.NameEn, "/"+c.Slug, "The newest photos in "+c.NameEn+".", f.all()), nil
 }
 
 // RegionRefs implements views.Source.

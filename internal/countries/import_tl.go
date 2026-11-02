@@ -11,16 +11,20 @@ package countries
 //     holds two level-4 relations of Indonesia (ID-NT, ID-MA), which the ISO
 //     prefix leaves out. All 14 carry name:en and name:tet; no name carries a
 //     word to strip ("Municipality of …" does not occur), so Strip is empty.
-//     The word is "municipality" for all of them, Oe-Cusse Ambeno included:
-//     it is a municipality in ISO's list of the twelve, with a special
-//     status in administration only.
+//     The word is "municipality" for all fourteen. Oe-Cusse Ambeno is a
+//     special administrative region (ISO 3166-2 lists it beside the twelve
+//     municipalities), but OSM maps it at the same level and the name carries
+//     no affix that tells it apart, so it keeps the common word; whether it
+//     deserves "special administrative region" is Adrian's call.
 //   - Districts: the 70 level-5 relations, the administrative posts (postu
 //     administrativu, formerly sub-districts; none has an ISO code). The word
-//     is "administrative post", the English name the government uses. Four of
-//     the 70 are the sucos of Atauro (Beloi, Bikeli, Makadade, Makili), which
-//     OSM tags at level 5 as the island has no posts of its own. The four
-//     posts of Oe-Cusse Ambeno do not assemble and drop out (the dry run
-//     reports them).
+//     is "administrative post", the English name the government uses. Five of
+//     the 70 lie in Atauro, which has no posts of its own: Vila Maumeta, its
+//     main town, and four sucos (Beloi, Bikeli, Makadade, Makili) that OSM
+//     tags at level 5 as well. The four posts of Oe-Cusse Ambeno assemble;
+//     the four level-5 relations that drop out as not assembled are West
+//     Timor's kabupaten (Kupang, Timor Tengah Utara, Belu, Malaka), cut by
+//     the extract and not Timor-Leste's.
 //   - English: name:en, then int_name and name, all Latin. 34 of the posts
 //     have name:en; the others are written in Latin in name.
 //   - Local: name:tet, then a Latin name. Tetum, not Portuguese, is the

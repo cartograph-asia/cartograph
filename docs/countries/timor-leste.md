@@ -85,7 +85,7 @@ English-capable name: the first of `name:en`, `int_name`, `name:pt-Latn`, `name`
 - English prefixes: none. Suffixes: none.
 - Local prefixes: none. Suffixes: none.
 - Slugs: 0 names have no slug (no English-capable name, or nothing in it that a slug can hold); 0 slugs are used more than once.
-- **Accents:** `osmfile.Slug` drops accented letters; with accents folded (NFD, đ → d) the slug is different for 2 names, e.g. Lautém: laut-m → lautem, Liquiçá: liqui → liquica. Stage 2 should fold accents.
+- **Accents:** a slug without folding (as before stage 2) drops accented letters; `osmfile.Slug` folds them (NFD, đ → d), which changes the slug of 2 names, e.g. Lautém: laut-m → lautem, Liquiçá: liqui → liquica.
 
 ### Districts (level 5, 70 relations)
 
@@ -95,7 +95,7 @@ English-capable name: the first of `name:en`, `int_name`, `name:pt-Latn`, `name`
 - Local prefixes: none. Suffixes: none.
 - Slugs: 0 names have no slug (no English-capable name, or nothing in it that a slug can hold); 0 slugs are used more than once.
   (A district's slug is built from its province's; the duplicates above are within one province.)
-- **Accents:** `osmfile.Slug` drops accented letters; with accents folded (NFD, đ → d) the slug is different for 2 names, e.g. Liquiçá: liqui → liquica, Lautém: laut-m → lautem. Stage 2 should fold accents.
+- **Accents:** a slug without folding (as before stage 2) drops accented letters; `osmfile.Slug` folds them (NFD, đ → d), which changes the slug of 2 names, e.g. Liquiçá: liqui → liquica, Lautém: laut-m → lautem.
 
 The slug of a new country's province carries the country as a suffix (`-timor-leste`), decided on 2026-11-02, so it cannot collide with another country's.
 

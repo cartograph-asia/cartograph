@@ -89,11 +89,17 @@ services:
       - ./garage-init.sh:/garage-init.sh:ro
     restart: "no"
 
-  # Pattaya fixtures (prototype only): provinces, places and a few
-  # Surveyors with synthetic photos, so a clean `docker compose up` shows a
-  # populated front page. Each step is idempotent. For all of Thailand set
-  # IMPORT_PBF, IMPORT_WATER and IMPORT_BBOX as in .env.example.
-  regions:
+  # Country import: provinces, districts, plots and places, one country at a
+  # time, in one process (cmd/import; docs/COUNTRY_IMPORT_STAGE2_BRIEF.md).
+  # The countries come from IMPORT_COUNTRIES (comma-separated codes). By
+  # default this imports the Pattaya fixture (Thailand), so a clean
+  # `docker compose up` shows a populated front page; for real extracts set
+  # IMPORT_PBF, IMPORT_WATER and IMPORT_BBOX empty (the extracts are then read
+  # from map/data, mounted at /srv/map/data) as in .env.example. A failed
+  # country does not stop the next one; the exit code says if any failed.
+  # `docker compose run --rm import -countries la -dry-run` replaces the
+  # command and keeps the entrypoint's -data.
+  import:
     image: cartograph-api:${API_TAG:-local}
     pull_policy: never
     depends_on:
@@ -101,25 +107,13 @@ services:
         condition: service_healthy
       api:
         condition: service_started # builds the image first
-    entrypoint: ["/usr/local/bin/regions"]
+    entrypoint: ["/usr/local/bin/import", "-data=/srv/map/data"]
     command:
-      - -pbf=${IMPORT_PBF:-/usr/share/cartograph/fixtures/pattaya.osm.gz}
+      - -countries=${IMPORT_COUNTRIES:-th}
+      # The three overrides serve the fixture and a single country only; empty
+      # means not given.
+      - -pbf=${IMPORT_PBF-/usr/share/cartograph/fixtures/pattaya.osm.gz}
       - -water=${IMPORT_WATER-/usr/share/cartograph/fixtures/pattaya-water.shp}
-      - -bbox=${IMPORT_BBOX-100.82,12.82,100.98,13.02}
-    environment: *api-env
-    volumes:
-      - ../map:/srv/map:ro
-    restart: "no"
-
-  places:
-    image: cartograph-api:${API_TAG:-local}
-    pull_policy: never
-    depends_on:
-      regions:
-        condition: service_completed_successfully
-    entrypoint: ["/usr/local/bin/places"]
-    command:
-      - -pbf=${IMPORT_PBF:-/usr/share/cartograph/fixtures/pattaya.osm.gz}
       - -bbox=${IMPORT_BBOX-100.82,12.82,100.98,13.02}
     environment: *api-env
     volumes:
@@ -130,7 +124,7 @@ services:
     image: cartograph-api:${API_TAG:-local}
     pull_policy: never
     depends_on:
-      places:
+      import:
         condition: service_completed_successfully
       garage-init:
         condition: service_completed_successfully

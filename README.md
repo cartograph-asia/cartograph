@@ -20,19 +20,20 @@ open http://localhost:8080
 
 The first start imports the Pattaya fixture (Chon Buri province and its places) and seeds five example Surveyors with 30 synthetic photos, so the front page is populated. To upload, choose "Sign in", enter any address, and open the sign-in link that the api logs (`docker compose logs api | grep sign-in`; no mail is sent while `SMTP_HOST` is empty). Then pick a Surveyor name and upload a geotagged JPEG or PNG from `/map` (the photos in `testdata/` are taken in Pattaya and work).
 
-The stack runs PostgreSQL, Garage (local S3 for the photos), the api (pages, sign-in and JSON API), the map's web build and Caddy, with only port 8080 published. The one-shot services `regions`, `places` and `seed` run before you use it and exit. `docker compose down -v` resets all data.
+The stack runs PostgreSQL, Garage (local S3 for the photos), the api (pages, sign-in and JSON API), the map's web build and Caddy, with only port 8080 published. The one-shot services `import` (regions and places of the countries named in `IMPORT_COUNTRIES`) and `seed` run before you use it and exit. `docker compose down -v` resets all data.
 
 ### All of Thailand
 
 After `map/build.sh`, set in `deploy/.env`:
 
 ```sh
-IMPORT_PBF=/srv/map/data/thailand-latest.osm.pbf
-IMPORT_WATER=/srv/map/data/sources/water-polygons-split-3857.zip
+IMPORT_COUNTRIES=th
+IMPORT_PBF=
+IMPORT_WATER=
 IMPORT_BBOX=
 ```
 
-and run `docker compose up regions places` (77 provinces and about 18,000 places). Set `SEED_PHOTOS=0` if you do not want the synthetic photos.
+and run `docker compose up import` (77 provinces and about 18,000 places; the extract is read from `map/data/`). Another country: `docker compose run --rm import -countries la -dry-run`, then without `-dry-run`. Set `SEED_PHOTOS=0` if you do not want the synthetic photos.
 
 ## Build the map
 
@@ -48,7 +49,7 @@ Everything is configured through environment variables, all documented in [deplo
 - Pages (`internal/web`, `html/template`): `go run ./cmd/webpreview` serves every page from in-memory fixtures on 127.0.0.1:8093, with crops of the photos in `testdata/`.
 - Design screenshots: `cd web && npm run screenshots -- round-2` takes the pages of a set in `tools/screenshots/pages.json` at 400 and 1400 px into `docs/design/round-2/`, through playwright-core and the installed Chrome (`CHROME_PATH` for another Chromium).
 - Map (`web/`, served under `/map/`): `npm ci && npm run dev:mock` runs against in-memory fixtures; `npm run dev` proxies to the stack on :8080. Open http://localhost:5173/map/.
-- Importers: `regions`, `places` and `seed` in `cmd/`; `go run ./cmd/fixture` regenerates the Pattaya fixture in `testdata/` from `map/data/`.
+- Importers: `import` (regions and places, one country after the other; `regions` and `places` remain as single-country commands) and `seed` in `cmd/`; `go run ./cmd/fixture` regenerates the Pattaya fixture in `testdata/` from `map/data/`.
 - Briefs: [docs/PROTOTYPE_BRIEF.md](docs/PROTOTYPE_BRIEF.md) (map and JSON API) and [docs/HOME_BRIEF.md](docs/HOME_BRIEF.md) (front page, pages, accounts). [docs/PRINCIPLES.md](docs/PRINCIPLES.md) decides feature questions, [docs/GAMIFICATION.md](docs/GAMIFICATION.md) is the design reference the data model leaves room for, and decisions made while building are in [docs/decisions.md](docs/decisions.md).
 
 ## Not there yet (on purpose)

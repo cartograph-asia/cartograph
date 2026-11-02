@@ -6,10 +6,11 @@
 # h3-go wraps the H3 C library, so this is a cgo build; the final stage is
 # distroless/cc (glibc) to match the bookworm build stage.
 #
-# Besides the api the image carries the one-shot commands regions, places and
-# seed, plus the Pattaya fixture extract under /usr/share/cartograph/fixtures.
-# regions and places read OSM PBF through paulmach/osm, which links the
-# system zlib (DataDog/czlib); distroless/cc has no libz, so it is copied in.
+# Besides the api the image carries the one-shot commands import, regions,
+# places and seed, plus the Pattaya fixture extract under
+# /usr/share/cartograph/fixtures. The importers read OSM PBF through
+# paulmach/osm, which links the system zlib (DataDog/czlib); distroless/cc has
+# no libz, so it is copied in.
 # It goes to /usr/lib/<triplet>: copying to /lib would replace the /lib
 # symlink of the image and hide libc.
 
@@ -31,7 +32,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 COPY . .
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    for c in api regions places seed; do \
+    for c in api import regions places seed; do \
       go build -trimpath -ldflags="-s -w" -o /out/bin/$c ./cmd/$c || exit 1; \
     done
 

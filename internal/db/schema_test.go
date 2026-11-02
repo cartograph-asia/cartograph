@@ -62,8 +62,10 @@ func TestSchema(t *testing.T) {
 	mustFail("bad slug", "regions_slug_check", exec(`
 		insert into regions (kind, admin_level, country, slug, name_en, boundary, min_lat, min_lng, max_lat, max_lng)
 		values ('province', 4, 'th', 'Chon Buri', 'x', '{}', 0, 0, 0, 0)`))
-	mustOK("insert place", exec(`insert into places (osm_type, osm_id, kind, name_en, name_local, lat, lng, region_id)
-		values ('n', 42, 'city', 'Pattaya', 'พัทยา', 12.93, 100.88, $1)`, region))
+	mustOK("insert place", exec(`insert into places (osm_type, osm_id, kind, name_en, name_local, lat, lng, region_id, country)
+		values ('n', 42, 'city', 'Pattaya', 'พัทยา', 12.93, 100.88, $1, 'th')`, region))
+	mustFail("place without country", "country", exec(`insert into places (osm_type, osm_id, kind, name_en, lat, lng)
+		values ('n', 43, 'town', 'Naklua', 12.96, 100.89)`))
 
 	// Surveyors: names, case-insensitive uniqueness, nullable unique e-mail, bio.
 	mustOK("surveyor", addSurveyor("Adrian", "adrian@example.org", false))

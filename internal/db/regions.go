@@ -18,6 +18,7 @@ import (
 type Region struct {
 	OSMID      int64
 	Kind       string // "country", "province", "district" or "city"
+	KindName   string // the display word ("prefecture", "state"); empty: it follows from Kind
 	AdminLevel int
 	ParentID   *int   // the province of a district
 	Urban      bool   // a district that is part of a city (khet)
@@ -29,9 +30,17 @@ type Region struct {
 	LandCells  int
 }
 
+// ErrRegionOtherCountry is returned (wrapped) by UpsertRegions when a
+// relation is already stored for another country.
+var ErrRegionOtherCountry = errors.New("relation is stored for another country")
+
 // UpsertRegions inserts or updates regions by osm_id in one transaction and
-// returns their ids in order. claimed_cells and last_surveyed_at are left
-// alone; call RefreshRegionCounts afterwards.
+// returns their ids in order. A run touches only its own country's rows: a
+// relation stored for another country fails the whole call with
+// ErrRegionOtherCountry and nothing is written. A stored slug never changes
+// (links and the slugs of districts depend on it), so slug is set on insert
+// only. kind_name is NULL where KindName is empty. claimed_cells and
+// last_surveyed_at are left alone; call RefreshRegionCounts afterwards.
 func (d *DB) UpsertRegions(ctx context.Context, rs []Region) ([]int, error) {
 	ids := make([]int, len(rs))
 	err := pgx.BeginFunc(ctx, d.Pool, func(tx pgx.Tx) error {
@@ -41,24 +50,36 @@ func (d *DB) UpsertRegions(ctx context.Context, rs []Region) ([]int, error) {
 				return err
 			}
 			b := r.Boundary.Bound()
-			var th *string
+			var th, kindName *string
 			if r.NameLocal != "" {
 				th = &r.NameLocal
 			}
+			if r.KindName != "" {
+				kindName = &r.KindName
+			}
 			err = tx.QueryRow(ctx, `
 				insert into regions (osm_id, admin_level, country, slug, name_en, name_local, boundary,
-				                     min_lat, min_lng, max_lat, max_lng, land_cells, kind, parent_id, urban)
-				values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+				                     min_lat, min_lng, max_lat, max_lng, land_cells, kind, parent_id, urban, kind_name)
+				values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
 				on conflict (osm_id) do update set
-				  kind = excluded.kind, admin_level = excluded.admin_level, country = excluded.country, slug = excluded.slug,
+				  kind = excluded.kind, kind_name = excluded.kind_name, admin_level = excluded.admin_level,
 				  parent_id = excluded.parent_id, urban = excluded.urban,
 				  name_en = excluded.name_en, name_local = excluded.name_local, boundary = excluded.boundary,
 				  min_lat = excluded.min_lat, min_lng = excluded.min_lng,
 				  max_lat = excluded.max_lat, max_lng = excluded.max_lng, land_cells = excluded.land_cells
+				where regions.country = excluded.country
 				returning id`,
 				r.OSMID, r.AdminLevel, r.Country, r.Slug, r.NameEn, th, text,
-				b.Min[1], b.Min[0], b.Max[1], b.Max[0], r.LandCells, r.Kind, r.ParentID, r.Urban,
+				b.Min[1], b.Min[0], b.Max[1], b.Max[0], r.LandCells, r.Kind, r.ParentID, r.Urban, kindName,
 			).Scan(&ids[i])
+			if errors.Is(err, pgx.ErrNoRows) {
+				// The guard held: the row exists for another country.
+				var other string
+				if err := tx.QueryRow(ctx, `select country from regions where osm_id = $1`, r.OSMID).Scan(&other); err != nil {
+					return fmt.Errorf("upsert region %d (%s): %w", r.OSMID, r.Slug, err)
+				}
+				return fmt.Errorf("upsert region %d (%s) for %q: %w (%q)", r.OSMID, r.Slug, r.Country, ErrRegionOtherCountry, other)
+			}
 			if err != nil {
 				return fmt.Errorf("upsert region %d (%s): %w", r.OSMID, r.Slug, err)
 			}
@@ -198,6 +219,7 @@ type regionCache struct {
 	districts *geo.RegionIndex
 	urban     map[int]bool            // district ids that are all urban (see MarkUrbanDistricts)
 	naming    map[string]*PlaceNaming // place_naming by country
+	open      map[string]bool         // countries with provinces (see OpenCountries)
 	loadedAt  time.Time
 }
 
@@ -234,9 +256,14 @@ func (d *DB) ReloadRegions(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	open, err := d.loadOpenCountries(ctx)
+	if err != nil {
+		return err
+	}
 	idx, didx := geo.NewRegionIndex(shapes), geo.NewRegionIndex(ds)
 	d.regions.mu.Lock()
 	d.regions.idx, d.regions.districts, d.regions.urban, d.regions.naming = idx, didx, urban, naming
+	d.regions.open = open
 	d.regions.loadedAt = time.Now()
 	d.regions.mu.Unlock()
 	return nil
@@ -461,11 +488,27 @@ type Place struct {
 	NameLocal string
 	Lat, Lng  float64
 	RegionID  *int
+	Country   string // ISO 3166-1 alpha-2, lower case; empty: the run's country
 }
 
-// ReplacePlaces upserts places by (osm_type, osm_id) and deletes the places
-// not in ps, in one transaction. Plots keep their copied names.
-func (d *DB) ReplacePlaces(ctx context.Context, ps []Place) error {
+// ReplacePlaces stores one country's places: it upserts ps by (osm_type,
+// osm_id) and deletes the places of country that are not in ps, in one
+// transaction. Every place of a run belongs to its country, one outside
+// every province too (RegionID nil); a Place.Country other than country is
+// an error. Other countries' places are never deleted, and a stored place
+// of another country is left as it is, unless that country stored it
+// outside all provinces (region_id null: a Thai extract holds Lao villages
+// beyond the border), which the run then takes over. Plots keep their
+// copied names.
+func (d *DB) ReplacePlaces(ctx context.Context, country string, ps []Place) error {
+	if country == "" {
+		return fmt.Errorf("db: replace places: no country given")
+	}
+	for _, p := range ps {
+		if p.Country != "" && p.Country != country {
+			return fmt.Errorf("db: replace places: place %s%d belongs to country %q, not %q", p.OSMType, p.OSMID, p.Country, country)
+		}
+	}
 	err := pgx.BeginFunc(ctx, d.Pool, func(tx pgx.Tx) error {
 		if _, err := tx.Exec(ctx, `create temp table new_places (
 			osm_type char(1), osm_id bigint, kind text, name_en text, name_local text,
@@ -485,14 +528,16 @@ func (d *DB) ReplacePlaces(ctx context.Context, ps []Place) error {
 			return fmt.Errorf("copy: %w", err)
 		}
 		if _, err := tx.Exec(ctx, `
-			insert into places (osm_type, osm_id, kind, name_en, name_local, lat, lng, region_id)
-			select osm_type, osm_id, kind, name_en, name_local, lat, lng, region_id from new_places
+			insert into places (osm_type, osm_id, kind, name_en, name_local, lat, lng, region_id, country)
+			select osm_type, osm_id, kind, name_en, name_local, lat, lng, region_id, $1 from new_places
 			on conflict (osm_type, osm_id) do update set kind = excluded.kind, name_en = excluded.name_en,
-			  name_local = excluded.name_local, lat = excluded.lat, lng = excluded.lng, region_id = excluded.region_id`); err != nil {
+			  name_local = excluded.name_local, lat = excluded.lat, lng = excluded.lng, region_id = excluded.region_id,
+			  country = excluded.country
+			where places.country = excluded.country or places.region_id is null`, country); err != nil {
 			return fmt.Errorf("upsert: %w", err)
 		}
-		_, err := tx.Exec(ctx, `delete from places p where not exists
-			(select 1 from new_places n where n.osm_type = p.osm_type and n.osm_id = p.osm_id)`)
+		_, err := tx.Exec(ctx, `delete from places p where p.country = $1 and not exists
+			(select 1 from new_places n where n.osm_type = p.osm_type and n.osm_id = p.osm_id)`, country)
 		return err
 	})
 	if err != nil {

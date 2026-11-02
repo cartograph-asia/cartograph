@@ -233,13 +233,13 @@ func (v *Views) photosByID(ctx context.Context, ids []uuid.UUID) (map[string]vie
 type regionRow struct {
 	id   int
 	ref  views.RegionRef
-	kind string
+	kind string // the display word: kind_name, else kind
 	cov  views.Coverage
 	last *time.Time
 	b    views.Bounds
 }
 
-const regionCols = `id, kind, slug, name_en, coalesce(name_local, ''), claimed_cells, land_cells, last_surveyed_at,
+const regionCols = `id, coalesce(kind_name, kind), slug, name_en, coalesce(name_local, ''), claimed_cells, land_cells, last_surveyed_at,
 	min_lat, min_lng, max_lat, max_lng`
 
 func scanRegion(r pgx.CollectableRow) (regionRow, error) {

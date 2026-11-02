@@ -6,25 +6,27 @@ import (
 	"github.com/paulmach/osm"
 )
 
-// ReadBoundaryDataFiles is ReadBoundaryData over several files read as one,
-// such as the cuts of two neighbouring extracts (map/merge-cut.sh makes the
-// same union as a file): the relations keep accepts in any of them, with
-// their member ways and those ways' nodes from whichever file holds them. An
-// object found in more than one file is kept once, in its highest version.
-// The result is sorted by id within nodes, ways and relations.
-func ReadBoundaryDataFiles(names []string, keep func(*osm.Relation) bool) (*osm.OSM, error) {
+// ReadBoundaryDataWith is ReadBoundaryData for a country whose relations
+// have member ways in a neighbour's extract (docs/countries/
+// incomplete-relations.md): the relations keep accepts are read from name,
+// the country's own cut, only; their member ways and those ways' nodes are
+// read from name and from every file in more, the neighbours' cuts. The
+// neighbours' own relations are never read, so keep may be as broad as a
+// district level. An object found in more than one file is kept once, in
+// its highest version; the result is sorted by id within nodes, ways and
+// relations. With more empty it reads what ReadBoundaryData reads.
+func ReadBoundaryDataWith(name string, more []string, keep func(*osm.Relation) bool) (*osm.OSM, error) {
 	rels := map[osm.RelationID]*osm.Relation{}
-	for _, name := range names {
-		err := scan(name, scanOpts{relations: true, filterRelation: keep}, func(obj osm.Object) {
-			r := obj.(*osm.Relation)
-			if old := rels[r.ID]; old == nil || r.Version > old.Version {
-				rels[r.ID] = r
-			}
-		})
-		if err != nil {
-			return nil, err
+	err := scan(name, scanOpts{relations: true, filterRelation: keep}, func(obj osm.Object) {
+		r := obj.(*osm.Relation)
+		if old := rels[r.ID]; old == nil || r.Version > old.Version {
+			rels[r.ID] = r
 		}
+	})
+	if err != nil {
+		return nil, err
 	}
+	files := append([]string{name}, more...)
 	wayIDs := map[osm.WayID]bool{}
 	for _, r := range rels {
 		for _, m := range r.Members {
@@ -34,8 +36,8 @@ func ReadBoundaryDataFiles(names []string, keep func(*osm.Relation) bool) (*osm.
 		}
 	}
 	ways := map[osm.WayID]*osm.Way{}
-	for _, name := range names {
-		err := scan(name, scanOpts{ways: true, filterWay: func(w *osm.Way) bool { return wayIDs[w.ID] }}, func(obj osm.Object) {
+	for _, f := range files {
+		err := scan(f, scanOpts{ways: true, filterWay: func(w *osm.Way) bool { return wayIDs[w.ID] }}, func(obj osm.Object) {
 			w := obj.(*osm.Way)
 			if old := ways[w.ID]; old == nil || w.Version > old.Version {
 				ways[w.ID] = w
@@ -52,8 +54,8 @@ func ReadBoundaryDataFiles(names []string, keep func(*osm.Relation) bool) (*osm.
 		}
 	}
 	nodes := map[osm.NodeID]*osm.Node{}
-	for _, name := range names {
-		err := scan(name, scanOpts{nodes: true, filterNode: func(n *osm.Node) bool { return nodeIDs[n.ID] }}, func(obj osm.Object) {
+	for _, f := range files {
+		err := scan(f, scanOpts{nodes: true, filterNode: func(n *osm.Node) bool { return nodeIDs[n.ID] }}, func(obj osm.Object) {
 			n := obj.(*osm.Node)
 			if old := nodes[n.ID]; old == nil || n.Version > old.Version {
 				nodes[n.ID] = n

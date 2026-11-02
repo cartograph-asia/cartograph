@@ -12,6 +12,10 @@ need no change in the client. Cartograph's plots, regions and places are still
 Thailand's only; `cmd/regions`, `cmd/places` and `cmd/fixture` read
 `thailand-latest.osm.pbf` alone.
 
+## Cutting an extract for the importers
+
+`map/cut.sh <extract>` (for example `laos`) keeps only the administrative boundaries and the place nodes of `map/data/<extract>-latest.osm.pbf` in `map/data/scan/<extract>-latest.osm.pbf.cut.osm.pbf`, the file `cmd/countryscan` leaves and the importers prefer when it is newer than the extract. It uses osmium on the host, else a throwaway Debian container, and does nothing when the cut is current.
+
 ## Build
 
 Requires `curl`, and either Java 21+ and osmium on the host or Docker:

@@ -78,17 +78,11 @@ export class Panel {
     this.setSurveyor(me);
   }
 
-  /** Links use the Surveyor name; text shows the display name (label). */
+  /** The form or the sign-in prompt, by who is signed in; text shows the display name (label). */
   private setSurveyor(me: Me | null): void {
     this.form.hidden = me === null;
     this.signinPrompt.hidden = me !== null;
     this.surveyingAs.textContent = me ? `Surveying as ${me.label || me.name}` : '';
-    // The masthead's account link, as on the pages.
-    const link = document.getElementById('me-link') as HTMLAnchorElement | null;
-    if (link) {
-      link.textContent = me ? me.label || me.name : 'Sign in';
-      link.href = me ? `/surveyor/${encodeURIComponent(me.name)}` : '/signin?next=/map';
-    }
   }
 
   get isOpen(): boolean {

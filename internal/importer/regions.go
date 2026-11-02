@@ -17,6 +17,7 @@ import (
 	"github.com/paulmach/orb/planar"
 	"github.com/paulmach/osm"
 
+	"github.com/cartograph-asia/cartograph/internal/countries"
 	"github.com/cartograph-asia/cartograph/internal/db"
 	"github.com/cartograph-asia/cartograph/internal/geo"
 	"github.com/cartograph-asia/cartograph/internal/geo/osmfile"
@@ -58,6 +59,11 @@ type RegionStats struct {
 func Regions(ctx context.Context, d *db.DB, o RegionOptions) (*RegionStats, error) {
 	if o.Country == "" {
 		o.Country = "th"
+	}
+	// Regions of a country that has no page (internal/countries) would be
+	// invisible; adding the country to the list comes first.
+	if _, ok := countries.ByCode(o.Country); !ok {
+		return nil, fmt.Errorf("importer: country %q is not in internal/countries; add it there first", o.Country)
 	}
 	if o.Tolerance == 0 {
 		o.Tolerance = geo.SimplifyTolerance

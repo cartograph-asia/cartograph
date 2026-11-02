@@ -24,7 +24,7 @@ type Region struct {
 	Country    string // ISO 3166-1 alpha-2, lower case
 	Slug       string
 	NameEn     string
-	NameTh     string           // may be empty
+	NameLocal     string           // may be empty
 	Boundary   orb.MultiPolygon // simplified, WGS 84
 	LandCells  int
 }
@@ -42,17 +42,17 @@ func (d *DB) UpsertRegions(ctx context.Context, rs []Region) ([]int, error) {
 			}
 			b := r.Boundary.Bound()
 			var th *string
-			if r.NameTh != "" {
-				th = &r.NameTh
+			if r.NameLocal != "" {
+				th = &r.NameLocal
 			}
 			err = tx.QueryRow(ctx, `
-				insert into regions (osm_id, admin_level, country, slug, name_en, name_th, boundary,
+				insert into regions (osm_id, admin_level, country, slug, name_en, name_local, boundary,
 				                     min_lat, min_lng, max_lat, max_lng, land_cells, kind, parent_id, urban)
 				values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 				on conflict (osm_id) do update set
 				  kind = excluded.kind, admin_level = excluded.admin_level, country = excluded.country, slug = excluded.slug,
 				  parent_id = excluded.parent_id, urban = excluded.urban,
-				  name_en = excluded.name_en, name_th = excluded.name_th, boundary = excluded.boundary,
+				  name_en = excluded.name_en, name_local = excluded.name_local, boundary = excluded.boundary,
 				  min_lat = excluded.min_lat, min_lng = excluded.min_lng,
 				  max_lat = excluded.max_lat, max_lng = excluded.max_lng, land_cells = excluded.land_cells
 				returning id`,
@@ -329,7 +329,7 @@ type PlotLocation struct {
 	RegionID int
 	Region   string  // region name_en
 	PlaceEn  string  // the naming place (see PlaceNaming), else the region's name
-	PlaceTh  *string // Thai name of the same; nil if unknown
+	PlaceLocal  *string // Thai name of the same; nil if unknown
 	Near     bool    // PlaceEn is an OSM place, not the region fallback
 	// DistrictID is the district (admin_level 6) containing the centre; nil
 	// where none is imported. District is its name_en.
@@ -363,9 +363,9 @@ func (d *DB) locatePlot(ctx context.Context, q querier, cell string) (*PlotLocat
 	}
 	var country string
 	err = q.QueryRow(ctx, `
-		select r.name_en, r.name_th, r.country, coalesce((select name_en from regions where id = $2), '')
+		select r.name_en, r.name_local, r.country, coalesce((select name_en from regions where id = $2), '')
 		from regions r where r.id = $1`, id, loc.DistrictID,
-	).Scan(&loc.Region, &loc.PlaceTh, &country, &loc.District)
+	).Scan(&loc.Region, &loc.PlaceLocal, &country, &loc.District)
 	if errors.Is(err, pgx.ErrNoRows) {
 		// The index is newer or older than the table; treat as outside.
 		return nil, ErrOutsideRegions
@@ -384,10 +384,10 @@ func (d *DB) locatePlot(ctx context.Context, q querier, cell string) (*PlotLocat
 	}
 	if c := rules.choose(cands, urban, sameDistrict); c != nil {
 		loc.PlaceEn, loc.Near = c.nameEn, true
-		loc.PlaceTh = nil
-		if c.nameTh != "" {
-			th := c.nameTh
-			loc.PlaceTh = &th
+		loc.PlaceLocal = nil
+		if c.nameLocal != "" {
+			th := c.nameLocal
+			loc.PlaceLocal = &th
 		}
 		// An admin's place_overrides row with action 'replace' renames the
 		// place for plots named from now on; the Thai name is dropped, since
@@ -399,7 +399,7 @@ func (d *DB) locatePlot(ctx context.Context, q querier, cell string) (*PlotLocat
 			country, c.nameEn).Scan(&repl)
 		switch {
 		case err == nil:
-			loc.PlaceEn, loc.PlaceTh = repl, nil
+			loc.PlaceEn, loc.PlaceLocal = repl, nil
 		case !errors.Is(err, pgx.ErrNoRows):
 			return nil, fmt.Errorf("db: place override: %w", err)
 		}
@@ -407,7 +407,7 @@ func (d *DB) locatePlot(ctx context.Context, q querier, cell string) (*PlotLocat
 	return loc, nil
 }
 
-// BackfillPlots sets region_id, district_id, place_name and place_name_th on plots that
+// BackfillPlots sets region_id, district_id, place_name and place_name_local on plots that
 // lack them (claimed before the import, or before places were imported;
 // place names are only filled, never replaced). Only a real nearby place is
 // written: the region fallback would otherwise stick before cmd/places has
@@ -432,7 +432,7 @@ func (d *DB) BackfillPlots(ctx context.Context) (updated, outside int, err error
 			return updated, outside, err
 		}
 		var placeEn *string
-		placeTh := loc.PlaceTh
+		placeTh := loc.PlaceLocal
 		if loc.Near {
 			placeEn = &loc.PlaceEn
 		} else {
@@ -440,7 +440,7 @@ func (d *DB) BackfillPlots(ctx context.Context) (updated, outside int, err error
 		}
 		_, err = d.Pool.Exec(ctx, `
 			update plots set region_id = coalesce(region_id, $2),
-			  place_name_th = case when place_name is null then $4 else place_name_th end,
+			  place_name_local = case when place_name is null then $4 else place_name_local end,
 			  place_name = coalesce(place_name, $3),
 			  district_id = coalesce(district_id, $5)
 			where cell = $1`, cell, loc.RegionID, placeEn, placeTh, loc.DistrictID)
@@ -458,7 +458,7 @@ type Place struct {
 	OSMID    int64
 	Kind     string
 	NameEn   string
-	NameTh   string
+	NameLocal   string
 	Lat, Lng float64
 	RegionID *int
 }
@@ -468,27 +468,27 @@ type Place struct {
 func (d *DB) ReplacePlaces(ctx context.Context, ps []Place) error {
 	err := pgx.BeginFunc(ctx, d.Pool, func(tx pgx.Tx) error {
 		if _, err := tx.Exec(ctx, `create temp table new_places (
-			osm_type char(1), osm_id bigint, kind text, name_en text, name_th text,
+			osm_type char(1), osm_id bigint, kind text, name_en text, name_local text,
 			lat double precision, lng double precision, region_id int) on commit drop`); err != nil {
 			return err
 		}
 		rows := make([][]any, len(ps))
 		for i, p := range ps {
 			var th *string
-			if p.NameTh != "" {
-				th = &ps[i].NameTh
+			if p.NameLocal != "" {
+				th = &ps[i].NameLocal
 			}
 			rows[i] = []any{p.OSMType, p.OSMID, p.Kind, p.NameEn, th, p.Lat, p.Lng, p.RegionID}
 		}
-		cols := []string{"osm_type", "osm_id", "kind", "name_en", "name_th", "lat", "lng", "region_id"}
+		cols := []string{"osm_type", "osm_id", "kind", "name_en", "name_local", "lat", "lng", "region_id"}
 		if _, err := tx.CopyFrom(ctx, pgx.Identifier{"new_places"}, cols, pgx.CopyFromRows(rows)); err != nil {
 			return fmt.Errorf("copy: %w", err)
 		}
 		if _, err := tx.Exec(ctx, `
-			insert into places (osm_type, osm_id, kind, name_en, name_th, lat, lng, region_id)
-			select osm_type, osm_id, kind, name_en, name_th, lat, lng, region_id from new_places
+			insert into places (osm_type, osm_id, kind, name_en, name_local, lat, lng, region_id)
+			select osm_type, osm_id, kind, name_en, name_local, lat, lng, region_id from new_places
 			on conflict (osm_type, osm_id) do update set kind = excluded.kind, name_en = excluded.name_en,
-			  name_th = excluded.name_th, lat = excluded.lat, lng = excluded.lng, region_id = excluded.region_id`); err != nil {
+			  name_local = excluded.name_local, lat = excluded.lat, lng = excluded.lng, region_id = excluded.region_id`); err != nil {
 			return fmt.Errorf("upsert: %w", err)
 		}
 		_, err := tx.Exec(ctx, `delete from places p where not exists

@@ -2,7 +2,7 @@
 {{$pl := .Plot}}
 <header class="head">
 <p class="kicker">Plot</p>
-<h1 class="name">{{heading $pl}}{{with $pl.PlaceTh}} <span lang="th" class="th">{{.}}</span>{{end}}</h1>
+<h1 class="name">{{heading $pl}}{{with $pl.PlaceLocal}} <span lang="th" class="th">{{.}}</span>{{end}}</h1>
 <p class="meta">{{with $pl.Region.Slug}}<a href="/region/{{.}}">{{$pl.Region.NameEn}}</a>{{end}}
 {{- if .Surveyed}} · first surveyed by <a href="/surveyor/{{.FirstSurveyor.Name}}">{{.FirstSurveyor.Label}}</a> on {{date .ClaimedAt}} · {{count .PhotoCount "photo" "photos"}}{{end}}
  · <a href="/about/plots">What is a plot?</a></p>

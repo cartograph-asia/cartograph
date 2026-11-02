@@ -51,7 +51,7 @@ sights (
   osm_id    bigint not null,
   kind      text not null check (kind in ('temple','viewpoint','museum','waterfall','peak','cave','spring','ruins','monument','attraction')),
   name_en   text not null,        -- name:en, else a romanised name, else name
-  name_th   text,
+  name_local text,
   wikidata  text check (wikidata ~ '^Q[0-9]+$'),
   lat, lng  double precision not null,
   cell      text not null,        -- res-8 plot, 15-character hex string
@@ -106,7 +106,7 @@ On the Pattaya fixture (`testdata/pattaya.osm.gz` must contain sights, or the fi
 
 - **Which kinds:** as in decision 2. Beaches, markets, night markets, parks and `tourism=information` stay out.
 - **Temples:** only with a `wikidata` or `wikipedia` tag (about 1,000 to 1,500), not all 26,600.
-- **Thai names:** beside the English name on every line, muted, as for provinces. The column follows the naming decision of `docs/COUNTRY_IMPORT_BRIEF.md` (`name_th`, or `name_local` with its language if that rename is made).
+- **Thai names:** beside the English name on every line, muted, as for provinces. The column follows the naming decision of `docs/COUNTRY_IMPORT_BRIEF.md` (`name_local`, renamed from `name_th` on 2026-11-02).
 - **Admins:** an admin can clear a photo's tags (not set them) in the admin area; each clearing is an `admin_actions` entry `photo.clear_sights` with the reason. Part of this work package.
 - **Fixture:** `cmd/fixture` cuts the sights of the Pattaya box too, so the fixture holds at least a viewpoint, a temple with `wikidata` and one without.
 - **Later, each with its own brief:** sights as a layer on `/map`; "sights in this region" and "sights near your plots"; tagging at upload (`sight_ids` in `POST /api/photos`); sights a Surveyor adds by hand.

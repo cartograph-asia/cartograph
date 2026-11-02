@@ -2,7 +2,7 @@
 {{$r := .Region}}
 <header class="head">
 <p class="kicker">{{.KindName}}{{with .Country.Slug}} in <a href="/{{.}}">{{$.Country.NameEn}}</a>{{end}}</p>
-<h1>{{$r.NameEn}}{{with $r.NameTh}} <span lang="th" class="th">{{.}}</span>{{end}}</h1>
+<h1>{{$r.NameEn}}{{with $r.NameLocal}} <span lang="th" class="th">{{.}}</span>{{end}}</h1>
 <ul class="figures small">
 <li><b>{{pct .Coverage}}</b> coverage, {{num .Coverage.Claimed}} of {{num .Coverage.Land}} plots</li>
 <li><b>{{num .Counters.Photos}}</b> {{if eq .Counters.Photos 1}}photo{{else}}photos{{end}}</li>

@@ -46,7 +46,7 @@ func Places(ctx context.Context, d *db.DB, o PlaceOptions) (*PlaceStats, error) 
 	st := &PlaceStats{Places: len(ps)}
 	rows := make([]db.Place, len(ps))
 	for i, p := range ps {
-		rows[i] = db.Place{OSMType: p.OSMType, OSMID: p.OSMID, Kind: p.Kind, NameEn: p.NameEn, NameTh: p.NameTh, Lat: p.Point[1], Lng: p.Point[0]}
+		rows[i] = db.Place{OSMType: p.OSMType, OSMID: p.OSMID, Kind: p.Kind, NameEn: p.NameEn, NameLocal: p.NameLocal, Lat: p.Point[1], Lng: p.Point[0]}
 		id, ok, err := d.LocateRegion(ctx, p.Point[1], p.Point[0])
 		if err != nil {
 			return nil, err

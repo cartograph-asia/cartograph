@@ -396,7 +396,7 @@ func TestPlaceOverrideReplace(t *testing.T) {
 	cell, _ := w.claim(t, "adrian", near[0], near[1], t0)
 	var name string
 	var th *string
-	if err := w.d.Pool.QueryRow(ctx, `select place_name, place_name_th from plots where cell = $1`, cell).Scan(&name, &th); err != nil {
+	if err := w.d.Pool.QueryRow(ctx, `select place_name, place_name_local from plots where cell = $1`, cell).Scan(&name, &th); err != nil {
 		t.Fatal(err)
 	}
 	if name != "Walking Street" || th != nil {

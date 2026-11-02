@@ -127,7 +127,7 @@ var CCBYSA4 = Licence{Name: "CC BY-SA 4.0", URL: "https://creativecommons.org/li
 type RegionRef struct {
 	Slug   string // URL slug from name:en, e.g. "chon-buri"
 	NameEn string // e.g. "Chon Buri"
-	NameTh string // e.g. "ชลบุรี"; may be empty
+	NameLocal string // e.g. "ชลบุรี"; may be empty
 }
 
 // CountryRef identifies a country for links and labels (/{slug}).
@@ -142,7 +142,7 @@ type CountryRef struct {
 type PlotRef struct {
 	Cell    string    // H3 res-8 index; for links (/plot/{cell}), maps and the plot page's details line only
 	Place   string    // display name: nearest OSM place within 5 km, else the region's name
-	PlaceTh string    // Thai name of the place; may be empty
+	PlaceLocal string    // Thai name of the place; may be empty
 	Region  RegionRef // region containing the plot's centre; zero value outside every region
 	Number  int       // running number within the region (/plot/{slug}/{number}); 0 if none yet
 	// District is the district (khet/amphoe) containing the centre, without

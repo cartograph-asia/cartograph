@@ -34,6 +34,27 @@ type Import struct {
 	// the base map.
 	Neighbours []string
 
+	// PlaceReachKm is how far (kilometres) outside the run's provinces a
+	// place node may lie and still be stored for the country, then without
+	// a province (region_id NULL, a "weak" place: a beach village beyond the
+	// simplified coastline, a hamlet on a river that is the border with a
+	// country not imported yet). A place strictly inside one of the
+	// country's provinces is stored with it; one strictly inside another
+	// country's stored province, or farther than this from every province
+	// of the run, is not stored. 0 means 2 km. A weak place passes to the
+	// country into whose province it falls strictly when that country is
+	// imported; a weak place of another country is never taken by a weak
+	// claim (docs/decisions.md, WP L).
+	PlaceReachKm float64
+
+	// LegacyPlaces keeps the place rule Thailand was imported with before
+	// WP L: every place node of the extract is stored, with the province
+	// containing it or, failing that, the nearest one within
+	// geo.NearTolerance (about 1 km), else without a province. Set for
+	// Thailand alone, so that its stored places never change; PlaceReachKm
+	// is then not read.
+	LegacyPlaces bool
+
 	// LegacyDuplicateSlug keeps the duplicate rule Thailand's districts were
 	// imported with before the settings existed: of two districts of one run
 	// whose slugs collide, the first by OSM id keeps the slug and the next
@@ -49,10 +70,18 @@ type Import struct {
 
 // Level is the rule for one administrative level (provinces or districts).
 type Level struct {
-	AdminLevels []int             // {4}; Taiwan districts {7, 8}
-	ISOPrefix   string            // required ISO3166-2 prefix ("TH" matches "TH-20"); "" = none required
-	Parent      int64             // without ISO: relation whose geometry must hold the centre (Singapore r536780)
-	Include     []int64           // relations without the ISO code that count anyway (PH Special Geographic Area)
+	AdminLevels []int   // {4}; Taiwan districts {7, 8}
+	ISOPrefix   string  // required ISO3166-2 prefix ("TH" matches "TH-20"); "" = none required
+	Parent      int64   // without ISO: relation whose geometry must hold the centre (Singapore r536780)
+	Include     []int64 // relations without the ISO code that count anyway (PH Special Geographic Area)
+	// Exclude lists relations that match the rule (AdminLevels, ISOPrefix)
+	// but are never imported at this level, whatever their geometry: a
+	// relation of another country that the extract holds and that would be
+	// placed in one of this country's provinces (Vietnam: China's Nansha
+	// District r6753263, open sea around its centroid, its first vertex in
+	// a Khánh Hòa ring). The dry run counts them. A relation is never in
+	// both Include and Exclude (the settings test checks it).
+	Exclude     []int64
 	Count       [2]int            // min, max relations; a dry-run check for provinces, reported for districts
 	Kind        string            // display word: "province", "prefecture", "state", "region", "district", "commune"
 	KindByAffix map[string]string // word by affix of the English or local name, matched before stripping ("市": "city", "縣": "county", "State": "state")

@@ -13,6 +13,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
+	"github.com/cartograph-asia/cartograph/internal/countries"
 	"github.com/cartograph-asia/cartograph/internal/db"
 	"github.com/cartograph-asia/cartograph/internal/storage"
 )
@@ -26,6 +27,9 @@ type Repo interface {
 	// SurveyableBounds is the box around every imported province, where
 	// plots can be surveyed; ok is false before any import.
 	SurveyableBounds(ctx context.Context) (b db.Bounds, ok bool, err error)
+	// OpenCountries lists the countries that have provinces, in the order of
+	// countries.All, for the upload error.
+	OpenCountries(ctx context.Context) ([]countries.Country, error)
 }
 
 // Config holds the handler settings.

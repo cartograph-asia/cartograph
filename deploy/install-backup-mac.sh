@@ -28,7 +28,7 @@ if ! gpg --list-secret-keys "$uid" >/dev/null 2>&1; then
 	# local user. The base64 passphrase has no spaces or quotes.
 	printf 'add-generic-password -U -a %s -s cartograph-backup -w %s\n' "$USER" "$pass" | security -i
 	printf '%s' "$pass" | gpg --batch --pinentry-mode loopback --passphrase-fd 0 \
-		--quick-generate-key "$uid" cv25519 encr never
+		--quick-generate-key "$uid" future-default default never
 	echo "created the backup key; its passphrase is in the login keychain (cartograph-backup)"
 fi
 gpg --armor --export "$uid" > "$conf/backup-key.asc"

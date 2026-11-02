@@ -26,4 +26,7 @@ var importTH = Import{
 	LocalScripts: []string{"Thai"},
 	SlugSuffix:   false,
 	LandPlots:    598_411,
+	// The two "Bang Sai" districts of Phra Nakhon Si Ayutthaya were stored
+	// as …-bang-sai and …-bang-sai-11024893; a fresh import keeps them so.
+	LegacyDuplicateSlug: true,
 }

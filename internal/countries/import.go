@@ -21,6 +21,30 @@ type Import struct {
 	LandPlots    int      // the scan's figure, with report and extract date in a comment
 	Partial      []int64  // province relations that may be built from their closed rings only (WP F)
 	Hold         string   // non-empty: importers refuse with this reason
+
+	// Neighbours are Geofabrik extract names whose cuts
+	// (map/data/scan/<name>-latest.osm.pbf.cut.osm.pbf) complete this
+	// country's boundaries: a province or district relation of the country's
+	// own cut whose member ways lie partly in a neighbour's extract (a border
+	// line, a territorial-sea line; docs/countries/incomplete-relations.md)
+	// takes those ways and their nodes from the neighbours' cuts. The
+	// relations themselves come from the own cut only. The neighbours' cuts
+	// are read for boundaries only, so that relations cut by the country's
+	// own extract can be assembled; never for places, and they never join
+	// the base map.
+	Neighbours []string
+
+	// LegacyDuplicateSlug keeps the duplicate rule Thailand's districts were
+	// imported with before the settings existed: of two districts of one run
+	// whose slugs collide, the first by OSM id keeps the slug and the next
+	// gets "-<osm id>" appended, their names stay stripped and no affix is
+	// restored (instead of decision 7 of docs/COUNTRY_IMPORT_STAGE2_BRIEF.md).
+	// A stored slug never changes, so this only decides what a fresh import
+	// gives; it is set for Thailand alone, so that a fresh import (dev
+	// stack, fixture, a restored or rebuilt production) gives the slugs
+	// production stores (phra-nakhon-si-ayutthaya-bang-sai and
+	// phra-nakhon-si-ayutthaya-bang-sai-11024893). Provinces keep decision 7.
+	LegacyDuplicateSlug bool
 }
 
 // Level is the rule for one administrative level (provinces or districts).

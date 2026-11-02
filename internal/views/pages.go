@@ -128,6 +128,7 @@ type Surveyor struct {
 	HomeCoverage *Coverage         // their surveyed plots in the home region of Profile; nil without a home region
 	Regions      []SurveyorRegion  // regions with photos of theirs, most plots first
 	Years        []SurveyorYear    // years their photos were taken, newest first
+	UploadYears  []SurveyorYear    // years their photos were uploaded (Bangkok time, as pages show dates), newest first
 	Query        SurveyorQuery     // the view of Photos, as parsed and validated
 	FilterRegion *RegionRef        // the region of Query.Region; nil without that filter
 	PlotCells    []string          // res-8 cells of every plot with a photo by them, for the lazy map (data, not text)
@@ -146,18 +147,19 @@ const (
 	OrderTaken  = "taken"  // newest taken first, photos without a date last
 )
 
-// SurveyorQuery is how a profile's photos are listed: ?order=&region=&year=&one=&page=.
+// SurveyorQuery is how a profile's photos are listed: ?order=&region=&year=&uploaded=&one=&page=.
 type SurveyorQuery struct {
 	Page       int    // 1-based; below 1 is treated as 1
 	Order      string // OrderNewest, OrderOldest or OrderTaken
 	Region     string // slug of a region (or district) to filter by; empty for all
 	Year       int    // year taken to filter by; 0 for all
+	Uploaded   int    // year uploaded to filter by; 0 for all
 	OnePerPlot bool   // only the newest photo of theirs in each plot
 }
 
 // Filtered reports whether q shows anything but all photos, newest uploaded first.
 func (q SurveyorQuery) Filtered() bool {
-	return q.Order != OrderNewest || q.Region != "" || q.Year != 0 || q.OnePerPlot
+	return q.Order != OrderNewest || q.Region != "" || q.Year != 0 || q.Uploaded != 0 || q.OnePerPlot
 }
 
 // Path is the canonical address of the profile of the Surveyor called name
@@ -173,6 +175,9 @@ func (q SurveyorQuery) Path(name string) string {
 	if q.Year != 0 {
 		vs.Set("year", strconv.Itoa(q.Year))
 	}
+	if q.Uploaded != 0 {
+		vs.Set("uploaded", strconv.Itoa(q.Uploaded))
+	}
 	if q.OnePerPlot {
 		vs.Set("one", "plot")
 	}
@@ -186,11 +191,12 @@ func (q SurveyorQuery) Path(name string) string {
 	return path
 }
 
-// WithOrder, WithRegion, WithYear and WithOne return q with one thing changed,
+// WithOrder, WithRegion, WithYear, WithUploaded and WithOnePerPlot return q with one thing changed,
 // back on page 1, for the links of a profile's controls.
 func (q SurveyorQuery) WithOrder(o string) SurveyorQuery    { q.Page, q.Order = 0, o; return q }
 func (q SurveyorQuery) WithRegion(s string) SurveyorQuery   { q.Page, q.Region = 0, s; return q }
 func (q SurveyorQuery) WithYear(y int) SurveyorQuery        { q.Page, q.Year = 0, y; return q }
+func (q SurveyorQuery) WithUploaded(y int) SurveyorQuery    { q.Page, q.Uploaded = 0, y; return q }
 func (q SurveyorQuery) WithOnePerPlot(b bool) SurveyorQuery { q.Page, q.OnePerPlot = 0, b; return q }
 
 // SurveyorRegion is one line of a profile's "Where" list.

@@ -22,13 +22,17 @@
 <p class="note">{{count (len .PlotCells) "plot" "plots"}} surveyed by {{$s.Label}}.</p>
 </section>{{end}}
 
-{{if or (gt (len .Regions) 1) (gt (len .Years) 1)}}<section class="block" aria-labelledby="where-h">
+{{if or (gt (len .Regions) 1) (gt (len .Years) 1) (gt (len .UploadYears) 1)}}<section class="block" aria-labelledby="where-h">
 <div class="head-row"><h2 id="where-h">Where and when</h2><span class="note">Each line opens its photos.</span></div>
 <div class="cols">
 {{if gt (len .Regions) 1}}<div><h3 class="kicker">Where</h3>
 <ul class="tally">{{range .Regions}}<li><a href="{{($q.WithRegion .Region.Slug).Path $s.Name}}">{{.Region.NameEn}}</a> <span class="n">{{count .Plots "plot" "plots"}} of {{num .Land}} · {{count .Photos "photo" "photos"}}</span></li>{{end}}</ul></div>{{end}}
-{{if gt (len .Years) 1}}<div><h3 class="kicker">When</h3>
-<ul class="tally">{{range .Years}}<li><a href="{{($q.WithYear .Year).Path $s.Name}}">{{.Year}}</a> <span class="n">{{count .Photos "photo" "photos"}}</span></li>{{end}}</ul></div>{{end}}
+{{if or (gt (len .Years) 1) (gt (len .UploadYears) 1)}}<div>
+{{if gt (len .Years) 1}}<h3 class="kicker">When taken</h3>
+<ul class="tally">{{range .Years}}<li><a href="{{($q.WithYear .Year).Path $s.Name}}">{{.Year}}</a> <span class="n">{{count .Photos "photo" "photos"}}</span></li>{{end}}</ul>{{end}}
+{{if gt (len .UploadYears) 1}}<h3 class="kicker">When uploaded</h3>
+<ul class="tally">{{range .UploadYears}}<li><a href="{{($q.WithUploaded .Year).Path $s.Name}}">{{.Year}}</a> <span class="n">{{count .Photos "photo" "photos"}}</span></li>{{end}}</ul>{{end}}
+</div>{{end}}
 </div>
 </section>{{end}}
 
@@ -43,7 +47,7 @@
 <a href="{{($q.WithOnePerPlot false).Path $s.Name}}"{{if not $q.OnePerPlot}} aria-current="true"{{end}}>All photos</a>
 <a href="{{($q.WithOnePerPlot true).Path $s.Name}}"{{if $q.OnePerPlot}} aria-current="true"{{end}}>One photo per plot</a>
 </nav>{{end}}
-{{if or .FilterRegion $q.Year}}<p class="note">Showing {{count .Pagination.Total "photo" "photos"}}{{with .FilterRegion}} in {{.NameEn}}{{end}}{{with $q.Year}} taken in {{.}}{{end}}. <a href="{{(($q.WithRegion "").WithYear 0).Path $s.Name}}">Show all</a></p>{{end}}
+{{if or .FilterRegion $q.Year $q.Uploaded}}<p class="note">Showing {{count .Pagination.Total "photo" "photos"}}{{with .FilterRegion}} in {{.NameEn}}{{end}}{{with $q.Year}} taken in {{.}}{{end}}{{with $q.Uploaded}}{{if $q.Year}} and{{end}} uploaded in {{.}}{{end}}. <a href="{{((($q.WithRegion "").WithYear 0).WithUploaded 0).Path $s.Name}}">Show all</a></p>{{end}}
 {{if .Photos}}{{template "grid" (grid .Now .Photos true "surveyor")}}{{else if $q.Filtered}}<p>No photos of {{$s.Label}} match this view.</p>{{else}}<p>{{$s.Label}} has not uploaded a photo yet.</p>{{end}}
 {{if gt .Pagination.Pages 1}}<nav class="pages" aria-label="Pages">
 {{- if .Pagination.HasPrev}}<a rel="prev" href="{{pageQuery .Canonical .Pagination.Prev}}">← {{if eq $q.Order ""}}Newer{{else}}Previous{{end}}</a>{{else}}<span></span>{{end}}

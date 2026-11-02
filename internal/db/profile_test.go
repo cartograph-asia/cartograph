@@ -12,7 +12,7 @@ import (
 
 // profileWorld is newWorld with taken dates on adrian's four photos:
 //
-//	w.photos[0] beach    uploaded 35 days ago, taken 2025-06-10
+//	w.photos[0] beach    uploaded 2025-12-31 17:30 UTC, which is 2026-01-01 in Bangkok, taken 2025-06-10
 //	w.photos[1] walking  uploaded 5 days ago, taken 2025-12-31 18:00 UTC, which is 2026-01-01 on the clock there
 //	w.photos[4] beach    uploaded 1 hour ago, taken 2026-10-31
 //	w.photos[5] jomtien  uploaded 30 minutes ago, no taken date
@@ -31,6 +31,10 @@ func profileWorld(t *testing.T) *world {
 	set(0, "2025-06-10 05:00+00", nil)
 	set(1, "2025-12-31 18:00+00", &local)
 	set(4, "2026-10-31 08:00+00", nil)
+	if _, err := w.d.Pool.Exec(context.Background(),
+		`update photos set uploaded_at = '2025-12-31 17:30+00' where id = $1`, w.photos[0]); err != nil {
+		t.Fatal(err)
+	}
 	return w
 }
 
@@ -65,6 +69,10 @@ func TestProfileOrdersAndFilters(t *testing.T) {
 	if len(s.Years) != 2 || s.Years[0] != (views.SurveyorYear{Year: 2026, Photos: 2}) || s.Years[1] != (views.SurveyorYear{Year: 2025, Photos: 1}) {
 		t.Fatalf("years %+v", s.Years)
 	}
+	// Upload years are counted on Bangkok's clock, as the pages show dates.
+	if len(s.UploadYears) != 1 || s.UploadYears[0] != (views.SurveyorYear{Year: 2026, Photos: 4}) {
+		t.Fatalf("upload years %+v", s.UploadYears)
+	}
 	if len(s.Regions) != 1 || s.Regions[0].Plots != 3 || s.Regions[0].Photos != 4 || s.Regions[0].Land < 200 {
 		t.Fatalf("regions %+v", s.Regions)
 	}
@@ -85,6 +93,9 @@ func TestProfileOrdersAndFilters(t *testing.T) {
 		{"year by local date", views.SurveyorQuery{Year: 2026}, "41", "/surveyor/adrian?year=2026"},
 		{"year 2025", views.SurveyorQuery{Year: 2025}, "0", "/surveyor/adrian?year=2025"},
 		{"year without photos", views.SurveyorQuery{Year: 2024}, "", "/surveyor/adrian?year=2024"},
+		{"uploaded by Bangkok date", views.SurveyorQuery{Uploaded: 2026}, "5410", "/surveyor/adrian?uploaded=2026"},
+		{"uploaded 2025", views.SurveyorQuery{Uploaded: 2025}, "", "/surveyor/adrian?uploaded=2025"},
+		{"taken and uploaded", views.SurveyorQuery{Year: 2025, Uploaded: 2026}, "0", "/surveyor/adrian?uploaded=2026&year=2025"},
 		{"region", views.SurveyorQuery{Region: slug}, "5410", "/surveyor/adrian?region=" + slug},
 		{"region in capitals", views.SurveyorQuery{Region: strings.ToUpper(slug)}, "5410", "/surveyor/adrian?region=" + slug},
 		{"one per plot", views.SurveyorQuery{OnePerPlot: true}, "541", "/surveyor/adrian?one=plot"},
@@ -127,7 +138,7 @@ func TestProfileOrdersAndFilters(t *testing.T) {
 
 	// Somebody without photos has an empty, quiet profile.
 	n, err := v.Surveyor(ctx, "no-photos", views.SurveyorQuery{})
-	if err != nil || n.Stats.Photos != 0 || n.Stats.Days != 0 || len(n.Regions) != 0 || len(n.Years) != 0 || n.HomeCoverage != nil {
+	if err != nil || n.Stats.Photos != 0 || n.Stats.Days != 0 || len(n.Regions) != 0 || len(n.Years) != 0 || len(n.UploadYears) != 0 || n.HomeCoverage != nil {
 		t.Fatalf("no photos: %+v %v", n, err)
 	}
 }

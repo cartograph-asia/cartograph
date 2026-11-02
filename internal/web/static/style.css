@@ -261,6 +261,7 @@ button.link:hover, button.link:focus-visible { text-decoration: underline; }
 .opts a:hover, .opts a:focus-visible { text-decoration: underline; }
 .opts a[aria-current="true"] { font-weight: 700; text-decoration: underline; text-decoration-color: currentColor; }
 .cols .kicker { margin-bottom: var(--s-s); }
+.cols .tally + .kicker { margin-top: var(--s-l); }
 
 /* Page heads: a kicker that says what the page is, the title, a meta line,
    then the page's figures; the sections follow with a large gap. */

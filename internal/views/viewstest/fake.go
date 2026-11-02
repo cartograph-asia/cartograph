@@ -17,6 +17,9 @@ import (
 // countries in the list are "not open yet" in the Fake.
 const fixtureCountry = "th"
 
+// ict is the zone the pages show dates in (internal/web's zone), for upload years.
+var ict = time.FixedZone("ICT", 7*60*60)
+
 func countryRef(c countries.Country) views.CountryRef {
 	return views.CountryRef{Slug: c.Slug, NameEn: c.NameEn, Native: c.Native, Lang: c.Lang}
 }
@@ -297,7 +300,7 @@ func (f *Fake) Surveyor(ctx context.Context, name string, q views.SurveyorQuery)
 
 	seenCell, seenRegion, seenDay := map[string]bool{}, map[string]bool{}, map[string]bool{}
 	regionPlots, regionPhotos := map[string]map[string]bool{}, map[string]int{}
-	years := map[int]int{}
+	years, uploadYears := map[int]int{}, map[int]int{}
 	for _, i := range idx {
 		ph := f.d.photos[i]
 		out.Stats.Photos++
@@ -320,6 +323,7 @@ func (f *Fake) Surveyor(ctx context.Context, name string, q views.SurveyorQuery)
 			seenDay[ph.TakenAt.Format("2006-01-02")] = true
 			years[ph.TakenAt.Year()]++
 		}
+		uploadYears[ph.UploadedAt.In(ict).Year()]++
 	}
 	out.Stats.Surveyed, out.Stats.Days = len(out.PlotCells), len(seenDay)
 	for _, r := range regions {
@@ -332,6 +336,10 @@ func (f *Fake) Surveyor(ctx context.Context, name string, q views.SurveyorQuery)
 		out.Years = append(out.Years, views.SurveyorYear{Year: y, Photos: n})
 	}
 	sort.Slice(out.Years, func(i, j int) bool { return out.Years[i].Year > out.Years[j].Year })
+	for y, n := range uploadYears {
+		out.UploadYears = append(out.UploadYears, views.SurveyorYear{Year: y, Photos: n})
+	}
+	sort.Slice(out.UploadYears, func(i, j int) bool { return out.UploadYears[i].Year > out.UploadYears[j].Year })
 	if h := s.home; h != nil {
 		c := views.Coverage{Claimed: len(regionPlots[h.Slug])}
 		for _, r := range regions {
@@ -350,6 +358,9 @@ func (f *Fake) Surveyor(ctx context.Context, name string, q views.SurveyorQuery)
 			continue
 		}
 		if q.Year != 0 && (ph.TakenAt == nil || ph.TakenAt.Year() != q.Year) {
+			continue
+		}
+		if q.Uploaded != 0 && ph.UploadedAt.In(ict).Year() != q.Uploaded {
 			continue
 		}
 		list = append(list, ph)

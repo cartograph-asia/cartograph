@@ -449,6 +449,10 @@ func takenOn(ph string) string {
 
 var takenLocal = takenOn("ph")
 
+// uploadedOn is the date a photo with alias ph was uploaded, on Bangkok's
+// clock like every date the pages show (internal/web's zone).
+func uploadedOn(ph string) string { return ph + ".uploaded_at at time zone 'Asia/Bangkok'" }
+
 // surveyorOrder maps a views.SurveyorQuery order to its ORDER BY clause.
 var surveyorOrder = map[string]string{
 	views.OrderNewest: newestFirst,
@@ -470,6 +474,11 @@ func surveyorWhere(q views.SurveyorQuery, regionID *int, next int, ph, pl string
 	if q.Year != 0 {
 		sql += fmt.Sprintf(" and extract(year from %s) = $%d", takenOn(ph), next)
 		args = append(args, q.Year)
+		next++
+	}
+	if q.Uploaded != 0 {
+		sql += fmt.Sprintf(" and extract(year from %s) = $%d", uploadedOn(ph), next)
+		args = append(args, q.Uploaded)
 	}
 	return sql, args
 }
@@ -536,7 +545,10 @@ func (v *Views) Surveyor(ctx context.Context, name string, q views.SurveyorQuery
 	if out.Regions, err = v.surveyorRegions(ctx, s.id); err != nil {
 		return nil, err
 	}
-	if out.Years, err = v.surveyorYears(ctx, s.id); err != nil {
+	if out.Years, err = v.surveyorYears(ctx, s.id, takenLocal); err != nil {
+		return nil, err
+	}
+	if out.UploadYears, err = v.surveyorYears(ctx, s.id, uploadedOn("ph")); err != nil {
 		return nil, err
 	}
 	if h := s.profile.HomeRegion; h != nil {
@@ -601,11 +613,13 @@ func (v *Views) surveyorRegions(ctx context.Context, id uuid.UUID) ([]views.Surv
 	return out, nil
 }
 
-// surveyorYears is the "When" list: the years their photos were taken.
-func (v *Views) surveyorYears(ctx context.Context, id uuid.UUID) ([]views.SurveyorYear, error) {
+// surveyorYears is a "When" list: the years of date (takenLocal or
+// uploadedOn) over their photos, newest first; photos without the date are
+// left out.
+func (v *Views) surveyorYears(ctx context.Context, id uuid.UUID, date string) ([]views.SurveyorYear, error) {
 	rows, err := v.d.Pool.Query(ctx, `
-		select extract(year from `+takenLocal+`)::int as y, count(*) from visible_photos ph
-		where ph.surveyor_id = $1 and `+takenLocal+` is not null group by y order by y desc`, id)
+		select extract(year from `+date+`)::int as y, count(*) from visible_photos ph
+		where ph.surveyor_id = $1 and `+date+` is not null group by y order by y desc`, id)
 	if err != nil {
 		return nil, fmt.Errorf("db: surveyor years: %w", err)
 	}

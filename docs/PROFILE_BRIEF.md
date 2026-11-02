@@ -22,17 +22,17 @@ Route unchanged: `GET /surveyor/{name}`, plus the optional query below. The exis
 - **Figures** (the `figures small` list): plots surveyed (with "n of them first", as today), photos, regions and **days**: the distinct dates on which they took photos, by the clock where the photo was taken (`taken_at_local`, else the UTC date of `taken_at`); shown when more than 0. Vocabulary as in `CLAUDE.md`.
 - **Home region line**, when the home region is set: "{n} of {land} plots of {Region} surveyed by {Label}" with the existing coverage bar and `pct`. Plots in the region that others surveyed do not count.
 - **By region** (section "Where"): the regions in which they have photos, most plots first, then by name: region name, "{n} plots · {m} photos", and the share "of {land}". Each name links to `?region={slug}`. Hidden when they have photos in one region only.
-- **By year** (section "When"): the years in which their photos were taken, newest first, each "{year} · {n} photos", linking to `?year={year}`. Photos without a taken date are not listed. Hidden when fewer than two years.
-- **Photos controls** above the grid, plain links, no script: order "Newest uploaded · Oldest uploaded · Newest taken" (the active one is `aria-current`), a toggle "One photo per plot / All photos", and, when a region or year filter is active, a line "Showing {n} photos in {Region}, {year}" with "Show all". "One photo per plot" shows the newest of their photos in each plot.
+- **By year** (section "When"): two lists, each newest first, each line "{year} · {n} photos". "When taken": the years in which their photos were taken, linking to `?year={year}`; photos without a taken date are not listed. "When uploaded": the years in which they were uploaded, on Bangkok's clock like every date the pages show, linking to `?uploaded={year}`. Each list is hidden when it has fewer than two years, the section when both are.
+- **Photos controls** above the grid, plain links, no script: order "Newest uploaded · Oldest uploaded · Newest taken" (the active one is `aria-current`), a toggle "One photo per plot / All photos", and, when a region or year filter is active, a line "Showing {n} photos in {Region} taken in {year} and uploaded in {year}" (the parts that apply) with "Show all". "One photo per plot" shows the newest of their photos in each plot.
 - **Exports** in the note line: RSS feed (existing), "GPX of the plots" and "GeoJSON of the plots".
 
 ### Query
 
-`GET /surveyor/{name}?order=oldest|taken&region={slug}&year={yyyy}&one=plot&page=N`
+`GET /surveyor/{name}?order=oldest|taken&region={slug}&year={yyyy}&uploaded={yyyy}&one=plot&page=N`
 
 - `order` absent means newest uploaded; `oldest`, `taken`; any other value is 404. `taken` sorts by `taken_at` descending, photos without one last, ties by upload time.
 - `region` is the slug of any region (province, district, country); the plots of that region and of its districts count. An unknown slug is 404; a known region where they have no photos is an empty list with the line above, not 404.
-- `year` is four digits between 2000 and the current year, else 404.
+- `year` and `uploaded` are four digits between 2000 and the current year, else 404.
 - `one=plot` is the only value; any other is 404.
 - A request that spells the same view differently (`?page=1`, parameters in another order, upper case in the slug) is redirected permanently to the canonical form. Filtered or reordered views are `noindex` (their canonical link is their own normalised address) and pagination keeps the parameters.
 
@@ -54,7 +54,7 @@ No migration. `photos_surveyor_idx (surveyor_id, uploaded_at desc)` serves the l
 
 - `internal/views`: `SurveyorQuery{Page int; Order string; Region string; Year int; OnePerPlot bool}` with constants for the orders; `Source.Surveyor(ctx, name, SurveyorQuery)` replaces the `page int` argument. `Surveyor` gets `Regions []SurveyorRegion` (Region `RegionRef`, Plots, Photos, Land), `Years []SurveyorYear`, `Query SurveyorQuery` (as parsed), `FilterRegion *RegionRef` for the "Showing" line, `HomeCoverage *Coverage`; `SurveyorStats` gets `Days`. New `Source.SurveyorPlots(ctx, name) (*SurveyorPlotList, error)` for the exports (Surveyor `SurveyorRef`, plots with `PlotRef`, centre, their photo count, first-survey flag).
 - `internal/db`: the extended `Surveyor` and `SurveyorPlots` in `db.Views`. Filters are built from validated values and bound parameters, never concatenated; `nothing outside internal/db/admin.go reads photos directly` still holds, use `visible_photos`.
-- `internal/web`: the handler parses and validates the query (404 on bad values), the `.gpx` and `.geojson` suffixes next to the `.rss` one, `internal/web/export.go` writes both formats. The helper `canonical` compares the parameters it knows (`page`, `order`, `region`, `year`, `one`) in canonical form instead of only `page`; other pages behave as before.
+- `internal/web`: the handler parses and validates the query (404 on bad values), the `.gpx` and `.geojson` suffixes next to the `.rss` one, `internal/web/export.go` writes both formats. The helper `canonical` compares the parameters it knows (`page`, `order`, `region`, `year`, `uploaded`, `one`) in canonical form instead of only `page`; other pages behave as before.
 - `viewstest.Fake` and the fixtures show every state (several regions and years, no taken date, no home region, filtered).
 
 ## Look
@@ -81,8 +81,8 @@ On the Pattaya fixtures: `/surveyor/adrian` shows the figures, "Where" and, if t
 - **KML**: GPX and GeoJSON cover the same tools; KML can follow if somebody asks.
 - **Marked images, tags, "geographical context" breakdown**: Cartograph has no tags or favourites yet.
 
-## Open questions
+## Open questions, decided (Adrian, 2026-11-02)
 
-- **Table view.** Geograph lists recent photos as a table (grid reference, title, submitted, type, points, taken). A `?view=list` table with plot, taken, uploaded and "first" would suit Surveyors with thousands of photos; include now or later?
-- **Years by upload or by taken date.** The list uses the taken date, as that is what a Surveyor means by "2024"; the uploaded date is the other possible reading.
-- **Region filter on districts.** Districts have no pages of their own yet; the filter accepts their slugs, but nothing links to them. Offer the district list under each province in "Where" once they do.
+- **Table view: later.** A `?view=list` table (plot, taken, uploaded, "first") like Geograph's waits until Surveyors have thousands of photos.
+- **Years: both.** "When" lists the years taken (`?year=`) and the years uploaded (`?uploaded=`, Bangkok time); the two filters combine.
+- **Region filter on districts: later.** The filter accepts district slugs; the district list under each province in "Where" comes once districts have pages of their own.

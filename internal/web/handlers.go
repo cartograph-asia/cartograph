@@ -92,7 +92,7 @@ func page(r *http.Request) (int, bool) {
 
 // canonicalParams are the query parameters of the pages that carry one;
 // canonical compares these and ignores any other.
-var canonicalParams = []string{"page", "order", "region", "year", "one"}
+var canonicalParams = []string{"page", "order", "region", "year", "uploaded", "one"}
 
 func knownQuery(vs url.Values) string {
 	known := url.Values{}
@@ -187,7 +187,7 @@ func (h *Handlers) surveyor(w http.ResponseWriter, r *http.Request) {
 // firstYear is the earliest year a profile can be filtered by.
 const firstYear = 2000
 
-// surveyorQuery reads a profile's ?order=&region=&year=&one=&page=. A value it
+// surveyorQuery reads a profile's ?order=&region=&year=&uploaded=&one=&page=. A value it
 // does not know, or a parameter given twice, is not a page (false).
 func surveyorQuery(r *http.Request) (views.SurveyorQuery, bool) {
 	var q views.SurveyorQuery
@@ -213,14 +213,22 @@ func surveyorQuery(r *http.Request) (views.SurveyorQuery, bool) {
 	} else {
 		q.Region = v
 	}
-	if v, present, valid := one("year"); !valid {
-		return q, false
-	} else if present {
-		y, err := strconv.Atoi(v)
-		if err != nil || len(v) != 4 || y < firstYear || y > time.Now().Year() {
-			return q, false
+	year := func(key string, dst *int) bool {
+		v, present, valid := one(key)
+		if !valid {
+			return false
 		}
-		q.Year = y
+		if present {
+			y, err := strconv.Atoi(v)
+			if err != nil || len(v) != 4 || y < firstYear || y > time.Now().Year() {
+				return false
+			}
+			*dst = y
+		}
+		return true
+	}
+	if !year("year", &q.Year) || !year("uploaded", &q.Uploaded) {
+		return q, false
 	}
 	if v, present, valid := one("one"); !valid || present && v != "plot" {
 		return q, false

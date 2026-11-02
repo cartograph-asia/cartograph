@@ -61,7 +61,7 @@ Stage names, so everyone means the same: *prototype* (done) → *alpha* (now: Ad
 ```
 cartograph/
   cmd/api/            Go entry point: pages, sign-in, JSON API, migrations
-  cmd/regions, cmd/places, cmd/fixture, cmd/seed, cmd/webpreview
+  cmd/regions, cmd/places, cmd/fixture, cmd/seed, cmd/commons, cmd/webpreview
   internal/
     admin/            admin pages and actions (/admin)
     api/              JSON handlers, routing, middleware

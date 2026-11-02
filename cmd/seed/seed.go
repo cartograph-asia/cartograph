@@ -159,9 +159,15 @@ func addPhoto(ctx context.Context, d *db.DB, store storage.Store, id uuid.UUID, 
 	if err != nil {
 		return err
 	}
+	return ingest(ctx, d, store, id, raw, at, surveyorID, name)
+}
+
+// ingest runs a JPEG with EXIF GPS through the upload pipeline: variants,
+// storage, claim. It returns db.ErrOutsideRegions for a position in no region.
+func ingest(ctx context.Context, d *db.DB, store storage.Store, id uuid.UUID, raw []byte, at time.Time, surveyorID uuid.UUID, name string) error {
 	meta := photos.ReadMeta(raw)
 	if !meta.HasGPS {
-		return errors.New("synthetic photo has no GPS")
+		return errors.New("photo has no GPS")
 	}
 	cell, err := h3.CellFromLatLng(meta.Lat, meta.Lng, h3.PlotRes)
 	if err != nil {
@@ -173,6 +179,10 @@ func addPhoto(ctx context.Context, d *db.DB, store storage.Store, id uuid.UUID, 
 	}
 	p6, err := h3.Parent(cell, 6)
 	if err != nil {
+		return err
+	}
+	// Before anything is stored: a position in no region is not claimed.
+	if _, err := d.LocatePlot(ctx, cell); err != nil {
 		return err
 	}
 	v, err := photos.Process(raw)

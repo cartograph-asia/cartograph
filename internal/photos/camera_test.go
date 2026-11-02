@@ -71,3 +71,17 @@ func TestCleanText(t *testing.T) {
 		t.Errorf("text is kept as text: %q", got)
 	}
 }
+
+// A make and a model at the longest cleanText allows must still fit the column.
+func TestLabelFitsTheColumn(t *testing.T) {
+	long := Label(strings.Repeat("a", 300), strings.Repeat("b", 300))
+	if n := len([]rune(long)); n != 2*maxText+1 {
+		t.Fatalf("label of %d characters", n)
+	}
+	if n := len([]rune(capLabel(long))); n != maxLabel {
+		t.Errorf("capped label of %d characters, want %d", n, maxLabel)
+	}
+	if capLabel("Canon EOS R5") != "Canon EOS R5" {
+		t.Error("a short label changed")
+	}
+}

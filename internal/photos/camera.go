@@ -29,6 +29,11 @@ type Camera struct {
 // maxText is the longest make, model or lens we keep, in characters.
 const maxText = 100
 
+// maxLabel is the longest label the table accepts (photo_camera.camera): a
+// make and a model of maxText characters each, and the space between them,
+// would be one over.
+const maxLabel = 200
+
 // cameraFrom reads the camera tags of x; nil if the photo has none that
 // parse. Values outside what a camera can have are left out, never an error.
 func cameraFrom(x *exif.Exif) *Camera {
@@ -56,7 +61,7 @@ func cameraFrom(x *exif.Exif) *Camera {
 		fired := v&1 == 1
 		c.Flash = &fired
 	}
-	c.Label = Label(c.Make, c.Model)
+	c.Label = capLabel(Label(c.Make, c.Model))
 	if c.Label == "" && c.Lens == "" && c.FocalMM == 0 && c.Focal35MM == 0 && c.FNumber == 0 && c.ExposureS == 0 && c.ISO == 0 {
 		return nil
 	}
@@ -151,4 +156,12 @@ func Label(maker, model string) string {
 		return model
 	}
 	return maker + " " + model
+}
+
+// capLabel cuts a label at maxLabel characters.
+func capLabel(s string) string {
+	if r := []rune(s); len(r) > maxLabel {
+		return strings.TrimSpace(string(r[:maxLabel]))
+	}
+	return s
 }

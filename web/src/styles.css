@@ -148,19 +148,17 @@ a:focus-visible {
   font-size: var(--step-meta);
   color: var(--ink-muted);
 }
+/* The masthead's right-hand box holds only the note that the data is mock
+   data, so it is there only then. */
 .acts {
-  display: flex;
+  display: none;
   align-items: baseline;
   gap: var(--s-s) var(--s-m);
   font-size: var(--step-meta);
   white-space: nowrap;
 }
-.acts a {
-  text-decoration: none;
-}
-.acts a:hover,
-.acts a:focus-visible {
-  text-decoration: underline;
+body.mock .acts {
+  display: flex;
 }
 
 .mock-badge {

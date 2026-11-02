@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -407,7 +408,8 @@ func TestPlaceOverrideReplace(t *testing.T) {
 		t.Fatalf("existing plot renamed: %q -> %q %v", stored, again, err)
 	}
 	ps, err := a.Places(ctx)
-	if err != nil || len(ps.Countries) != 1 {
+	// Every opened country has a place_naming row (0075 Thailand, 0152 Laos, …).
+	if err != nil || !slices.Contains(ps.Countries, "th") {
 		t.Fatalf("places %+v %v", ps, err)
 	}
 }

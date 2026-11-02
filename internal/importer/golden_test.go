@@ -197,8 +197,9 @@ func importSnapshot(ctx context.Context, d *db.DB) ([]byte, error) {
 		{"places_without_region", "select count(*) from places where region_id is null"},
 		{"plots", "select count(*) from plots"},
 		{"photos", "select count(*) from photos"},
-		{"place_naming", "select count(*) from place_naming"},
-		{"place_overrides", "select count(*) from place_overrides"},
+		// Thailand's rows only: every opened country adds its own (0152 Laos, …).
+		{"place_naming", "select count(*) from place_naming where country = 'th'"},
+		{"place_overrides", "select count(*) from place_overrides where country = 'th'"},
 	} {
 		var n int
 		if err := p.QueryRow(ctx, q.sql).Scan(&n); err != nil {

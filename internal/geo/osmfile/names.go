@@ -220,11 +220,26 @@ func cased(r rune) bool {
 	return unicode.IsLetter(r) && (unicode.ToUpper(r) != unicode.ToLower(r) || unicode.IsUpper(r) || unicode.IsLower(r))
 }
 
+// IsApostrophe reports whether r is a character Slug drops instead of
+// treating it as a separator: the apostrophe ' (U+0027), the right single
+// quotation mark ’ (U+2019), the modifier letters ʼ (U+02BC) and ʻ (U+02BB),
+// the grave accent ` (U+0060) and the acute accent ´ (U+00B4), which OSM
+// names use as an apostrophe or as a glottal mark.
+func IsApostrophe(r rune) bool {
+	switch r {
+	case '\'', '’', 'ʼ', 'ʻ', '`', '´':
+		return true
+	}
+	return false
+}
+
 // Slug turns an English name into a URL slug: accents and marks are dropped
-// (NFD), đ becomes d (and a few letters NFD does not split, ø, ł, ß, æ), then
-// lower-case ASCII letters and digits are separated by single hyphens. Letters
-// of other scripts separate like spaces. ASCII input gives what the slug
-// without folding gave, so Thailand's stored slugs stay ("Cần Thơ" →
+// (NFD), đ becomes d (and a few letters NFD does not split, ø, ł, ß, æ),
+// apostrophes (IsApostrophe) are dropped too, so "P'yŏngyang" is "pyongyang"
+// and "Xi'an" is "xian"; then lower-case ASCII letters and digits are
+// separated by single hyphens. Letters of other scripts and all other
+// punctuation separate like spaces. A name without apostrophes gives what the
+// slug without folding gave, so Thailand's stored slugs stay ("Cần Thơ" →
 // "can-tho", "Chon Buri" → "chon-buri"). cmd/countryscan uses the same
 // function, so scan and import cannot drift.
 func Slug(s string) string {
@@ -239,8 +254,9 @@ func Slug(s string) string {
 			}
 			b.WriteRune(r)
 			dash = false
-		case unicode.Is(unicode.Mn, r):
-			// a combining mark stays with its letter
+		case unicode.Is(unicode.Mn, r), IsApostrophe(r):
+			// a combining mark stays with its letter; an apostrophe joins
+			// the letters around it
 		default:
 			dash = true
 		}

@@ -222,6 +222,7 @@ type regionCache struct {
 	mu        sync.Mutex
 	idx       *geo.RegionIndex // provinces
 	districts *geo.RegionIndex
+	parent    map[int]int             // district id -> its province (parent_id)
 	urban     map[int]bool            // district ids that are all urban (see MarkUrbanDistricts)
 	naming    map[string]*PlaceNaming // place_naming by country
 	open      map[string]bool         // countries with provinces (see OpenCountries)
@@ -245,17 +246,28 @@ func (d *DB) ReloadRegions(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	rows, err := d.Pool.Query(ctx, `select id from regions where kind = 'district' and urban`)
+	rows, err := d.Pool.Query(ctx, `select id, coalesce(parent_id, 0), urban from regions where kind = 'district'`)
 	if err != nil {
-		return fmt.Errorf("db: urban districts: %w", err)
+		return fmt.Errorf("db: districts: %w", err)
 	}
-	ids, err := pgx.CollectRows(rows, pgx.RowTo[int])
+	type district struct {
+		id, parent int
+		urban      bool
+	}
+	list, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (district, error) {
+		var x district
+		return x, r.Scan(&x.id, &x.parent, &x.urban)
+	})
 	if err != nil {
-		return fmt.Errorf("db: urban districts: %w", err)
+		return fmt.Errorf("db: districts: %w", err)
 	}
-	urban := make(map[int]bool, len(ids))
-	for _, id := range ids {
-		urban[id] = true
+	urban := make(map[int]bool)
+	parent := make(map[int]int, len(list))
+	for _, x := range list {
+		parent[x.id] = x.parent
+		if x.urban {
+			urban[x.id] = true
+		}
 	}
 	naming, err := d.loadNaming(ctx)
 	if err != nil {
@@ -268,6 +280,7 @@ func (d *DB) ReloadRegions(ctx context.Context) error {
 	idx, didx := geo.NewRegionIndex(shapes), geo.NewRegionIndex(ds)
 	d.regions.mu.Lock()
 	d.regions.idx, d.regions.districts, d.regions.urban, d.regions.naming = idx, didx, urban, naming
+	d.regions.parent = parent
 	d.regions.open = open
 	d.regions.loadedAt = time.Now()
 	d.regions.mu.Unlock()
@@ -301,14 +314,18 @@ func (d *DB) inDistrict(id int, lat, lng float64) bool {
 	return idx.In(id, orb.Point{lng, lat})
 }
 
-// locateDistrict returns the district containing (lat, lng) from the index
-// loaded with the provinces, and whether it is urban; ok is false outside
-// every imported district.
-func (d *DB) locateDistrict(lat, lng float64) (id int, urban, ok bool) {
+// locateDistrict returns the district of province containing (lat, lng)
+// from the index loaded with the provinces, and whether it is urban; ok is
+// false outside every imported district of that province. Only the
+// province's own districts count: where simplified boundaries of two
+// countries overlap (Sarawak's Marudi over a corner of Belait), a plot of
+// one country's province never takes the other's district.
+func (d *DB) locateDistrict(lat, lng float64, province int) (id int, urban, ok bool) {
 	d.regions.mu.Lock()
-	idx, u := d.regions.districts, d.regions.urban
+	idx, u, parent := d.regions.districts, d.regions.urban, d.regions.parent
 	d.regions.mu.Unlock()
-	if id, ok = idx.Contains(orb.Point{lng, lat}); ok {
+	own := func(id int) bool { return parent[id] == province }
+	if id, ok = idx.ContainsOf(orb.Point{lng, lat}, own); ok {
 		return id, u[id], true
 	}
 	return 0, false, false
@@ -373,8 +390,9 @@ type PlotLocation struct {
 	PlaceEn    string  // the naming place (see PlaceNaming), else the region's name
 	PlaceLocal *string // Thai name of the same; nil if unknown
 	Near       bool    // PlaceEn is an OSM place, not the region fallback
-	// DistrictID is the district (admin_level 6) containing the centre; nil
-	// where none is imported. District is its name_en.
+	// DistrictID is the district of the region (parent_id = RegionID)
+	// containing the centre; nil where none is imported or none of the
+	// region's districts holds it. District is its name_en.
 	DistrictID *int
 	District   string
 	Lat, Lng   float64 // cell centre
@@ -399,7 +417,7 @@ func (d *DB) locatePlot(ctx context.Context, q querier, cell string) (*PlotLocat
 		return nil, ErrOutsideRegions
 	}
 	loc := &PlotLocation{RegionID: id, Lat: lat, Lng: lng}
-	district, urban, inDistrict := d.locateDistrict(lat, lng)
+	district, urban, inDistrict := d.locateDistrict(lat, lng, id)
 	if inDistrict {
 		loc.DistrictID = &district
 	}
@@ -453,8 +471,9 @@ func (d *DB) locatePlot(ctx context.Context, q querier, cell string) (*PlotLocat
 // lack them (claimed before the import, or before places were imported;
 // place names are only filled, never replaced). Only a real nearby place is
 // written: the region fallback would otherwise stick before cmd/places has
-// run, and the pages fall back to the region name anyway. Plots outside
-// every region are left alone and counted in outside.
+// run, and the pages fall back to the region name anyway. The district is
+// one of the region's own (see locateDistrict). Plots outside every region
+// are left alone and counted in outside.
 func (d *DB) BackfillPlots(ctx context.Context) (updated, outside int, err error) {
 	return d.BackfillPlotsOf(ctx, "")
 }
@@ -527,9 +546,10 @@ type Place struct {
 // every province too (RegionID nil); a Place.Country other than country is
 // an error. Other countries' places are never deleted, and a stored place
 // of another country is left as it is, unless that country stored it
-// outside all provinces (region_id null: a Thai extract holds Lao villages
-// beyond the border), which the run then takes over. Plots keep their
-// copied names.
+// outside all provinces (region_id null: a "weak" place, a Thai extract's
+// Lao village beyond the border), which the run then takes over. The
+// importer sends such a place only when it lies inside one of the run's
+// provinces (internal/importer, places). Plots keep their copied names.
 func (d *DB) ReplacePlaces(ctx context.Context, country string, ps []Place) error {
 	if country == "" {
 		return fmt.Errorf("db: replace places: no country given")

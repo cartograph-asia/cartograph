@@ -29,4 +29,5 @@ var importTH = Import{
 	// The two "Bang Sai" districts of Phra Nakhon Si Ayutthaya were stored
 	// as …-bang-sai and …-bang-sai-11024893; a fresh import keeps them so.
 	LegacyDuplicateSlug: true,
+	LegacyPlaces:        true, // places by geo.NearTolerance, all of the extract's (WP L)
 }

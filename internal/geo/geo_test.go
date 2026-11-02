@@ -94,6 +94,51 @@ func TestRegionIndex(t *testing.T) {
 	if _, ok := none.Locate(orb.Point{}); ok || none.Len() != 0 {
 		t.Fatal("nil index")
 	}
+	if _, _, ok := none.Nearest(orb.Point{}, 1, nil); ok {
+		t.Fatal("nil index: Nearest")
+	}
+}
+
+func TestRegionIndexContainsOfAndNearest(t *testing.T) {
+	sq := func(x, y, s float64) orb.MultiPolygon {
+		return orb.MultiPolygon{{{{x, y}, {x + s, y}, {x + s, y + s}, {x, y + s}, {x, y}}}}
+	}
+	// 3 and 4 overlap in 10.05–10.1 E; 5 lies far north, at 60° N.
+	idx := NewRegionIndex([]RegionShape{{ID: 3, Geometry: sq(10, 0, 0.1)}, {ID: 4, Geometry: sq(10.05, 0, 0.1)}, {ID: 5, Geometry: sq(10, 60, 0.1)}})
+	if id, ok := idx.ContainsOf(orb.Point{10.07, 0.05}, nil); !ok || id != 3 {
+		t.Errorf("ContainsOf all: %d %v, want the first, 3", id, ok)
+	}
+	if id, ok := idx.ContainsOf(orb.Point{10.07, 0.05}, func(id int) bool { return id == 4 }); !ok || id != 4 {
+		t.Errorf("ContainsOf 4 only: %d %v", id, ok)
+	}
+	if _, ok := idx.ContainsOf(orb.Point{10.02, 0.05}, func(id int) bool { return id == 4 }); ok {
+		t.Error("ContainsOf 4 only outside 4")
+	}
+
+	near := func(id int) bool { return id != 4 }
+	cases := []struct {
+		p    orb.Point
+		km   float64
+		want func(int) bool
+		id   int
+		dist float64 // km, ±1 %
+		ok   bool
+	}{
+		{orb.Point{10.05, 0.05}, 2, nil, 3, 0, true},                  // inside
+		{orb.Point{10.05, 0.11}, 2, nil, 3, 1.112, true},              // 0.01° north of 3 and 4: the first
+		{orb.Point{10.05, 0.11}, 1, nil, 0, 0, false},                 // beyond reach
+		{orb.Point{10.16, 0.05}, 2, near, 3, 6.672, false},            // 4 is 1.1 km away but not wanted, 3 is 6.7 km
+		{orb.Point{10.16, 0.05}, 2, nil, 4, 1.112, true},              // east of 4
+		{orb.Point{10.12, 60.05}, 2, nil, 5, 1.112, true},             // 0.02° east at 60° N is 1.1 km
+		{orb.Point{10.11, 0.11}, 2, nil, 4, 1.112, true},              // nearest is 4's edge, not 3's corner
+		{orb.Point{9.99, -0.01}, 2, nil, 3, 1.112 * math.Sqrt2, true}, // a corner
+	}
+	for _, c := range cases {
+		id, dist, ok := idx.Nearest(c.p, c.km, c.want)
+		if ok != c.ok || (ok && (id != c.id || math.Abs(dist-c.dist) > 0.01*c.dist+1e-9)) {
+			t.Errorf("Nearest(%v, %g): %d %.3f %v, want %d %.3f %v", c.p, c.km, id, dist, ok, c.id, c.dist, c.ok)
+		}
+	}
 }
 
 func TestGeometryRoundTrip(t *testing.T) {

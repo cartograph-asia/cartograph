@@ -81,33 +81,6 @@ func scan(name string, opts scanOpts, fn func(osm.Object)) error {
 	return nil
 }
 
-// thailand is Thailand's import settings. The functions below are from before
-// the settings existed and wrap them until the importer reads the settings
-// itself (docs/COUNTRY_IMPORT_STAGE2_BRIEF.md, WP C removes them).
-func thailand() countries.Import { return countries.Imports["th"] }
-
-// IsProvince reports whether r is an admin_level-4 boundary of the country
-// with ISO 3166-1 code country (e.g. "th"), judged by its ISO3166-2 tag:
-// Thailand's province level with country as the ISO prefix.
-func IsProvince(r *osm.Relation, country string) bool {
-	l := thailand().Province
-	l.ISOPrefix = country
-	return MatchLevel(r, l)
-}
-
-// IsDistrict reports whether r is a district boundary (admin_level 6). OSM
-// districts carry no ISO code; the importer keeps those inside a province.
-func IsDistrict(r *osm.Relation) bool {
-	return MatchLevel(r, thailand().District)
-}
-
-// DistrictName returns a district's English and Thai names without the
-// words for district ("Bang Kapi District", "เขตบางกะปิ", "อำเภอบ้านโคก").
-// Whether a district is urban comes from place_naming, not from its name.
-func DistrictName(en, th string) (string, string) {
-	return StripName(en, th, thailand().District)
-}
-
 // ReadBoundaryData reads the relations accepted by keep together with all
 // their member ways and those ways' nodes, in three passes. The result is the
 // raw OSM data, for BuildBoundaries or for writing a fixture.
@@ -186,7 +159,7 @@ func BuildBoundaries(o *osm.OSM) (out []Boundary, skipped []int64, err error) {
 	return out, skipped, nil
 }
 
-// Place is an OSM place node of one of PlaceKinds.
+// Place is an OSM place node of one of a country's place kinds.
 type Place struct {
 	OSMType   string // "n", "w" or "r"
 	OSMID     int64
@@ -196,53 +169,42 @@ type Place struct {
 	Point     orb.Point
 }
 
-// PlaceKinds are the place=* values imported as plot names. Only nodes are
-// read; places mapped as areas alone are not imported.
+// PlaceKinds are the place=* values imported as plot names unless a
+// country's settings name others (PlaceKindsFor). Only nodes are read;
+// places mapped as areas alone are not imported.
 var PlaceKinds = map[string]bool{
 	"city": true, "town": true, "village": true,
 	"suburb": true, "quarter": true, "neighbourhood": true,
 }
 
-// ReadPlaces reads the place nodes of PlaceKinds inside bound (whole file if
-// geo.NoBound(bound)) that have a Latin-script name (see Names).
-func ReadPlaces(name string, bound orb.Bound) ([]Place, error) {
+// ReadPlaces reads the place nodes of imp's kinds (PlaceKindsFor) inside
+// bound (whole file if geo.NoBound(bound)) that have an English name, with
+// their names by imp's rules (PlaceNames).
+func ReadPlaces(name string, bound orb.Bound, imp countries.Import) ([]Place, error) {
 	var out []Place
+	kinds := PlaceKindsFor(imp)
 	keep := func(n *osm.Node) bool {
-		if !PlaceKinds[n.Tags.Find("place")] {
+		if !kinds[n.Tags.Find("place")] {
 			return false
 		}
 		return geo.NoBound(bound) || bound.Contains(n.Point())
 	}
 	err := scan(name, scanOpts{nodes: true, filterNode: keep}, func(obj osm.Object) {
 		n := obj.(*osm.Node)
-		en, th := Names(n.Tags)
+		en, local := PlaceNames(n.Tags, imp)
 		if en == "" {
 			return
 		}
-		out = append(out, Place{OSMType: "n", OSMID: int64(n.ID), Kind: n.Tags.Find("place"), NameEn: en, NameLocal: th, Point: n.Point()})
+		out = append(out, Place{OSMType: "n", OSMID: int64(n.ID), Kind: n.Tags.Find("place"), NameEn: en, NameLocal: local, Point: n.Point()})
 	})
 	return out, err
 }
 
-// Names returns the English and Thai display names from OSM tags: English is
-// the first of name:en, int_name, name:th-Latn, name that is not written in
-// Thai script (empty if none); Thai is name:th, else name when it is Thai.
-// It is NamesFor with Thailand's settings.
-func Names(t osm.Tags) (en, th string) {
-	return NamesFor(t, thailand())
-}
-
-// RegionName returns a province's English and Thai names without the word
-// "province" (OSM has e.g. "Chon Buri Province" and "จังหวัดชลบุรี").
-func RegionName(en, th string) (string, string) {
-	return StripName(en, th, thailand().Province)
-}
-
-// ReadPlacesRaw returns the raw place nodes of PlaceKinds inside bound.
-func ReadPlacesRaw(name string, bound orb.Bound) ([]*osm.Node, error) {
+// ReadPlacesRaw returns the raw place nodes of kinds inside bound.
+func ReadPlacesRaw(name string, bound orb.Bound, kinds map[string]bool) ([]*osm.Node, error) {
 	var out []*osm.Node
 	keep := func(n *osm.Node) bool {
-		return PlaceKinds[n.Tags.Find("place")] && (geo.NoBound(bound) || bound.Contains(n.Point()))
+		return kinds[n.Tags.Find("place")] && (geo.NoBound(bound) || bound.Contains(n.Point()))
 	}
 	err := scan(name, scanOpts{nodes: true, filterNode: keep}, func(obj osm.Object) {
 		out = append(out, obj.(*osm.Node))

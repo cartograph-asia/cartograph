@@ -1,9 +1,11 @@
 // Command fixture cuts the test fixture out of the full inputs: every
-// province and district (admin_level 6) boundary intersecting -bbox
-// (complete relation, member ways and their nodes, without metadata) plus
-// the place nodes (osmfile.PlaceKinds) inside -bbox, as gzipped OSM XML; and the water polygons clipped to -bbox as a
-// .shp file. The defaults reproduce testdata/pattaya.osm.gz and
-// testdata/pattaya-water.shp from the repository root:
+// province and district boundary of -country's settings (internal/countries)
+// intersecting -bbox (complete relation, member ways and their nodes,
+// without metadata) plus the place nodes of the settings' place kinds inside
+// -bbox with the name tags the settings read, as gzipped OSM XML; and the
+// water polygons clipped to -bbox as a .shp file. The defaults reproduce
+// testdata/pattaya.osm.gz and testdata/pattaya-water.shp from the
+// repository root:
 //
 //	go run ./cmd/fixture
 package main
@@ -21,6 +23,7 @@ import (
 	"github.com/paulmach/orb/clip"
 	"github.com/paulmach/osm"
 
+	"github.com/cartograph-asia/cartograph/internal/countries"
 	"github.com/cartograph-asia/cartograph/internal/geo"
 	"github.com/cartograph-asia/cartograph/internal/geo/osmfile"
 )
@@ -50,7 +53,18 @@ func run(pbf, water, bbox, country, outOSM, outWater string) error {
 	if geo.NoBound(b) {
 		return fmt.Errorf("-bbox is required")
 	}
-	raw, err := osmfile.ReadBoundaryData(pbf, func(r *osm.Relation) bool { return osmfile.IsProvince(r, country) || osmfile.IsDistrict(r) })
+	imp, ok := countries.ImportOf(country)
+	if !ok {
+		return fmt.Errorf("country %q has no import settings in internal/countries", country)
+	}
+	if imp.Hold != "" {
+		return fmt.Errorf("country %q is on hold: %s", country, imp.Hold)
+	}
+	raw, err := osmfile.ReadBoundaryData(pbf, func(r *osm.Relation) bool {
+		id := int64(r.ID)
+		return osmfile.MatchLevel(r, imp.Province) || osmfile.MatchLevel(r, imp.District) ||
+			(imp.Province.Parent != 0 && id == imp.Province.Parent) || (imp.District.Parent != 0 && id == imp.District.Parent)
+	})
 	if err != nil {
 		return err
 	}
@@ -95,9 +109,14 @@ func run(pbf, water, bbox, country, outOSM, outWater string) error {
 			out.Nodes = append(out.Nodes, &osm.Node{ID: n.ID, Visible: true, Version: 1, Lat: n.Lat, Lon: n.Lon})
 		}
 	}
-	places, err := osmfile.ReadPlacesRaw(pbf, b)
+	places, err := osmfile.ReadPlacesRaw(pbf, b, osmfile.PlaceKindsFor(imp))
 	if err != nil {
 		return err
+	}
+	// The tags the importer reads: place and the settings' name tags.
+	keepTag := map[string]bool{"place": true}
+	for _, k := range append(append([]string(nil), imp.English...), imp.Local...) {
+		keepTag[k] = true
 	}
 	for _, n := range places {
 		if nodes[n.ID] {
@@ -105,8 +124,7 @@ func run(pbf, water, bbox, country, outOSM, outWater string) error {
 		}
 		var tags osm.Tags
 		for _, t := range n.Tags {
-			switch t.Key {
-			case "place", "name", "name:en", "name:th", "int_name", "name:th-Latn":
+			if keepTag[t.Key] {
 				tags = append(tags, t)
 			}
 		}

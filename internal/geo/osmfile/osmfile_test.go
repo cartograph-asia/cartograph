@@ -8,13 +8,15 @@ import (
 	"github.com/paulmach/orb/planar"
 	"github.com/paulmach/osm"
 
+	"github.com/cartograph-asia/cartograph/internal/countries"
 	"github.com/cartograph-asia/cartograph/internal/geo"
 )
 
 var fixture = filepath.Join("..", "..", "..", "testdata", "pattaya.osm.gz")
 
 func TestFixtureBoundary(t *testing.T) {
-	raw, err := ReadBoundaryData(fixture, func(r *osm.Relation) bool { return IsProvince(r, "th") })
+	th := countries.Imports["th"]
+	raw, err := ReadBoundaryData(fixture, func(r *osm.Relation) bool { return MatchLevel(r, th.Province) })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -22,9 +24,9 @@ func TestFixtureBoundary(t *testing.T) {
 	if err != nil || len(skipped) != 0 || len(bs) != 1 {
 		t.Fatalf("boundaries %d skipped %v err %v", len(bs), skipped, err)
 	}
-	en, th := RegionName(Names(bs[0].Tags))
-	if en != "Chon Buri" || th != "ชลบุรี" || Slug(en) != "chon-buri" {
-		t.Fatalf("names %q %q", en, th)
+	n := LevelNames(bs[0].Tags, th, th.Province)
+	if n.En != "Chon Buri" || n.Local != "ชลบุรี" || Slug(n.En) != "chon-buri" {
+		t.Fatalf("names %+v", n)
 	}
 	pattaya := orb.Point{100.8826, 12.9346}
 	if !planar.MultiPolygonContains(bs[0].Geometry, pattaya) {
@@ -37,7 +39,7 @@ func TestFixtureBoundary(t *testing.T) {
 }
 
 func TestFixturePlaces(t *testing.T) {
-	ps, err := ReadPlaces(fixture, orb.Bound{Min: orb.Point{1, 1}})
+	ps, err := ReadPlaces(fixture, orb.Bound{Min: orb.Point{1, 1}}, countries.Imports["th"])
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,11 +53,12 @@ func TestFixturePlaces(t *testing.T) {
 }
 
 func TestNamesAndSlug(t *testing.T) {
-	en, th := Names(osm.Tags{{Key: "name", Value: "บ้านนา"}})
-	if en != "" || th != "บ้านนา" {
-		t.Fatalf("%q %q", en, th)
+	th := countries.Imports["th"]
+	en, local := NamesFor(osm.Tags{{Key: "name", Value: "บ้านนา"}}, th)
+	if en != "" || local != "บ้านนา" {
+		t.Fatalf("%q %q", en, local)
 	}
-	en, _ = Names(osm.Tags{{Key: "name", Value: "บ้านนา"}, {Key: "name:th-Latn", Value: "Ban Na"}})
+	en, _ = NamesFor(osm.Tags{{Key: "name", Value: "บ้านนา"}, {Key: "name:th-Latn", Value: "Ban Na"}}, th)
 	if en != "Ban Na" {
 		t.Fatal(en)
 	}
@@ -75,9 +78,9 @@ func TestDistrictName(t *testing.T) {
 		{"Khet Watthana", "", "Watthana", ""},
 		{"Mueang Roi Et", "อำเภอเมืองร้อยเอ็ด", "Mueang Roi Et", "เมืองร้อยเอ็ด"},
 	} {
-		en, th := DistrictName(c.en, c.th)
+		en, th := StripName(c.en, c.th, countries.Imports["th"].District)
 		if en != c.wantEn || th != c.wantTh {
-			t.Errorf("DistrictName(%q, %q) = %q, %q", c.en, c.th, en, th)
+			t.Errorf("StripName(%q, %q) = %q, %q", c.en, c.th, en, th)
 		}
 	}
 }

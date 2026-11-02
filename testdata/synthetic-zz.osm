@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  A synthetic country "zz" for internal/importer's silo tests (not in
+  internal/countries; its settings are injected). One province, ZZ-01
+  "Zed One Prefecture", 100.90-101.40 E, 12.90-12.98 N: its western part
+  overlaps Chon Buri of the Pattaya fixture (which ends near 101.07 E at this
+  latitude), part of that inside the fixture's bbox; its eastern part is its
+  own. One district in the eastern part. Two place nodes: one with the id and
+  position of the fixture's Nong Prue (inside Chon Buri and the overlap, so
+  it stays Thai), one in the eastern part.
+-->
+<osm version="0.6" generator="hand-written">
+ <node id="900000101" visible="true" version="1" lat="12.90" lon="100.90"></node>
+ <node id="900000102" visible="true" version="1" lat="12.90" lon="101.40"></node>
+ <node id="900000103" visible="true" version="1" lat="12.98" lon="101.40"></node>
+ <node id="900000104" visible="true" version="1" lat="12.98" lon="100.90"></node>
+ <node id="900000111" visible="true" version="1" lat="12.91" lon="101.15"></node>
+ <node id="900000112" visible="true" version="1" lat="12.91" lon="101.35"></node>
+ <node id="900000113" visible="true" version="1" lat="12.97" lon="101.35"></node>
+ <node id="900000114" visible="true" version="1" lat="12.97" lon="101.15"></node>
+ <node id="900000002" visible="true" version="1" lat="12.9400000" lon="101.3000000">
+  <tag k="place" v="town"></tag>
+  <tag k="name" v="Zed Town"></tag>
+ </node>
+ <node id="7366568645" visible="true" version="1" lat="12.9442328" lon="100.9396630">
+  <tag k="place" v="village"></tag>
+  <tag k="name" v="Zed Nong Prue"></tag>
+ </node>
+ <way id="900000201" visible="true" version="1">
+  <nd ref="900000101"></nd>
+  <nd ref="900000102"></nd>
+  <nd ref="900000103"></nd>
+  <nd ref="900000104"></nd>
+  <nd ref="900000101"></nd>
+ </way>
+ <way id="900000211" visible="true" version="1">
+  <nd ref="900000111"></nd>
+  <nd ref="900000112"></nd>
+  <nd ref="900000113"></nd>
+  <nd ref="900000114"></nd>
+  <nd ref="900000111"></nd>
+ </way>
+ <relation id="900000001" visible="true" version="1">
+  <member type="way" ref="900000201" role="outer"></member>
+  <tag k="admin_level" v="4"></tag>
+  <tag k="boundary" v="administrative"></tag>
+  <tag k="ISO3166-2" v="ZZ-01"></tag>
+  <tag k="name" v="Zed One"></tag>
+  <tag k="name:en" v="Zed One Prefecture"></tag>
+  <tag k="type" v="boundary"></tag>
+ </relation>
+ <relation id="900000011" visible="true" version="1">
+  <member type="way" ref="900000211" role="outer"></member>
+  <tag k="admin_level" v="6"></tag>
+  <tag k="boundary" v="administrative"></tag>
+  <tag k="name" v="Zed East"></tag>
+  <tag k="name:en" v="Zed East District"></tag>
+  <tag k="type" v="boundary"></tag>
+ </relation>
+</osm>

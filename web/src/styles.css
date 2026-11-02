@@ -771,15 +771,6 @@ button {
     display: none;
   }
 }
-/* The narrowest phones: "Upload →", so that the wordmark keeps its room. */
-@media (max-width: 26rem) {
-  .acts .long {
-    display: none;
-  }
-  .acts {
-    gap: var(--s-s);
-  }
-}
 @media (max-width: 767px) {
   .panel {
     top: auto;

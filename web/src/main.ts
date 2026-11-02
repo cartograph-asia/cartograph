@@ -422,11 +422,6 @@ keyToggle.addEventListener('click', () => {
   keyToggle.setAttribute('aria-expanded', String(keyEl.classList.toggle('open')));
 });
 
-document.getElementById('open-upload')!.addEventListener('click', () => {
-  select(null);
-  panel.openUpload();
-});
-
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && panel.escape()) e.preventDefault();
 });

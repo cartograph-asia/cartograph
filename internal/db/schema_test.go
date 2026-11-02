@@ -54,7 +54,7 @@ func TestSchema(t *testing.T) {
 	// Regions.
 	var region int
 	mustOK("insert region", d.Pool.QueryRow(ctx, `
-		insert into regions (osm_id, kind, admin_level, country, slug, name_en, name_th, boundary,
+		insert into regions (osm_id, kind, admin_level, country, slug, name_en, name_local, boundary,
 		                     min_lat, min_lng, max_lat, max_lng, land_cells)
 		values (1, 'province', 4, 'th', 'chon-buri', 'Chon Buri', 'ชลบุรี', '{"type":"Polygon","coordinates":[[[100.68,12.5],[101.73,12.5],[101.73,13.59],[100.68,13.59],[100.68,12.5]]]}',
 		        12.5, 100.68, 13.59, 101.73, 5921)
@@ -62,7 +62,7 @@ func TestSchema(t *testing.T) {
 	mustFail("bad slug", "regions_slug_check", exec(`
 		insert into regions (kind, admin_level, country, slug, name_en, boundary, min_lat, min_lng, max_lat, max_lng)
 		values ('province', 4, 'th', 'Chon Buri', 'x', '{}', 0, 0, 0, 0)`))
-	mustOK("insert place", exec(`insert into places (osm_type, osm_id, kind, name_en, name_th, lat, lng, region_id)
+	mustOK("insert place", exec(`insert into places (osm_type, osm_id, kind, name_en, name_local, lat, lng, region_id)
 		values ('n', 42, 'city', 'Pattaya', 'พัทยา', 12.93, 100.88, $1)`, region))
 
 	// Surveyors: names, case-insensitive uniqueness, nullable unique e-mail, bio.
@@ -94,7 +94,7 @@ func TestSchema(t *testing.T) {
 	mustOK("attach placeholder", exec(`
 		update photos ph set surveyor_id = s.id from surveyors s where s.name = 'beach-walker' and ph.id = $1`, p.ID))
 	mustOK("attach plot", exec(`
-		update plots pl set first_surveyor_id = ph.surveyor_id, region_id = $2, place_name = 'Pattaya', place_name_th = 'พัทยา'
+		update plots pl set first_surveyor_id = ph.surveyor_id, region_id = $2, place_name = 'Pattaya', place_name_local = 'พัทยา'
 		from photos ph where ph.id = pl.first_photo and pl.cell = $1`, p.Cell, region))
 	var licence string
 	var medium *string

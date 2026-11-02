@@ -45,7 +45,7 @@ func TestFixturePlaces(t *testing.T) {
 	for _, p := range ps {
 		byName[p.NameEn] = p
 	}
-	if p, ok := byName["Pattaya"]; !ok || p.Kind != "city" || p.NameTh != "พัทยา" || p.OSMType != "n" {
+	if p, ok := byName["Pattaya"]; !ok || p.Kind != "city" || p.NameLocal != "พัทยา" || p.OSMType != "n" {
 		t.Fatalf("places %+v", ps)
 	}
 }

@@ -65,7 +65,7 @@ func testRegion(t *testing.T, d *DB) int {
 	t.Helper()
 	sq := orb.MultiPolygon{{{{100.5, 12.5}, {101.5, 12.5}, {101.5, 13.5}, {100.5, 13.5}, {100.5, 12.5}}}}
 	ids, err := d.UpsertRegions(context.Background(), []Region{{
-		OSMID: 1, Kind: "province", AdminLevel: 4, Country: "th", Slug: "chon-buri", NameEn: "Chon Buri", NameTh: "ชลบุรี", Boundary: sq, LandCells: 100,
+		OSMID: 1, Kind: "province", AdminLevel: 4, Country: "th", Slug: "chon-buri", NameEn: "Chon Buri", NameLocal: "ชลบุรี", Boundary: sq, LandCells: 100,
 	}})
 	if err != nil {
 		t.Fatal(err)

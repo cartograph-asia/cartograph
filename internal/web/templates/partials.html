@@ -40,7 +40,7 @@
 
 {{/* One region row: name, coverage, bar, most active Surveyors. */}}
 {{define "region-row" -}}
-<li><h3><a href="/region/{{.Region.Slug}}">{{.Region.NameEn}}</a>{{with .Region.NameTh}} <span lang="th" class="th">{{.}}</span>{{end}}</h3>
+<li><h3><a href="/region/{{.Region.Slug}}">{{.Region.NameEn}}</a>{{with .Region.NameLocal}} <span lang="th" class="th">{{.}}</span>{{end}}</h3>
 {{template "covbar" .Coverage}}
 <p class="cov"><span class="pct">{{pct .Coverage}}</span> <span class="of">{{num .Coverage.Claimed}} of {{num .Coverage.Land}} plots</span></p>
 {{if .TopSurveyors}}<p class="who">Most active: {{range $i, $s := .TopSurveyors}}{{if $i}}, {{end}}<a href="/surveyor/{{$s.Surveyor.Name}}">{{$s.Surveyor.Label}}</a>{{end}}</p>{{end}}

@@ -196,7 +196,7 @@ type Place struct {
 	OSMID   int64
 	Kind    string // a key of PlaceKinds
 	NameEn  string
-	NameTh  string
+	NameLocal  string
 	Point   orb.Point
 }
 
@@ -223,7 +223,7 @@ func ReadPlaces(name string, bound orb.Bound) ([]Place, error) {
 		if en == "" {
 			return
 		}
-		out = append(out, Place{OSMType: "n", OSMID: int64(n.ID), Kind: n.Tags.Find("place"), NameEn: en, NameTh: th, Point: n.Point()})
+		out = append(out, Place{OSMType: "n", OSMID: int64(n.ID), Kind: n.Tags.Find("place"), NameEn: en, NameLocal: th, Point: n.Point()})
 	})
 	return out, err
 }

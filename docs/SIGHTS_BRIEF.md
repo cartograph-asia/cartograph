@@ -2,7 +2,7 @@
 
 Read `CLAUDE.md`, `docs/PRINCIPLES.md`, the Home and Design entries in `docs/decisions.md`, `docs/GAMIFICATION.md` (core loop) and, if it is merged, `docs/BLANK_BRIEF.md` first. This brief adds **sights**: well-known places such as temples, viewpoints, museums, waterfalls and ruins, imported from OpenStreetMap, each assigned to the plot it lies in. The plot page shows the sights in and around a plot; the blank-plots page can offer plots that have one; and a Surveyor can **tag a photo with the sight it shows**, which gives every sight a page with the photos of it.
 
-Status: **proposal.** The decisions below are Claude's proposal after counting what the OSM extract holds; Adrian confirms or changes them before anything is built.
+Status: **decided** (Adrian, 2026-11-02). The decisions below were Claude's proposal after counting what the OSM extract holds; Adrian confirmed them and answered the open questions (end of this brief).
 
 ## Why
 
@@ -23,7 +23,7 @@ Counted in `map/data/thailand-latest.osm.pbf` (objects that carry the tag themse
 
 Places of worship alone would drown everything else, and `historic` includes milestones and plaques; both need a filter.
 
-## Decisions (proposal)
+## Decisions (confirmed by Adrian, 2026-11-02)
 
 1. **Source: the OSM extract we already have.** No request to Wikidata, Wikipedia or any other service at run time or at import (Principles 5 and 7). The `wikidata` tag is kept only to link to the item.
 2. **What counts as a sight** (all of it needs a name; `name:en`, else `name:th`, else `name`):
@@ -36,7 +36,7 @@ Places of worship alone would drown everything else, and `historic` includes mil
 4. **One plot per sight**, the res-8 cell of that position, computed in Go with `internal/h3` like every plot cell.
 5. **Order is stated, never ranked.** "In this plot" is alphabetical; "Around this plot" (the plot's ring of six neighbours) is by distance from the plot's centre, nearest first, at most eight. No popularity, no "best", no "for you" (Principles 2 and 8).
 6. **Word: "sight"** in code, UI and docs, kinds named in plain English (temple, viewpoint, museum, waterfall, peak, cave, spring, ruins, monument, attraction). Never "POI" in the UI. `places` stay what they are: cities, towns and villages that name plots. `CLAUDE.md` gets the entry in its vocabulary when this is built.
-7. **A photo can be tagged with the sight it shows (Adrian, 2026-11-02).** Only the photo's own Surveyor tags and untags it, from the candidates in its plot and in the plots around it, at most three per photo. Tagging is optional and scores nothing (`GAMIFICATION.md` does not change); nobody else can tag a photo, an admin included, and a hidden photo's tags are simply not shown. Showing a sight stores nothing about the visitor.
+7. **A photo can be tagged with the sight it shows (Adrian, 2026-11-02).** Only the photo's own Surveyor tags and untags it, from the candidates in its plot and in the plots around it, at most three per photo. Tagging is optional and scores nothing (`GAMIFICATION.md` does not change); nobody else can tag a photo, an admin included (an admin can only clear tags, see below), and a hidden photo's tags are simply not shown. Showing a sight stores nothing about the visitor.
 8. **A tag is user content, so sights are kept.** A tag points at a sight by its row id, and the importer therefore **updates** the table by `(osm_type, osm_id)` instead of replacing it: names, kinds and positions change in place, a sight that is new in the extract is added, and one that has vanished from it is deleted only if no photo is tagged with it, otherwise it stays with `gone_at` set (and is no longer offered as a candidate nor listed in a plot). No migration or import ever deletes a tag (`CLAUDE.md`, Alpha: data is kept).
 9. **Tags are not a ranking.** A sight page lists its photos newest first, like every other stream. No "most photographed sights", no counts used for ordering anywhere (Principles 2 and 8).
 
@@ -78,10 +78,10 @@ with an index on `(sight_id, photo_id)`. `on delete restrict` is the database's 
 ## Code
 
 - `internal/geo/osmfile`: `ReadSights(pbf, clip)` next to `ReadPlaces`, applying decisions 2 and 3.
-- `internal/importer`: `Sights(ctx, d, SightOptions{PBF, BBox})` replaces the table in one transaction, sets `cell` and `region_id`; `cmd/sights` runs it, after `regions`. The development compose gets a step after `places`, as the other importers have; production runs it by hand like them.
+- `internal/importer`: `Sights(ctx, d, SightOptions{PBF, BBox})` updates the table by `(osm_type, osm_id)` in one transaction (decision 8), sets `cell` and `region_id`; `cmd/sights` runs it, after `regions`. The development compose gets a step after `places`, as the other importers have; production runs it by hand like them.
 - `internal/views`: `SightRef` (display name, Thai name, kind label, Wikidata id, OSM link, distance in metres) and, on `Plot`, `Sights []SightRef` (in the plot) and `Nearby []SightRef` (ring 1, nearest first, at most eight). `viewstest.Fake` gets fixtures for Pattaya: a plot with a sight, one with two, a blank one with one, one without.
 - `internal/db`: the plot read fetches the sights of the cell and of `h3.Ring(cell, 1)`; distances are computed in Go from the plot centre.
-- `internal/web`: `plot.html` gets "In this plot" and "Around this plot" lists, each line "{name} · {kind}", the distance for the nearby ones, and "Wikidata" and "OpenStreetMap" links when there are ids. No sight, no section. Nothing on the photo page. The blank-plots page, if it exists, shows "Sight: {name}" in the caption of a blank plot that has one, and gets a plain link "With a sight" (`?with=sight`) that draws only such plots at random; the default stays unfiltered (a suggestion, not a ranking).
+- `internal/web`: `plot.html` gets "In this plot" and "Around this plot" lists, each line "{name} · {kind}", the distance for the nearby ones, and "Wikidata" and "OpenStreetMap" links when there are ids. No sight, no section. No sight lists on the photo page; tagging is described below. The blank-plots page, if it exists, shows "Sight: {name}" in the caption of a blank plot that has one, and gets a plain link "With a sight" (`?with=sight`) that draws only such plots at random; the default stays unfiltered (a suggestion, not a ranking).
 - **Tagging** (the photo page, `internal/web` and `internal/db`): for the photo's own Surveyor the page shows "This photo shows" with a checkbox per candidate (sights of the photo's plot alphabetically, then those of the ring-1 plots by distance, plus every sight already tagged, even one that has moved away) and a Save button; no script. `POST /photo/{id}/sights` takes the checked sight ids and the CSRF field, needs the signed-in Surveyor to be the photo's `surveyor_id` (otherwise 403, never a hint whether the photo exists for others), rejects an id that is not among the candidates or more than three (400), replaces the photo's rows in one transaction and redirects to the photo page (`?saved=1`, a fixed line like the settings page). Visitors, other Surveyors and admins see the tags, not the form. The same rule as for other writes decides whether a blocked Surveyor may save.
 - **Showing tags:** the photo page says "Shows: {sight} · {kind}" (a link to the sight page); the grid caption is unchanged. The plot page shows "{n} photos" beside each sight that has tagged photos, linking to its page.
 - **The sight page** `GET /sight/{id}`: name (and Thai name), kind, region, the plot it lies in (link), "Wikidata" and "OpenStreetMap" links, "Open on the map", and a photo grid of the tagged photos, newest first, paginated like the other streams (`visible_photos` only). A sight that is `gone_at` still has its page and says "no longer in OpenStreetMap's data". `noindex` while a page has no photos; the page is open to everyone and sets no cookie.
@@ -94,7 +94,7 @@ No new components: the existing list styles of the plot page, the `note` line fo
 ## Tests
 
 - **osmfile:** each tag rule of decision 2 (a temple with and without `wikidata`, artwork, a memorial, an unnamed attraction); a way gets its bounding-box centre; a 5 km park is skipped; a name falls back from `name:en` to `name:th` to `name`.
-- **importer / db:** the table is replaced, not extended, on a second run; `cell` is the res-8 cell of the position; a sight outside every region is kept with `region_id` null; the plot read returns its own sights alphabetically and the neighbours' by distance, at most eight, none twice.
+- **importer / db:** a second run over the same extract changes nothing and adds no duplicates; `cell` is the res-8 cell of the position; a sight outside every region is kept with `region_id` null; the plot read returns its own sights alphabetically and the neighbours' by distance, at most eight, none twice.
 - **tagging:** only the photo's own Surveyor can save (another Surveyor, an admin and a visitor get 403 or the sign-in page, and nothing is written); an id outside the candidates, a fourth tag and a missing CSRF field are refused; saving replaces the set, and an empty set removes the tags; tags of a hidden photo are not shown and do not count on the sight page; a sight with tags survives an import that no longer contains it (`gone_at` set, still on its page, no longer a candidate or listed in a plot) and a sight without tags is deleted; the database refuses to delete a tagged sight.
 - **web:** the section appears and disappears as stated; the links carry the Wikidata id and the OSM type and id; no `style` attribute; vocabulary and page tests (no "POI", no "square", no "hex"); a blank plot with a sight is marked on the blank-plots page and `?with=sight` returns only such plots.
 
@@ -102,14 +102,12 @@ No new components: the existing list styles of the plot page, the `note` line fo
 
 On the Pattaya fixture (`testdata/pattaya.osm.gz` must contain sights, or the fixture command is extended to cut them): `/plot/{slug}/{number}` of a plot with a viewpoint lists it under "In this plot"; its neighbours list it under "Around this plot" with a distance; with Thailand imported, a plot at Wat Arun lists the temple with its Wikidata link. Signed in as the Surveyor of a photo in that plot, the photo page offers the viewpoint, saving tags the photo, and `/sight/{id}` shows it; another Surveyor cannot tag it. `go test ./...` green with `TEST_DATABASE_URL` set; `/security-review` run.
 
-## Open questions
+## Open questions, decided (Adrian, 2026-11-02)
 
-- **Which kinds.** Is the list of decision 2 right? Candidates not included: beaches (areas, many plots), markets, night markets, parks, `tourism=information`.
-- **Temples.** Requiring a `wikidata` or `wikipedia` tag keeps some 1,000 to 1,500 worship sites and drops the other 25,000. More could be allowed by size (a large `building`), which needs geometry the importer does not read today.
-- **Fixture.** `cmd/fixture` cuts places from the full extract; the Pattaya box may hold few sights, so the fixture command may need to cut the sights too.
-- **Map markers.** Sights as a layer on `/map` from zoom 12 up would be a second step with its own brief (the client fetches by viewport like the plot layer).
-- **Region and profile.** A "sights in this region" list on region pages, and "sights near your plots" on a profile, are left out; both would be rankings of a kind and need a rule first.
-- **At upload.** The JSON upload (`POST /api/photos`) could accept `sight_ids` so that a photo is tagged when it is sent; left out here, the photo page is the one place.
-- **Admins.** An admin cannot tag, but may need to clear a wrong or abusive tag; that would be an `admin_actions` entry (`photo.clear_sights`) and belongs in the admin area. Not part of this brief unless Adrian wants it.
-- **Sights nobody offers.** A Surveyor who photographed something that is in no OSM data cannot tag it; adding sights by hand is a different brief (and a moderation question).
-- **Thai names.** Show `name_th` beside the English name on every line, or only where there is no English name?
+- **Which kinds:** as in decision 2. Beaches, markets, night markets, parks and `tourism=information` stay out.
+- **Temples:** only with a `wikidata` or `wikipedia` tag (about 1,000 to 1,500), not all 26,600.
+- **Thai names:** beside the English name on every line, muted, as for provinces. The column follows the naming decision of `docs/COUNTRY_IMPORT_BRIEF.md` (`name_th`, or `name_local` with its language if that rename is made).
+- **Admins:** an admin can clear a photo's tags (not set them) in the admin area; each clearing is an `admin_actions` entry `photo.clear_sights` with the reason. Part of this work package.
+- **Fixture:** `cmd/fixture` cuts the sights of the Pattaya box too, so the fixture holds at least a viewpoint, a temple with `wikidata` and one without.
+- **Later, each with its own brief:** sights as a layer on `/map`; "sights in this region" and "sights near your plots"; tagging at upload (`sight_ids` in `POST /api/photos`); sights a Surveyor adds by hand.
+- **Other countries:** the sights import follows the silo rules of `docs/COUNTRY_IMPORT_BRIEF.md`: per country, from that country's extract and settings, touching only that country's sights.

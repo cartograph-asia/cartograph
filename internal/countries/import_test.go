@@ -108,6 +108,18 @@ func TestLegacyDuplicateSlugThailandOnly(t *testing.T) {
 	}
 }
 
+// Only Thailand keeps the old place rule; no country sets a negative reach.
+func TestLegacyPlacesThailandOnly(t *testing.T) {
+	for code, imp := range Imports {
+		if imp.LegacyPlaces != (code == "th") {
+			t.Errorf("%s: LegacyPlaces %v", code, imp.LegacyPlaces)
+		}
+		if imp.PlaceReachKm < 0 {
+			t.Errorf("%s: PlaceReachKm %v", code, imp.PlaceReachKm)
+		}
+	}
+}
+
 func TestChinaAndMongoliaHold(t *testing.T) {
 	for _, code := range []string{"cn", "mn"} {
 		if Imports[code].Hold == "" {
@@ -132,6 +144,7 @@ func TestThailandSettings(t *testing.T) {
 		LandPlots:    598411,
 
 		LegacyDuplicateSlug: true,
+		LegacyPlaces:        true,
 	}
 	if got := Imports["th"]; !reflect.DeepEqual(got, want) {
 		t.Errorf("Thailand's settings\n got %+v\nwant %+v", got, want)

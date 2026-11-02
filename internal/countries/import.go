@@ -34,6 +34,27 @@ type Import struct {
 	// the base map.
 	Neighbours []string
 
+	// PlaceReachKm is how far (kilometres) outside the run's provinces a
+	// place node may lie and still be stored for the country, then without
+	// a province (region_id NULL, a "weak" place: a beach village beyond the
+	// simplified coastline, a hamlet on a river that is the border with a
+	// country not imported yet). A place strictly inside one of the
+	// country's provinces is stored with it; one strictly inside another
+	// country's stored province, or farther than this from every province
+	// of the run, is not stored. 0 means 2 km. A weak place passes to the
+	// country into whose province it falls strictly when that country is
+	// imported; a weak place of another country is never taken by a weak
+	// claim (docs/decisions.md, WP L).
+	PlaceReachKm float64
+
+	// LegacyPlaces keeps the place rule Thailand was imported with before
+	// WP L: every place node of the extract is stored, with the province
+	// containing it or, failing that, the nearest one within
+	// geo.NearTolerance (about 1 km), else without a province. Set for
+	// Thailand alone, so that its stored places never change; PlaceReachKm
+	// is then not read.
+	LegacyPlaces bool
+
 	// LegacyDuplicateSlug keeps the duplicate rule Thailand's districts were
 	// imported with before the settings existed: of two districts of one run
 	// whose slugs collide, the first by OSM id keeps the slug and the next

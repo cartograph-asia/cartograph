@@ -58,6 +58,7 @@ type regionPlan struct {
 	c       country
 	o       Options
 	in      Input
+	nb      neighbours // the neighbours' cuts read for the boundaries
 	clip    orb.Bound
 	set     *regionSet
 	stored  []db.StoredRegion
@@ -131,13 +132,25 @@ func planRegions(ctx context.Context, d *db.DB, o Options) (*regionPlan, error) 
 	if pl.in.Note != "" {
 		slog.Warn("input", "country", c.Code, "file", pl.in.Path, "note", pl.in.Note)
 	}
+	pl.nb = neighbourInputs(o, c)
+	for _, in := range pl.nb.read {
+		if in.Note != "" {
+			slog.Warn("neighbour input", "country", c.Code, "file", in.Path, "note", in.Note)
+		}
+	}
+	for _, m := range pl.nb.missing {
+		slog.Error("neighbour cut missing", "country", c.Code, "file", m)
+	}
+	if pl.nb.skipped != "" {
+		slog.Warn("neighbours not read", "country", c.Code, "neighbours", c.Imp.Neighbours, "why", pl.nb.skipped)
+	}
 	if o.DryRun {
 		if err := checkMigrated(ctx, d); err != nil {
 			return nil, err
 		}
 	}
 	start := time.Now()
-	if pl.set, err = readRegions(pl.in.Path, c, pl.clip, o.Tolerance); err != nil {
+	if pl.set, err = readRegions(pl.in.Path, pl.nb.paths(), c, pl.clip, o.Tolerance); err != nil {
 		return nil, err
 	}
 	if err := pl.loadStored(ctx, d); err != nil {

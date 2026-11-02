@@ -16,7 +16,7 @@ import (
 // readTest reads path with imp as country zz, no clip, no stored rows.
 func readTest(t *testing.T, path string, imp countries.Import) *regionSet {
 	t.Helper()
-	set, err := readRegions(path, country{Code: "zz", Slug: "zz", Name: "Zed", Imp: imp}, noClip, geo.SimplifyTolerance)
+	set, err := readRegions(path, nil, country{Code: "zz", Slug: "zz", Name: "Zed", Imp: imp}, noClip, geo.SimplifyTolerance)
 	if err != nil {
 		t.Fatal(err)
 	}

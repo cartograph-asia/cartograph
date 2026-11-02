@@ -1,6 +1,7 @@
 package importer
 
 import (
+	"cmp"
 	"fmt"
 	"log/slog"
 	"slices"
@@ -76,7 +77,12 @@ type regionSet struct {
 // clipped to clip, with their names by the settings. Districts are kept
 // when their centre lies in one of the provinces read and they have an
 // English name. Slugs are set later (resolveSlugs), with the stored rows.
-func readRegions(path string, c country, clip orb.Bound, tol float64) (*regionSet, error) {
+//
+// more are the neighbours' cuts (countries.Import.Neighbours): the
+// relations come from path alone, their member ways and nodes from path and
+// more (osmfile.ReadBoundaryDataWith), so a relation the own extract cuts
+// at a border can be assembled. Without neighbours path is read as before.
+func readRegions(path string, more []string, c country, clip orb.Bound, tol float64) (*regionSet, error) {
 	imp := c.Imp
 	pl, dl := imp.Province, imp.District
 	keep := func(r *osm.Relation) bool {
@@ -85,11 +91,17 @@ func readRegions(path string, c country, clip orb.Bound, tol float64) (*regionSe
 			(pl.Parent != 0 && id == pl.Parent) || (dl.Parent != 0 && id == dl.Parent)
 	}
 	start := time.Now()
-	raw, err := osmfile.ReadBoundaryData(path, keep)
+	var raw *osm.OSM
+	var err error
+	if len(more) == 0 {
+		raw, err = osmfile.ReadBoundaryData(path, keep)
+	} else {
+		raw, err = osmfile.ReadBoundaryDataWith(path, more, keep)
+	}
 	if err != nil {
 		return nil, err
 	}
-	slog.Info("read boundaries", "file", path, "relations", len(raw.Relations), "ways", len(raw.Ways), "nodes", len(raw.Nodes),
+	slog.Info("read boundaries", "file", path, "neighbours", more, "relations", len(raw.Relations), "ways", len(raw.Ways), "nodes", len(raw.Nodes),
 		"took", time.Since(start).Round(time.Millisecond))
 	partial := make(map[int64]bool, len(imp.Partial))
 	for _, id := range imp.Partial {
@@ -315,6 +327,13 @@ func resolveSlugs(set *regionSet, c country, stored map[int64]*db.StoredRegion) 
 			}
 		}
 		p.districts = ds
+	}
+	if c.Imp.LegacyDuplicateSlug {
+		legacyDistrictSlugs(set.districts)
+		return
+	}
+	for _, p := range set.provinces {
+		ds := p.districts
 		sibs := make([]osmfile.Sibling, len(ds))
 		for i, d := range ds {
 			sibs[i] = osmfile.Sibling{OSMID: d.osmID, Names: d.names, Stored: own(d.stored)}
@@ -323,5 +342,34 @@ func resolveSlugs(set *regionSet, c country, stored map[int64]*db.StoredRegion) 
 		for i, d := range ds {
 			d.names, d.slug = sibs[i].Names, sibs[i].Slug
 		}
+	}
+}
+
+// legacyDistrictSlugs gives the run's districts their slugs by the rule
+// Thailand's districts were first imported with
+// (countries.Import.LegacyDuplicateSlug): a stored slug is kept; the others,
+// in OSM id order, get their province's slug, "-" and Slug of the stripped
+// English name, and when that slug is taken (by a stored row of the run or
+// an earlier district) "-<osm id>" appended. Names stay stripped.
+func legacyDistrictSlugs(ds []*district) {
+	taken := map[string]bool{}
+	for _, d := range ds {
+		if d.stored != nil {
+			d.slug = d.stored.Slug
+			taken[d.slug] = true
+		}
+	}
+	order := slices.Clone(ds)
+	slices.SortFunc(order, func(a, b *district) int { return cmp.Compare(a.osmID, b.osmID) })
+	for _, d := range order {
+		if d.stored != nil {
+			continue
+		}
+		slug := d.province.slug + "-" + osmfile.Slug(d.names.En)
+		if taken[slug] {
+			slug = fmt.Sprintf("%s-%d", slug, d.osmID)
+		}
+		taken[slug] = true
+		d.slug = slug
 	}
 }

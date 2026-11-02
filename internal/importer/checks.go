@@ -3,6 +3,7 @@ package importer
 import (
 	"fmt"
 	"math"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -135,8 +136,13 @@ func (pl *regionPlan) runChecks() []Check {
 		out = append(out, check(5, len(empty) > 0, empty...))
 	}
 
-	// 6: province-level relations in scope that do not assemble.
+	// 6: province-level relations in scope that do not assemble, and the
+	// neighbours' cuts that should complete them but are missing.
 	var na []string
+	for _, m := range pl.nb.missing {
+		name := strings.TrimSuffix(filepath.Base(m), "-latest.osm.pbf.cut.osm.pbf")
+		na = append(na, fmt.Sprintf("neighbour cut %s is missing (Neighbours %q; make it with map/cut.sh %s)", m, name, name))
+	}
 	for _, id := range pl.set.notAssembled {
 		na = append(na, fmt.Sprintf("r%d (not in Partial)", id))
 		if containsID(imp.Partial, id) {

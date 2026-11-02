@@ -15,7 +15,7 @@ package countries
 //     not used.
 //   - Metro Manila and the independent cities are not held at level 4, so
 //     they come in through Include as provinces of their own (decision of
-//     2026-11-02, for Adrian to confirm or revert before a production
+//     2026-11-03, for Adrian to confirm or revert before a production
 //     import). OSM maps the National Capital Region at level 3 only (r147488,
 //     PH-00; its 16 cities and Pateros at level 6, of which Pasig and
 //     Mandaluyong do not close in the extract), and the other 17 highly
@@ -31,13 +31,20 @@ package countries
 //     City 89, Angeles 87, Baguio 77, Lapu-Lapu 75, Mandaue 38, Metro Manila
 //     933. Without them these cells had no plot number and an upload there
 //     was refused. Metro Manila is one relation (r147488, whole; not its
-//     cities); the 19 cities are the level-6 relations above, listed by id
-//     under cities. Ormoc and Dagupan (independent component cities), the
+//     cities); the 19 cities are the level-6 relations above, listed by id in
+//     Include. Ormoc and Dagupan (independent component cities), the
 //     other component cities and the municipalities lie inside their
 //     provinces' relations and get plots as part of the province. The
-//     province relations have holes where the 19 cities lie (measured: no
-//     land plot lies in a city and in its province's polygon), so the
-//     combined RegionIndex's order does not decide anything here.
+//     province relations have holes where these 19 cities and Metro Manila
+//     lie: the 83 provinces keep exactly the 368,516 plots, with the same
+//     numbers, that they had without them (md5 of cell, province and number
+//     equal), and Metro Manila and the cities add 12,592 (the 12,588
+//     measured on the cut, 4 more through the importer's simplified
+//     outlines), so the combined RegionIndex's order decides no land plot.
+//     Places do change: 5,180 that lay outside every
+//     province now have a region, and 837 that the first import had
+//     attached to a neighbouring province (within geo.NearTolerance of its
+//     border, 190 in Baguio's case) now belong to the city they lie in.
 //     Count: 83 + Metro Manila + 19 = 103.
 //   - No district level for now (decision 2): the level-6 municipalities and
 //     cities cover only 52 % of the land plots, level 5 holds a few

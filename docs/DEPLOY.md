@@ -18,25 +18,48 @@ Below, `HOST` is the ssh name of the production host, `RUNTIME` the directory th
 
 2. **Settings**: copy `deploy/.env.prod.example` to `RUNTIME/deploy/.env` on the host, fill in every value (fresh secrets, the mailbox password, the local port), `chmod 600`.
 
-3. **Base map and import data**: `map/publish.sh HOST RUNTIME` copies the archive and prints the `TILES_URL` line for `.env`. For the import, copy `map/data/thailand-latest.osm.pbf` and `map/data/sources/water-polygons-split-3857.zip` to `RUNTIME/map/data/` (same layout) and set in `.env`:
-
-   ```sh
-   IMPORT_PBF=/srv/map/data/thailand-latest.osm.pbf
-   IMPORT_WATER=/srv/map/data/sources/water-polygons-split-3857.zip
-   IMPORT_BBOX=
-   ```
+3. **Base map and import data**: `map/publish.sh HOST RUNTIME` copies the archive and prints the `TILES_URL` line for `.env`. For the imports, copy each country's extract to `RUNTIME/map/data/` (same layout as `map/data/`): `thailand-latest.osm.pbf`, `laos-latest.osm.pbf` and so on, named as in `Extract` of `internal/countries/import*.go`, plus `map/data/sources/water-polygons-split-3857.zip` to `RUNTIME/map/data/sources/`. A large extract can be cut down on the Mac first (`map/cut.sh <extract>`, which writes `map/data/scan/<extract>-latest.osm.pbf.cut.osm.pbf`); copy the cut to the same place under `RUNTIME/map/data/scan/` and the importers read it instead of the full extract when it is newer. Nothing about the import goes into `.env` (`IMPORT_COUNTRIES` is only the default for a run without arguments); `IMPORT_PBF`, `IMPORT_WATER` and `IMPORT_BBOX` are for the development fixture and are ignored on the host.
 
 4. **Remote and first release**: `git remote add deploy HOST:REPO`, then `git push deploy main`. The hook builds, starts the database and the photo store, probes the api and starts the stack.
 
-5. **Import Thailand** (once, about half an hour):
+5. **Import Thailand** (once, about half an hour). Running imports on production is Adrian's step, by hand; no agent or hook does it. First a dry run, which only reads and changes nothing:
 
    ```sh
-   ssh HOST 'RUNTIME/deploy/prod.sh --profile tools run --rm regions && RUNTIME/deploy/prod.sh --profile tools run --rm places'
+   ssh HOST 'RUNTIME/deploy/prod.sh --profile tools run --rm import -countries th -dry-run'
+   ```
+
+   Read its report (provinces, districts, slugs, land plots, new plot numbers, border cells skipped, places) and the checks; a real run refuses if one fails. Then the same without `-dry-run`:
+
+   ```sh
+   ssh HOST 'RUNTIME/deploy/prod.sh --profile tools run --rm import -countries th'
    ```
 
 6. **Host Caddy**: `deploy/cartograph.asia.caddy` to `/etc/caddy/sites/`, then `caddy reload` (see the file's header).
 
 7. **Backups**: on the Mac, once: `deploy/install-backup-mac.sh /Volumes/<disk>/backups/cartograph HOST`. It creates the backup key (passphrase in the login keychain), copies its public half to the host and installs `cartograph-pull-backups` in `~/.local/bin`. Nothing is scheduled, on the host or the Mac.
+
+## Importing another country
+
+One country per run, each after the previous one's summary has been read, in the decided order: Laos (`la`), Cambodia (`kh`), Vietnam (`vn`), Timor-Leste (`tl`), Malaysia, Brunei and Singapore (`my`, `bn`, `sg`), the Philippines (`ph`), South Korea (`kr`), North Korea (`kp`), Taiwan (`tw`), Japan (`jp`), Myanmar (`mm`), Indonesia (`id`), Mongolia (`mn`) and China (`cn`). A country is importable once its settings no longer carry `Hold` in the release that is running. Running the imports on production is Adrian's step, by hand (an agent prepares the code and the settings, never the run).
+
+1. Copy the country's extract (`RUNTIME/map/data/<extract>-latest.osm.pbf`, for example `laos-latest.osm.pbf`; Malaysia, Brunei and Singapore share `malaysia-singapore-brunei`) or its cut (`RUNTIME/map/data/scan/<extract>-latest.osm.pbf.cut.osm.pbf`, from `map/cut.sh <extract>`) to the host. Use the extract of the day the scan report was made, or expect the dry run to report the difference.
+2. A dry run, which reads only and does not migrate (a pending migration makes it refuse until the release is up):
+
+   ```sh
+   ssh HOST 'RUNTIME/deploy/prod.sh --profile tools run --rm import -countries la -dry-run'
+   ```
+
+   Read the report and the checks: province count, slugs, land plots against the settings' figure, provinces without land plots, relations that do not assemble, border cells held by another country (1 to 3 per border is expected), places added and skipped. Nothing is written.
+3. The same without `-dry-run`:
+
+   ```sh
+   ssh HOST 'RUNTIME/deploy/prod.sh --profile tools run --rm import -countries la'
+   ```
+
+   It repeats the checks, imports the regions, then the places, and prints a summary row for the country. A run that fails part-way is completed by running it again (numbers only append).
+4. Look at the country page and the api's memory afterwards (`RUNTIME/deploy/prod.sh ps`, `docker stats --no-stream`), and note time and memory in `docs/decisions.md`.
+
+Several countries can be named in one run (`-countries la,kh`); a failed country is logged, the next still runs and the exit code is 1. Production goes one at a time. `-pbf`, `-water` and `-bbox` are allowed only with a single country and are not needed on the host.
 
 ## Taking a backup
 

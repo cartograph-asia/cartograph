@@ -15,7 +15,6 @@ import (
 
 	"github.com/paulmach/orb"
 	"github.com/paulmach/osm"
-	"github.com/paulmach/osm/osmgeojson"
 	"github.com/paulmach/osm/osmpbf"
 	"github.com/paulmach/osm/osmxml"
 
@@ -82,41 +81,18 @@ func scan(name string, opts scanOpts, fn func(osm.Object)) error {
 }
 
 // ReadBoundaryData reads the relations accepted by keep together with all
-// their member ways and those ways' nodes, in three passes. The result is the
-// raw OSM data, for BuildBoundaries or for writing a fixture.
+// their member ways and those ways' nodes, in three passes. The result is
+// raw OSM data for BuildBoundaries, Assemble or a fixture, made from
+// ReadBoundaries: the relations as read, ways and nodes with their ids and
+// positions only (no tags, no metadata), each sorted by id. Callers that
+// need no raw objects should use ReadBoundaries itself, which holds a
+// fraction of the memory.
 func ReadBoundaryData(name string, keep func(*osm.Relation) bool) (*osm.OSM, error) {
-	o := &osm.OSM{}
-	wayIDs := map[osm.WayID]bool{}
-	err := scan(name, scanOpts{relations: true, filterRelation: keep}, func(obj osm.Object) {
-		r := obj.(*osm.Relation)
-		o.Relations = append(o.Relations, r)
-		for _, m := range r.Members {
-			if m.Type == osm.TypeWay {
-				wayIDs[osm.WayID(m.Ref)] = true
-			}
-		}
-	})
+	d, err := ReadBoundaries(name, nil, keep)
 	if err != nil {
 		return nil, err
 	}
-	nodeIDs := map[osm.NodeID]bool{}
-	err = scan(name, scanOpts{ways: true, filterWay: func(w *osm.Way) bool { return wayIDs[w.ID] }}, func(obj osm.Object) {
-		w := obj.(*osm.Way)
-		o.Ways = append(o.Ways, w)
-		for _, n := range w.Nodes {
-			nodeIDs[n.ID] = true
-		}
-	})
-	if err != nil {
-		return nil, err
-	}
-	err = scan(name, scanOpts{nodes: true, filterNode: func(n *osm.Node) bool { return nodeIDs[n.ID] }}, func(obj osm.Object) {
-		o.Nodes = append(o.Nodes, obj.(*osm.Node))
-	})
-	if err != nil {
-		return nil, err
-	}
-	return o, nil
+	return d.OSM(), nil
 }
 
 // Boundary is one administrative boundary relation with its geometry.
@@ -126,31 +102,14 @@ type Boundary struct {
 	Geometry orb.MultiPolygon
 }
 
-// BuildBoundaries assembles the multipolygon of every relation in o.
-// Relations whose rings cannot be closed are returned in skipped.
+// BuildBoundaries assembles the multipolygon of every relation in o, in
+// o's order, as osmgeojson built it (polygon). Relations whose rings cannot
+// be closed are returned in skipped.
 func BuildBoundaries(o *osm.OSM) (out []Boundary, skipped []int64, err error) {
-	fc, err := osmgeojson.Convert(o, osmgeojson.NoMeta(true), osmgeojson.NoRelationMembership(true))
-	if err != nil {
-		return nil, nil, fmt.Errorf("geo: build boundaries: %w", err)
-	}
-	geom := map[int64]orb.MultiPolygon{}
-	for _, f := range fc.Features {
-		id, ok := f.ID.(string)
-		if !ok || !strings.HasPrefix(id, "relation/") {
-			continue
-		}
-		var rid int64
-		fmt.Sscanf(id, "relation/%d", &rid)
-		switch g := f.Geometry.(type) {
-		case orb.Polygon:
-			geom[rid] = orb.MultiPolygon{g}
-		case orb.MultiPolygon:
-			geom[rid] = g
-		}
-	}
+	d := fromOSM(o)
 	for _, r := range o.Relations {
-		g, ok := geom[int64(r.ID)]
-		if !ok || len(g) == 0 {
+		g := d.polygon(r)
+		if len(g) == 0 {
 			skipped = append(skipped, int64(r.ID))
 			continue
 		}

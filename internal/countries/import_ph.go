@@ -72,11 +72,14 @@ package countries
 //     513), neighbourhood mostly puroks, sitios and subdivisions; the 11,584
 //     hamlets (sitios) stay out as in Thailand.
 //
-// LandPlots: see docs/countries/philippines.md. The scan's 367,912 (scanned
-// 2026-11-02 from the philippines-latest.osm.pbf downloaded 2026-11-01) is the
-// 83 provinces alone: its outline is the union of the level-4 relations and
-// cannot take Include of other levels. The figure here is the importer's own
-// count with the cities, from the dry run of 2026-11-02 (LANDFIGURE).
+// LandPlots: 380,500 = the scan's 367,912 (docs/countries/philippines.md,
+// scanned 2026-11-02 from the philippines-latest.osm.pbf downloaded
+// 2026-11-01; its outline is the union of the level-4 relations, so it
+// counts the 83 provinces alone and cannot take Include of other levels)
+// plus the 12,588 land plots of Metro Manila and the 19 cities, measured on
+// the cut with the importer's land rule. The dry run of 2026-11-03 counts
+// 381,108 (+0.16 %, as it counted 368,516 against 367,912 for the provinces
+// alone).
 var importPH = Import{
 	Extract: "philippines",
 	Province: Level{
@@ -135,5 +138,5 @@ var importPH = Import{
 	LocalScripts: []string{"Latin"},
 	LocalLang:    "fil",
 	SlugSuffix:   true,
-	LandPlots:    367_912,
+	LandPlots:    380_500,
 }

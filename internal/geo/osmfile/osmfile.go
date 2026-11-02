@@ -12,7 +12,6 @@ import (
 	"os"
 	"runtime"
 	"strings"
-	"unicode"
 
 	"github.com/paulmach/orb"
 	"github.com/paulmach/osm"
@@ -20,6 +19,7 @@ import (
 	"github.com/paulmach/osm/osmpbf"
 	"github.com/paulmach/osm/osmxml"
 
+	"github.com/cartograph-asia/cartograph/internal/countries"
 	"github.com/cartograph-asia/cartograph/internal/geo"
 )
 
@@ -81,35 +81,31 @@ func scan(name string, opts scanOpts, fn func(osm.Object)) error {
 	return nil
 }
 
+// thailand is Thailand's import settings. The functions below are from before
+// the settings existed and wrap them until the importer reads the settings
+// itself (docs/COUNTRY_IMPORT_STAGE2_BRIEF.md, WP C removes them).
+func thailand() countries.Import { return countries.Imports["th"] }
+
 // IsProvince reports whether r is an admin_level-4 boundary of the country
-// with ISO 3166-1 code country (e.g. "th"), judged by its ISO3166-2 tag.
+// with ISO 3166-1 code country (e.g. "th"), judged by its ISO3166-2 tag:
+// Thailand's province level with country as the ISO prefix.
 func IsProvince(r *osm.Relation, country string) bool {
-	t := r.Tags
-	return t.Find("boundary") == "administrative" && t.Find("admin_level") == "4" &&
-		strings.HasPrefix(strings.ToUpper(t.Find("ISO3166-2")), strings.ToUpper(country)+"-")
+	l := thailand().Province
+	l.ISOPrefix = country
+	return MatchLevel(r, l)
 }
 
 // IsDistrict reports whether r is a district boundary (admin_level 6). OSM
 // districts carry no ISO code; the importer keeps those inside a province.
 func IsDistrict(r *osm.Relation) bool {
-	t := r.Tags
-	return t.Find("boundary") == "administrative" && t.Find("admin_level") == "6"
+	return MatchLevel(r, thailand().District)
 }
 
 // DistrictName returns a district's English and Thai names without the
 // words for district ("Bang Kapi District", "เขตบางกะปิ", "อำเภอบ้านโคก").
 // Whether a district is urban comes from place_naming, not from its name.
 func DistrictName(en, th string) (string, string) {
-	en = strings.TrimSpace(en)
-	en = strings.TrimSpace(strings.TrimSuffix(en, " District"))
-	for _, p := range []string{"Khet ", "Amphoe "} {
-		en = strings.TrimSpace(strings.TrimPrefix(en, p))
-	}
-	th = strings.TrimSpace(th)
-	for _, p := range []string{"เขต", "อำเภอ"} {
-		th = strings.TrimSpace(strings.TrimPrefix(th, p))
-	}
-	return en, th
+	return StripName(en, th, thailand().District)
 }
 
 // ReadBoundaryData reads the relations accepted by keep together with all
@@ -231,55 +227,15 @@ func ReadPlaces(name string, bound orb.Bound) ([]Place, error) {
 // Names returns the English and Thai display names from OSM tags: English is
 // the first of name:en, int_name, name:th-Latn, name that is not written in
 // Thai script (empty if none); Thai is name:th, else name when it is Thai.
+// It is NamesFor with Thailand's settings.
 func Names(t osm.Tags) (en, th string) {
-	for _, k := range []string{"name:en", "int_name", "name:th-Latn", "name"} {
-		if v := strings.TrimSpace(t.Find(k)); v != "" && !hasThai(v) {
-			en = v
-			break
-		}
-	}
-	th = strings.TrimSpace(t.Find("name:th"))
-	if th == "" && hasThai(t.Find("name")) {
-		th = strings.TrimSpace(t.Find("name"))
-	}
-	return en, th
-}
-
-func hasThai(s string) bool {
-	for _, r := range s {
-		if unicode.Is(unicode.Thai, r) {
-			return true
-		}
-	}
-	return false
+	return NamesFor(t, thailand())
 }
 
 // RegionName returns a province's English and Thai names without the word
 // "province" (OSM has e.g. "Chon Buri Province" and "จังหวัดชลบุรี").
 func RegionName(en, th string) (string, string) {
-	en = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(en), " Province"))
-	th = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(th), "จังหวัด"))
-	return en, th
-}
-
-// Slug turns an English name into a URL slug: lower-case ASCII letters and
-// digits separated by single hyphens.
-func Slug(s string) string {
-	var b strings.Builder
-	dash := false
-	for _, r := range strings.ToLower(s) {
-		switch {
-		case r >= 'a' && r <= 'z' || r >= '0' && r <= '9':
-			if dash && b.Len() > 0 {
-				b.WriteByte('-')
-			}
-			b.WriteRune(r)
-			dash = false
-		default:
-			dash = true
-		}
-	}
-	return b.String()
+	return StripName(en, th, thailand().Province)
 }
 
 // ReadPlacesRaw returns the raw place nodes of PlaceKinds inside bound.

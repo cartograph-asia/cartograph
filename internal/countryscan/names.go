@@ -4,6 +4,8 @@ import (
 	"sort"
 	"strings"
 	"unicode"
+
+	"github.com/cartograph-asia/cartograph/internal/geo/osmfile"
 )
 
 // Script names, as printed in the report.
@@ -122,9 +124,11 @@ func localName(t tagSet, lang string) (name, key string) {
 
 // plainSlug is the slug without accent folding, as osmfile.Slug made it
 // before stage 2: lower-case ASCII letters and digits separated by single
-// hyphens, so an accented letter is dropped ("Hà Nội" becomes "h-n-i"). It is
-// kept only for the report's accent line, which counts the names whose slug
-// folding changes; the scan's slugs come from osmfile.Slug, like the import's.
+// hyphens, so an accented letter is dropped ("Hà Nội" becomes "h-n-i").
+// Apostrophes are dropped as in osmfile.Slug, so the two differ only where
+// folding matters ("O'Brien" is "obrien" in both). It is kept only for the
+// report's accent line, which counts the names whose slug folding changes;
+// the scan's slugs come from osmfile.Slug, like the import's.
 func plainSlug(s string) string {
 	var b strings.Builder
 	dash := false
@@ -136,6 +140,8 @@ func plainSlug(s string) string {
 			}
 			b.WriteRune(r)
 			dash = false
+		case osmfile.IsApostrophe(r):
+			// dropped, as osmfile.Slug does
 		default:
 			dash = true
 		}

@@ -67,6 +67,8 @@ func TestAccentSlugs(t *testing.T) {
 		"Thành phố Hồ Chí Minh": {"th-nh-ph-h-ch-minh", "thanh-pho-ho-chi-minh"},
 		"Đà Nẵng":               {"n-ng", "da-nang"},
 		"Chon Buri":             {"chon-buri", "chon-buri"},
+		"O'Brien Road":          {"obrien-road", "obrien-road"},
+		"P'yŏngyang":            {"py-ngyang", "pyongyang"},
 		"ชลบุรี":                {"", ""},
 	} {
 		if got := [2]string{plainSlug(in), osmfile.Slug(in)}; got != want {

@@ -22,3 +22,10 @@
 /web
 /.claude
 /backup
+# Binaries from `go build ./cmd/...` in the repository root
+/api
+/regions
+/places
+/seed
+/fixture
+/webpreview

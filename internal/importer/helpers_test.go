@@ -99,7 +99,9 @@ func zzSettings() countries.Import {
 }
 
 // syntheticZZ is testdata/synthetic-zz.osm.
-func syntheticZZ() string { return filepath.Join(filepath.Dir(goldenPath("x")), "..", "synthetic-zz.osm") }
+func syntheticZZ() string {
+	return filepath.Join(filepath.Dir(goldenPath("x")), "..", "synthetic-zz.osm")
+}
 
 // importThai imports the Pattaya fixture as docker compose does.
 func importThai(ctx context.Context, t *testing.T, d *db.DB) {

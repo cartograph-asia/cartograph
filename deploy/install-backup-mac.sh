@@ -8,8 +8,9 @@
 #      keychain (service "cartograph-backup"), the public half to the host as
 #      cartograph-backups/backup-key.asc for deploy/backup.sh
 #   2. ~/.config/cartograph/backup.env with the paths
-#   3. the pull script as ~/.local/bin/cartograph-pull-backups and the launchd
-#      job asia.cartograph.backup (daily at 07:30, or on wake if missed)
+#   3. the pull script as ~/.local/bin/cartograph-pull-backups, run by hand
+#      whenever a backup is wanted (nothing is scheduled, on the Mac or the
+#      host)
 #
 # Run again, it keeps an existing key and only refreshes the rest.
 set -euo pipefail
@@ -18,7 +19,7 @@ host=${2:?usage: install-backup-mac.sh BACKUP_DIR SSH_HOST}
 here=$(cd "$(dirname "$0")" && pwd)
 conf=$HOME/.config/cartograph
 export GNUPGHOME=$conf/gnupg
-mkdir -p "$conf" "$GNUPGHOME" "$HOME/.local/bin" "$HOME/Library/LaunchAgents" "$HOME/Library/Logs"
+mkdir -p "$conf" "$GNUPGHOME" "$HOME/.local/bin"
 chmod 700 "$GNUPGHOME"
 
 uid="Cartograph backup <backup@cartograph.asia>"
@@ -43,8 +44,10 @@ scp -q "$conf/backup-key.asc" "$host:cartograph-backups/backup-key.asc"
 } > "$conf/backup.env"
 install -m 755 "$here/pull-backups.sh" "$HOME/.local/bin/cartograph-pull-backups"
 
+# Backups were once pulled daily by launchd; remove that job if it is there.
 plist=$HOME/Library/LaunchAgents/asia.cartograph.backup.plist
-sed -e "s|@HOME@|$HOME|g" "$here/asia.cartograph.backup.plist" > "$plist"
-launchctl bootout "gui/$(id -u)" "$plist" 2>/dev/null || true
-launchctl bootstrap "gui/$(id -u)" "$plist"
-echo "installed: launchd job asia.cartograph.backup, log in ~/Library/Logs/cartograph-backup.log"
+if [ -f "$plist" ]; then
+	launchctl bootout "gui/$(id -u)" "$plist" 2>/dev/null || true
+	rm -f "$plist"
+fi
+echo "installed: run cartograph-pull-backups to take a backup and pull it here"

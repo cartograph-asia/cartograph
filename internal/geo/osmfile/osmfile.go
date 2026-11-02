@@ -192,12 +192,12 @@ func BuildBoundaries(o *osm.OSM) (out []Boundary, skipped []int64, err error) {
 
 // Place is an OSM place node of one of PlaceKinds.
 type Place struct {
-	OSMType string // "n", "w" or "r"
-	OSMID   int64
-	Kind    string // a key of PlaceKinds
-	NameEn  string
-	NameLocal  string
-	Point   orb.Point
+	OSMType   string // "n", "w" or "r"
+	OSMID     int64
+	Kind      string // a key of PlaceKinds
+	NameEn    string
+	NameLocal string
+	Point     orb.Point
 }
 
 // PlaceKinds are the place=* values imported as plot names. Only nodes are

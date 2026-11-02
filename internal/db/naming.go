@@ -66,11 +66,11 @@ func (d *DB) naming(country string) *PlaceNaming {
 
 // placeCandidate is a place near a plot.
 type placeCandidate struct {
-	id             int64
-	kind           string
+	id                int64
+	kind              string
 	nameEn, nameLocal string
-	lat, lng       float64
-	km             float64 // distance from the plot centre
+	lat, lng          float64
+	km                float64 // distance from the plot centre
 }
 
 // placesNear returns the places within radiusKm of (lat, lng), using the

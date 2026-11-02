@@ -138,3 +138,93 @@ func TestOverlaps(t *testing.T) {
 		t.Fatal("overlaps.md is not deterministic")
 	}
 }
+
+func TestMdText(t *testing.T) {
+	for in, want := range map[string]string{
+		"Chon Buri":             "Chon Buri",
+		"a|b":                   `a\|b`,
+		"<b>x</b>":              "&lt;b&gt;x&lt;/b&gt;",
+		"[x](http://e.example)": `\[x\](http://e.example)`,
+		"a`b":                   "a’b",
+		"a\nb\tc\r\nd":          "a b c d",
+		"snake_case *star*":     "snake_case *star*",
+		"ชลบุรี · Hà Nội":       "ชลบุรี · Hà Nội",
+	} {
+		if got := mdText(in); got != want {
+			t.Errorf("mdText(%q) = %q, want %q", in, got, want)
+		}
+	}
+	if got := quoted([]string{"a`b", `c"d`}); got != `[]string{"a’b", "c\"d"}` {
+		t.Errorf("quoted = %s", got)
+	}
+}
+
+// unescapedPipes counts the table separators of a line.
+func unescapedPipes(line string) int {
+	n := 0
+	for i := 0; i < len(line); i++ {
+		switch line[i] {
+		case '\\':
+			i++
+		case '|':
+			n++
+		}
+	}
+	return n
+}
+
+func TestReportEscapesOSMText(t *testing.T) {
+	r := scanFixture(t)
+	const evil = "x|y <img src=a onerror=b> [c](http://e.example) `d`\ne"
+	for _, l := range r.Levels {
+		l.Examples = append(l.Examples, evil)
+		l.SkippedList = append(l.SkippedList, "r1 "+evil)
+		l.Prefixes[evil] = 1
+		l.NameKeys[evil] = 1
+	}
+	for _, n := range r.Names {
+		n.AccentEx = append(n.AccentEx, evil)
+		n.Duplicates = append(n.Duplicates, evil)
+		n.EnglishKeys[evil] = 1
+		n.Prefixes = append(n.Prefixes, Affix{Text: evil, Count: n.N})
+		n.LocalSuf = append(n.LocalSuf, Affix{Text: evil, Count: n.N})
+		n.AccentLoss = 1
+	}
+	r.Places.Kinds = append(r.Places.Kinds, KindStat{Kind: evil, Total: 1})
+	r.Places.Cities = append(r.Places.Cities, CityStat{Name: evil, Population: 1, Kinds: []KindStat{{Kind: evil, Total: 1}}})
+	md := r.Report()
+
+	// The fenced Go sketch shows text literally, so look at the prose only.
+	prose, sketch, _ := strings.Cut(md, "```go")
+	if strings.Contains(prose, "<img") {
+		t.Fatalf("raw HTML in the report:\n%s", prose)
+	}
+	if strings.Contains(prose, "[c]") {
+		t.Fatal("unescaped link text in the report")
+	}
+	for _, line := range strings.Split(prose, "\n") {
+		if strings.Contains(line, "&lt;img") && strings.HasPrefix(line, "| ") {
+			// the place table has four columns, five separators
+			if got := unescapedPipes(line); got != 5 {
+				t.Errorf("table row has %d separators: %s", got, line)
+			}
+		}
+		if strings.Contains(line, "<") && !strings.HasPrefix(line, "```") {
+			t.Errorf("raw < in line: %s", line)
+		}
+		if strings.Contains(line, "x|y") {
+			t.Errorf("unescaped pipe in line: %s", line)
+		}
+		// A code span must not be opened or closed by OSM text: backticks come in pairs.
+		if !strings.HasPrefix(line, "```") && strings.Count(line, "`")%2 != 0 {
+			t.Errorf("odd number of backticks: %s", line)
+		}
+	}
+	if !strings.Contains(prose, `x\|y &lt;img src=a onerror=b&gt; \[c\](http://e.example) ’d’ e`) {
+		t.Fatalf("escaped text not found:\n%s", prose)
+	}
+	// The Go sketch: the Quote of an affix carries no backtick.
+	if strings.Count(sketch, "```") != 1 || strings.Contains(sketch, "`d`") {
+		t.Fatalf("code block broken:\n%s", sketch)
+	}
+}

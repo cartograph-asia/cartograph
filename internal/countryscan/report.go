@@ -28,6 +28,29 @@ func pct(a, b int) string {
 	return fmt.Sprintf("%.0f %%", 100*float64(a)/float64(b))
 }
 
+// mdReplacer makes text from OpenStreetMap tags harmless in a table cell, a
+// bullet and a code span of a Markdown report that GitHub renders.
+var mdReplacer = strings.NewReplacer(
+	"\r\n", " ", "\n", " ", "\r", " ", "\t", " ",
+	"|", `\|`,
+	"<", "&lt;", ">", "&gt;",
+	"[", `\[`, "]", `\]`,
+	"`", "’", // a backtick cannot be escaped inside a code span
+)
+
+// mdText escapes s for a table cell, a bullet or a code span. Underscores and
+// asterisks are left alone: they only emphasise, they cannot break out.
+func mdText(s string) string { return mdReplacer.Replace(s) }
+
+// mdTexts applies mdText to each element.
+func mdTexts(ss []string) []string {
+	out := make([]string, len(ss))
+	for i, s := range ss {
+		out[i] = mdText(s)
+	}
+	return out
+}
+
 // counts renders a map as "key n, key n" by count, then key.
 func counts(m map[string]int, limit int) string {
 	type kv struct {
@@ -49,7 +72,7 @@ func counts(m map[string]int, limit int) string {
 	}
 	out := make([]string, len(l))
 	for i, x := range l {
-		out[i] = fmt.Sprintf("`%s` %s", x.k, num(x.n))
+		out[i] = fmt.Sprintf("`%s` %s", mdText(x.k), num(x.n))
 	}
 	return strings.Join(out, ", ")
 }
@@ -57,7 +80,7 @@ func counts(m map[string]int, limit int) string {
 func affixList(as []Affix) string {
 	out := make([]string, len(as))
 	for i, a := range as {
-		out[i] = fmt.Sprintf("“%s” %d", a.Text, a.Count)
+		out[i] = fmt.Sprintf("“%s” %d", mdText(a.Text), a.Count)
 	}
 	return strings.Join(out, ", ")
 }
@@ -172,7 +195,7 @@ func (r *Result) writeLevel(b *strings.Builder, l *Level) {
 	w := func(format string, a ...any) { fmt.Fprintf(b, format, a...) }
 	w("### Level %d\n\n", l.Level)
 	if l.Level == MinLevel {
-		w("Countries in the extract: %s.\n\n", join(l.Examples))
+		w("Countries in the extract: %s.\n\n", join(mdTexts(l.Examples)))
 		return
 	}
 	w("- %s in the extract, %s in scope (%s).", relations(l.Extract), num(l.N), l.Scope)
@@ -196,14 +219,14 @@ func (r *Result) writeLevel(b *strings.Builder, l *Level) {
 			num(int(l.AreaKm2)), l.AreaPct, num(l.Gaps), num(l.Overlaps), l.NoLand, num(l.LandMin), num(l.LandMax), num(l.LandMedian))
 		w("- Rings not closed in the extract (a member way is missing): %d in scope; %d of the level's relations could not be assembled at all.", l.Skipped, l.SkippedAny)
 		if len(l.SkippedList) > 0 {
-			w(" In scope: %s.", join(l.SkippedList))
+			w(" In scope: %s.", join(mdTexts(l.SkippedList)))
 		}
 		if l.FillErrors > 0 {
 			w(" %d could not be filled with cells.", l.FillErrors)
 		}
 		w("\n")
 	}
-	w("- Examples: %s.\n\n", join(l.Examples))
+	w("- Examples: %s.\n\n", join(mdTexts(l.Examples)))
 }
 
 func (r *Result) writeProposal(b *strings.Builder) {
@@ -240,14 +263,14 @@ func (r *Result) writeNames(b *strings.Builder) {
 			if len(d) > 10 {
 				d = d[:10]
 			}
-			w(": %s", join(d))
+			w(": %s", join(mdTexts(d)))
 		}
 		w(".\n")
 		if n.Role == "district" {
 			w("  (A district's slug is built from its province's; the duplicates above are within one province.)\n")
 		}
 		if n.AccentLoss > 0 {
-			w("- **Accents:** `osmfile.Slug` drops accented letters; with accents folded (NFD, đ → d) the slug is different for %d names, e.g. %s. Stage 2 should fold accents.\n", n.AccentLoss, join(n.AccentEx))
+			w("- **Accents:** `osmfile.Slug` drops accented letters; with accents folded (NFD, đ → d) the slug is different for %d names, e.g. %s. Stage 2 should fold accents.\n", n.AccentLoss, join(mdTexts(n.AccentEx)))
 		}
 		w("\n")
 	}
@@ -263,7 +286,7 @@ func (r *Result) writePlaces(b *strings.Builder) {
 		if i == 12 {
 			break
 		}
-		w("| %s | %s | %s | %s |\n", k.Kind, num(k.Total), num(k.Named), num(k.Latin))
+		w("| %s | %s | %s | %s |\n", mdText(k.Kind), num(k.Total), num(k.Named), num(k.Latin))
 	}
 	w("\n")
 	if len(r.Places.Cities) == 0 {
@@ -278,10 +301,10 @@ func (r *Result) writePlaces(b *strings.Builder) {
 				break
 			}
 			if k.Total > 0 {
-				parts = append(parts, fmt.Sprintf("%s %s (%s English-capable)", k.Kind, num(k.Total), num(k.Latin)))
+				parts = append(parts, fmt.Sprintf("%s %s (%s English-capable)", mdText(k.Kind), num(k.Total), num(k.Latin)))
 			}
 		}
-		w("- %s (population %s): %s.\n", c.Name, num(c.Population), or(join(parts), "no other place nodes"))
+		w("- %s (population %s): %s.\n", mdText(c.Name), num(c.Population), or(join(parts), "no other place nodes"))
 	}
 	w("\n")
 }
@@ -339,7 +362,8 @@ func quoted(ss []string) string {
 	}
 	out := make([]string, len(ss))
 	for i, s := range ss {
-		out[i] = strconv.Quote(s)
+		// A backtick would end the code block of the report.
+		out[i] = strconv.Quote(strings.ReplaceAll(s, "`", "’"))
 	}
 	return "[]string{" + strings.Join(out, ", ") + "}"
 }

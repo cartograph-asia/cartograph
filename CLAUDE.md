@@ -61,13 +61,14 @@ Stage names, so everyone means the same: *prototype* (done) → *alpha* (now: Ad
 ```
 cartograph/
   cmd/api/            Go entry point: pages, sign-in, JSON API, migrations
-  cmd/regions, cmd/places, cmd/fixture, cmd/seed, cmd/commons, cmd/webpreview
+  cmd/regions, cmd/places, cmd/fixture, cmd/seed, cmd/commons, cmd/countryscan, cmd/webpreview
   internal/
     admin/            admin pages and actions (/admin)
     api/              JSON handlers, routing, middleware
     auth/             magic links, sessions, CSRF
     db/               queries (pgx), migrations runner, views source
     geo/              OSM reading, boundaries, land cells, place naming
+    countryscan/      read-only scan of an OSM extract per country (reports in docs/countries/)
     h3/               thin wrappers around h3-go (latlng→cell, parent, boundary)
     importer/         regions and places import
     photos/           image pipeline, EXIF
@@ -75,7 +76,7 @@ cartograph/
     views/            plain structs every page renders from
     web/              templates/, static/ (style.css, logo), page handlers, RSS
   migrations/         *.sql
-  docs/               briefs, decisions, principles, pages/ (static Markdown pages)
+  docs/               briefs, decisions, principles, pages/ (static Markdown pages), countries/ (scan reports)
   web/                Vite app for /map (src/, style.json for the base map)
   map/                scripts to download the OSM extract and build PMTiles
   deploy/             docker-compose.yml, Caddyfile, Dockerfiles, garage.toml, .env.example

@@ -34,13 +34,17 @@ package countries
 //     gu (districts of the metropolitan cities, "Jongno-gu"), and one new
 //     Incheon district, 검단구, without an English name, which is skipped.
 //     Nine English names carry no suffix ("Ansan", "Jeju", "Sinan"). The
-//     suffixes "-si", "-gun", "-gu" and the Korean 시, 군, 구 are stripped
-//     from the names, so that the nine agree with the rest, and the type is
-//     the kind word: city, county or district. The Korean suffixes go gu
-//     first, then gun, then si, each once: 양구군 (Yanggu-gun) loses its 군
-//     and must keep its 구. Five directions (Jung, Dong, Seo, Nam, Buk) name
-//     22 gu and become one-syllable names (중, 동, 서, 남, 북); keeping "-gu"
-//     for them alone would make the list inconsistent.
+//     suffixes "-si" and "-gun" and the Korean 시 and 군 are stripped from the
+//     names, so that the nine agree with the rest; the kind word (city or
+//     county; "district" for a gu) says what they were. The gu keep their
+//     "-gu" and 구 (decided by the lead, reversible until a production
+//     import): five directions (Jung, Dong, Seo, Nam, Buk) name 22 gu and
+//     would be one-syllable names stripped (중, 동, 서, 남, 북; "Dong, Busan
+//     12"), cryptic beside the -dong neighbourhoods, so "Jung-gu",
+//     "Gangnam-gu", 중구, 강남구 stay whole and slugs read
+//     seoul-south-korea-jung-gu. The Korean strip goes gun, then si, each
+//     once; no gu is among them, so 양구군 (Yanggu-gun) loses its 군 only and
+//     keeps its 구.
 //     KindWord matches an affix at either end of a name, and 구리시 (Guri),
 //     구미시, 군산시, 군포시 and 구례군 start with 구 or 군. So the English
 //     suffixes are listed too: they are longer, tried first, and decide every
@@ -86,8 +90,8 @@ var importKR = Import{
 			"시": "city", "군": "county", "구": "district",
 		},
 		Strip: Affixes{
-			EnSuffix:    []string{"-si", "-gun", "-gu"},
-			LocalSuffix: []string{"구", "군", "시"}, // 군 before 시, 구 first: 양구군 (Yanggu-gun) loses its 군 only
+			EnSuffix:    []string{"-si", "-gun"}, // "-gu" stays: Jung-gu, Gangnam-gu
+			LocalSuffix: []string{"군", "시"},      // 구 stays: 중구, 강남구; 양구군 (Yanggu-gun) loses its 군 only
 		},
 	},
 	English:      []string{"name:en", "int_name", "name:ko-Latn", "name"},

@@ -62,15 +62,22 @@ func TestSouthKoreaNames(t *testing.T) {
 		{"Jeonnam-Gwangju without the Korean name", krTags("name:en", "Jeonnam-Gwangju Special Metropolitan City"),
 			kr.Province, "Jeonnam-Gwangju", "", "special metropolitan city", "jeonnam-gwangju"},
 
-		// Districts: -si city, -gun county, -gu district.
+		// Districts: -si city and -gun county are stripped; -gu district stays.
 		{"si", krTags("name", "안동시", "name:en", "Andong-si", "name:ko", "안동시"),
 			kr.District, "Andong", "안동", "city", "andong"},
 		{"gun", krTags("name", "철원군", "name:en", "Cheorwon-gun", "name:ko", "철원군", "name:ko-Latn", "Cheorwon"),
 			kr.District, "Cheorwon", "철원", "county", "cheorwon"},
-		{"gu", krTags("name", "종로구", "name:en", "Jongno-gu", "name:ko", "종로구"),
-			kr.District, "Jongno", "종로", "district", "jongno"},
+		{"gu keeps its suffix", krTags("name", "종로구", "name:en", "Jongno-gu", "name:ko", "종로구"),
+			kr.District, "Jongno-gu", "종로구", "district", "jongno-gu"},
+		{"Gangnam-gu", krTags("name", "강남구", "name:en", "Gangnam-gu", "name:ko", "강남구"),
+			kr.District, "Gangnam-gu", "강남구", "district", "gangnam-gu"},
+		// The five directions are not one-syllable names.
 		{"gu that is a direction", krTags("name", "중구", "name:en", "Jung-gu", "name:ko", "중구"),
-			kr.District, "Jung", "중", "district", "jung"},
+			kr.District, "Jung-gu", "중구", "district", "jung-gu"},
+		{"Dong-gu", krTags("name", "동구", "name:en", "Dong-gu", "name:ko", "동구"),
+			kr.District, "Dong-gu", "동구", "district", "dong-gu"},
+		{"Buk-gu", krTags("name", "북구", "name:en", "Buk-gu", "name:ko", "북구"),
+			kr.District, "Buk-gu", "북구", "district", "buk-gu"},
 		// KindWord looks at both ends of a name: these start with 구 or 군.
 		{"Guri-si starts with gu", krTags("name", "구리시", "name:en", "Guri-si", "name:ko", "구리시"),
 			kr.District, "Guri", "구리", "city", "guri"},
@@ -93,9 +100,10 @@ func TestSouthKoreaNames(t *testing.T) {
 			kr.District, "Sinan", "신안", "county", "sinan"},
 		{"Jeju city", krTags("name", "제주시", "name:en", "Jeju", "name:ko", "제주시"),
 			kr.District, "Jeju", "제주", "city", "jeju"},
-		// Only a Hangul name: no English name (Incheon's new Geomdan-gu).
+		// Only a Hangul name: no English name (Incheon's new Geomdan-gu); the
+		// Korean 구 decides the word and stays in the name.
 		{"no English name", krTags("name", "검단구", "name:ko", "검단구"),
-			kr.District, "", "검단", "district", ""},
+			kr.District, "", "검단구", "district", ""},
 	}
 	for _, tc := range cases {
 		n := osmfile.LevelNames(tc.tags, kr, tc.level)
@@ -108,6 +116,9 @@ func TestSouthKoreaNames(t *testing.T) {
 	}
 	if got := osmfile.Slug("Seoul") + "-south-korea"; got != "seoul-south-korea" {
 		t.Errorf("province slug %q", got)
+	}
+	if got := "seoul-south-korea-" + osmfile.Slug("Jung-gu"); got != "seoul-south-korea-jung-gu" {
+		t.Errorf("district slug %q", got)
 	}
 
 	// Kind words that equal the structural kind are not stored (kind_name NULL).

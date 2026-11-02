@@ -119,17 +119,80 @@ func (x *RegionIndex) Len() int {
 }
 
 // Contains returns the region whose boundary contains p.
-func (x *RegionIndex) Contains(p orb.Point) (int, bool) {
+func (x *RegionIndex) Contains(p orb.Point) (int, bool) { return x.ContainsOf(p, nil) }
+
+// ContainsOf is Contains among the regions for which want(id) is true (nil:
+// all): the first of them, in index order, whose boundary contains p.
+func (x *RegionIndex) ContainsOf(p orb.Point, want func(id int) bool) (int, bool) {
 	if x == nil {
 		return 0, false
 	}
 	for i := range x.shapes {
 		s := &x.shapes[i]
-		if len(s.Geometry) > 0 && s.bound.Contains(p) && planar.MultiPolygonContains(s.Geometry, p) {
+		if len(s.Geometry) > 0 && s.bound.Contains(p) && (want == nil || want(s.ID)) && planar.MultiPolygonContains(s.Geometry, p) {
 			return s.ID, true
 		}
 	}
 	return 0, false
+}
+
+// KmPerDegree is the length of one degree of latitude in kilometres (a
+// sphere of radius 6371 km), as plot naming measures distances.
+const KmPerDegree = 111.195
+
+// Nearest returns, among the regions for which want(id) is true (nil: all),
+// the one whose boundary is nearest to p, with its distance in kilometres,
+// when that is at most km; a region containing p is at distance 0. The
+// distance is measured on a local equirectangular projection around p,
+// which is exact enough for the few kilometres it is used for.
+func (x *RegionIndex) Nearest(p orb.Point, km float64, want func(id int) bool) (id int, dist float64, ok bool) {
+	if x == nil || km < 0 {
+		return 0, 0, false
+	}
+	cos := math.Cos(p[1] * math.Pi / 180)
+	dLat := km / KmPerDegree
+	pad := orb.Bound{Min: orb.Point{p[0] - dLat/cos, p[1] - dLat}, Max: orb.Point{p[0] + dLat/cos, p[1] + dLat}}
+	best := math.Inf(1)
+	for i := range x.shapes {
+		s := &x.shapes[i]
+		if len(s.Geometry) == 0 || !s.bound.Intersects(pad) || (want != nil && !want(s.ID)) {
+			continue
+		}
+		d := 0.0
+		if !s.bound.Contains(p) || !planar.MultiPolygonContains(s.Geometry, p) {
+			d = kmToBoundary(s.Geometry, p, cos)
+		}
+		if d < best {
+			id, best = s.ID, d
+		}
+	}
+	if best <= km {
+		return id, best, true
+	}
+	return 0, 0, false
+}
+
+// kmToBoundary is the distance in kilometres from p to the nearest ring of
+// mp, with longitudes scaled by cos (the cosine of p's latitude).
+func kmToBoundary(mp orb.MultiPolygon, p orb.Point, cos float64) float64 {
+	best := math.Inf(1)
+	for _, poly := range mp {
+		for _, r := range poly {
+			for j := 1; j < len(r); j++ {
+				ax, ay := (r[j-1][0]-p[0])*cos, r[j-1][1]-p[1]
+				bx, by := (r[j][0]-p[0])*cos, r[j][1]-p[1]
+				dx, dy := bx-ax, by-ay
+				t := 0.0
+				if l := dx*dx + dy*dy; l > 0 {
+					t = math.Max(0, math.Min(1, -(ax*dx+ay*dy)/l))
+				}
+				if d := math.Hypot(ax+t*dx, ay+t*dy); d < best {
+					best = d
+				}
+			}
+		}
+	}
+	return best * KmPerDegree
 }
 
 // Locate returns the region containing p, else the region whose boundary is

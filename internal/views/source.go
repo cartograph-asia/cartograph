@@ -34,8 +34,12 @@ type Source interface {
 	Surveyors(ctx context.Context, page int) (*SurveyorList, error)
 	// Regions returns /regions.
 	Regions(ctx context.Context) (*RegionList, error)
-	// Surveyor returns one page of a profile, or ErrNotFound.
-	Surveyor(ctx context.Context, name string, page int) (*Surveyor, error)
+	// Surveyor returns one page of a profile, or ErrNotFound (also for an
+	// unknown q.Region or a page past the last one).
+	Surveyor(ctx context.Context, name string, q SurveyorQuery) (*Surveyor, error)
+	// SurveyorPlots returns the plots with a photo of the Surveyor's, for the
+	// GPX and GeoJSON exports, or ErrNotFound.
+	SurveyorPlots(ctx context.Context, name string) (*SurveyorPlotList, error)
 	// Plot returns a plot page. A malformed cell, a cell that is not res 8 or
 	// one outside every region is ErrNotFound; a blank cell in a region is a
 	// page with Surveyed false.
@@ -48,6 +52,10 @@ type Source interface {
 	Photo(ctx context.Context, id string) (*Photo, error)
 	// Region returns one page of a region, or ErrNotFound.
 	Region(ctx context.Context, slug string, page int) (*Region, error)
+	// Country returns one page of a country, ErrNotFound for a slug that is
+	// not in the list of countries (internal/countries). A country in the
+	// list without regions is a page with Open false.
+	Country(ctx context.Context, slug string, page int) (*Country, error)
 	// RegionRefs returns every region by name, for the home-region select.
 	RegionRefs(ctx context.Context) ([]RegionRef, error)
 
@@ -55,6 +63,9 @@ type Source interface {
 	LatestFeed(ctx context.Context) (*Feed, error)
 	// RegionFeed returns /region/{slug}.rss, or ErrNotFound.
 	RegionFeed(ctx context.Context, slug string) (*Feed, error)
+	// CountryFeed returns /{country}.rss, or ErrNotFound for an unknown slug
+	// or a country without regions.
+	CountryFeed(ctx context.Context, slug string) (*Feed, error)
 	// SurveyorFeed returns /surveyor/{name}.rss, or ErrNotFound.
 	SurveyorFeed(ctx context.Context, name string) (*Feed, error)
 }
@@ -69,6 +80,7 @@ const (
 	PagePlot        = "plot"         // *Plot
 	PagePhoto       = "photo"        // *Photo
 	PageRegion      = "region"       // *Region
+	PageCountry     = "country"      // *Country
 	PageFeed        = "feed"         // *Feed, rendered as RSS 2.0 (application/rss+xml)
 	PageSignIn      = "signin"       // *SignIn
 	PageCheckEmail  = "check-email"  // *CheckEmail

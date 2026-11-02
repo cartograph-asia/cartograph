@@ -15,7 +15,7 @@
 {{template "grid" (grid .Now .Photos true "plot")}}
 </section>{{end}}
 
-<p class="details">Details: H3 index <code>{{$pl.Cell}}</code>, also at <a href="/plot/{{$pl.Cell}}">/plot/{{$pl.Cell}}</a></p>
+<p class="details">Details: H3 index <code>{{$pl.Cell}}</code>, also at <a href="/plot/{{$pl.Cell}}">/plot/{{$pl.Cell}}</a> · <a href="{{nearbyURL $pl.Cell}}">Nearby on Wikidata</a></p>
 
 <section class="block minimap" aria-labelledby="map-h">
 <div class="head-row"><h2 id="map-h">Around this plot</h2><a class="more" href="/map?cell={{$pl.Cell}}">Open on the map <span aria-hidden="true">→</span></a></div>

@@ -1,6 +1,6 @@
 # Cartograph – project context for coding agents
 
-Cartograph (cartograph.asia) is a community game: a photo for every plot of land in South, Southeast and East Asia. The map is divided into H3 hexagons ("plots"). Members ("Surveyors") upload a geotagged photo; the first photo claims the plot. See the organisation README at github.com/cartograph-asia for the full concept.
+Cartograph (cartograph.asia) is a community game: a photo for every plot of land in Southeast and East Asia. The map is divided into H3 hexagons ("plots"). Members ("Surveyors") upload a geotagged photo; the first photo claims the plot. See the organisation README at github.com/cartograph-asia for the full concept.
 
 This file is the standing context for every agent working in this repository. Read it before doing anything.
 
@@ -61,7 +61,7 @@ Stage names, so everyone means the same: *prototype* (done) → *alpha* (now: Ad
 ```
 cartograph/
   cmd/api/            Go entry point: pages, sign-in, JSON API, migrations
-  cmd/regions, cmd/places, cmd/fixture, cmd/seed, cmd/webpreview
+  cmd/regions, cmd/places, cmd/fixture, cmd/seed, cmd/commons, cmd/webpreview
   internal/
     admin/            admin pages and actions (/admin)
     api/              JSON handlers, routing, middleware

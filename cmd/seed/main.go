@@ -31,15 +31,16 @@ import (
 )
 
 func main() {
-	n := flag.Int("photos", 30, "number of synthetic photos")
+	n := flag.Int("photos", 30, "number of synthetic photos around Pattaya (0 for none)")
+	dir := flag.String("commons", os.Getenv("SEED_COMMONS"), "directory made by cmd/commons: adds Surveyors with its photos from all over Thailand")
 	flag.Parse()
-	if err := run(*n); err != nil {
+	if err := run(*n, *dir); err != nil {
 		slog.Error("seed", "err", err)
 		os.Exit(1)
 	}
 }
 
-func run(n int) error {
+func run(n int, commonsDir string) error {
 	var missing []string
 	need := func(name string) string {
 		v := strings.TrimSpace(os.Getenv(name))
@@ -81,12 +82,22 @@ func run(n int) error {
 		return err
 	}
 	start := time.Now()
-	st, err := Seed(ctx, d, store, time.Now(), n)
-	if err != nil {
-		return err
+	if n > 0 {
+		st, err := Seed(ctx, d, store, time.Now(), n)
+		if err != nil {
+			return err
+		}
+		slog.Info("seeded", "surveyors_created", st.Surveyors, "photos_created", st.Photos, "photos_present", st.Skipped,
+			"featured_set", st.Featured, "took", time.Since(start).Round(time.Millisecond))
 	}
-	slog.Info("seeded", "surveyors_created", st.Surveyors, "photos_created", st.Photos, "photos_present", st.Skipped,
-		"featured_set", st.Featured, "took", time.Since(start).Round(time.Millisecond))
+	if commonsDir != "" {
+		st, err := SeedCommons(ctx, d, store, time.Now(), commonsDir)
+		if err != nil {
+			return err
+		}
+		slog.Info("seeded commons photos", "surveyors_created", st.Surveyors, "photos_created", st.Photos, "photos_present", st.Skipped,
+			"outside_regions", st.Outside, "took", time.Since(start).Round(time.Millisecond))
+	}
 	filled, err := SeedCameras(ctx, d)
 	if err != nil {
 		return err

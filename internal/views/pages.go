@@ -2,6 +2,8 @@ package views
 
 import (
 	"math"
+	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -64,24 +66,166 @@ type SurveyorListItem struct {
 	LastPhoto *PhotoItem // newest photo; nil if none
 }
 
-// RegionList is /regions: every region, most recent activity first, then by
-// name. The front page's regions counter links here.
+// RegionList is /regions: the countries (see SortCountries), then every region, most recent
+// activity first, then by name. The front page's regions counter links here.
 type RegionList struct {
 	Page
-	Regions []RegionSummary
+	Countries []CountrySummary // every country in the list, in the order of SortCountries
+	Regions   []RegionSummary
+}
+
+// CountrySummary is one row of the countries block on /regions. Open is
+// false for a country in the list whose regions are not imported yet; the
+// other fields are then zero.
+type CountrySummary struct {
+	Country        CountryRef
+	Open           bool
+	Coverage       Coverage
+	LastSurveyedAt *time.Time
+	TopSurveyors   []SurveyorActivity // up to TopSurveyors, most photos in the last ActiveDays first
+}
+
+// SortCountries orders countries as /regions lists them: those with regions
+// first, newest activity first and then by name, then the others by name.
+func SortCountries(cs []CountrySummary) {
+	sort.SliceStable(cs, func(i, j int) bool {
+		a, b := cs[i], cs[j]
+		switch {
+		case a.Open != b.Open:
+			return a.Open
+		case a.Open && (a.LastSurveyedAt == nil) != (b.LastSurveyedAt == nil):
+			return a.LastSurveyedAt != nil
+		case a.Open && a.LastSurveyedAt != nil && !a.LastSurveyedAt.Equal(*b.LastSurveyedAt):
+			return a.LastSurveyedAt.After(*b.LastSurveyedAt)
+		}
+		return a.Country.NameEn < b.Country.NameEn
+	})
+}
+
+// Country is the country page (/{slug}). The country's figures are the sums
+// over its provinces. Open is false for a country in the list whose regions
+// are not imported yet: the page then has only the Country and an
+// explanation (NoIndex is set), and every other field is zero.
+type Country struct {
+	Page
+	Country        CountryRef
+	Open           bool
+	Coverage       Coverage
+	Counters       Counters // Plots, Photos and Surveyors in the country; Regions = provinces with a surveyed plot
+	Bounds         Bounds   // union of the provinces' boxes, for the coverage map
+	Provinces      []RegionSummary
+	Latest         []PhotoItem
+	Pagination     Pagination
+	ActiveRecent   []SurveyorActivity
+	ActiveAllTime  []SurveyorActivity
+	LastSurveyedAt *time.Time
 }
 
 // Surveyor is the profile page (/surveyor/{name}).
 type Surveyor struct {
 	Page
-	Profile    SurveyorProfile
-	Stats      SurveyorStats
-	PlotCells  []string          // res-8 cells of every plot with a photo by them, for the lazy map (data, not text)
-	PlotPaths  map[string]string // friendly path per cell in PlotCells; cells without a number are missing
-	PlotPhotos map[string]int    // photo count per cell in PlotCells, everyone's, for the small map's three greens
-	Bounds     *Bounds           // box around PlotCells; nil if they have no photos
-	Photos     []PhotoItem       // newest first, paginated
-	Pagination Pagination
+	Profile      SurveyorProfile
+	Stats        SurveyorStats
+	HomeCoverage *Coverage         // their surveyed plots in the home region of Profile; nil without a home region
+	Regions      []SurveyorRegion  // regions with photos of theirs, most plots first
+	Years        []SurveyorYear    // years their photos were taken, newest first
+	UploadYears  []SurveyorYear    // years their photos were uploaded (Bangkok time, as pages show dates), newest first
+	Query        SurveyorQuery     // the view of Photos, as parsed and validated
+	FilterRegion *RegionRef        // the region of Query.Region; nil without that filter
+	PlotCells    []string          // res-8 cells of every plot with a photo by them, for the lazy map (data, not text)
+	PlotPaths    map[string]string // friendly path per cell in PlotCells; cells without a number are missing
+	PlotPhotos   map[string]int    // photo count per cell in PlotCells, everyone's, for the small map's three greens
+	Bounds       *Bounds           // box around PlotCells; nil if they have no photos
+	Photos       []PhotoItem       // in the order of Query, paginated
+	Pagination   Pagination
+}
+
+// The orders of a profile's photos (SurveyorQuery.Order); the empty string is
+// newest uploaded.
+const (
+	OrderNewest = ""       // newest uploaded first
+	OrderOldest = "oldest" // oldest uploaded first
+	OrderTaken  = "taken"  // newest taken first, photos without a date last
+)
+
+// SurveyorQuery is how a profile's photos are listed: ?order=&region=&year=&uploaded=&one=&page=.
+type SurveyorQuery struct {
+	Page       int    // 1-based; below 1 is treated as 1
+	Order      string // OrderNewest, OrderOldest or OrderTaken
+	Region     string // slug of a region (or district) to filter by; empty for all
+	Year       int    // year taken to filter by; 0 for all
+	Uploaded   int    // year uploaded to filter by; 0 for all
+	OnePerPlot bool   // only the newest photo of theirs in each plot
+}
+
+// Filtered reports whether q shows anything but all photos, newest uploaded first.
+func (q SurveyorQuery) Filtered() bool {
+	return q.Order != OrderNewest || q.Region != "" || q.Year != 0 || q.Uploaded != 0 || q.OnePerPlot
+}
+
+// Path is the canonical address of the profile of the Surveyor called name
+// seen through q: parameters in key order, defaults and page 1 left out.
+func (q SurveyorQuery) Path(name string) string {
+	vs := url.Values{}
+	if q.Order != OrderNewest {
+		vs.Set("order", q.Order)
+	}
+	if q.Region != "" {
+		vs.Set("region", q.Region)
+	}
+	if q.Year != 0 {
+		vs.Set("year", strconv.Itoa(q.Year))
+	}
+	if q.Uploaded != 0 {
+		vs.Set("uploaded", strconv.Itoa(q.Uploaded))
+	}
+	if q.OnePerPlot {
+		vs.Set("one", "plot")
+	}
+	if q.Page > 1 {
+		vs.Set("page", strconv.Itoa(q.Page))
+	}
+	path := "/surveyor/" + url.PathEscape(name)
+	if e := vs.Encode(); e != "" {
+		return path + "?" + e
+	}
+	return path
+}
+
+// WithOrder, WithRegion, WithYear, WithUploaded and WithOnePerPlot return q with one thing changed,
+// back on page 1, for the links of a profile's controls.
+func (q SurveyorQuery) WithOrder(o string) SurveyorQuery    { q.Page, q.Order = 0, o; return q }
+func (q SurveyorQuery) WithRegion(s string) SurveyorQuery   { q.Page, q.Region = 0, s; return q }
+func (q SurveyorQuery) WithYear(y int) SurveyorQuery        { q.Page, q.Year = 0, y; return q }
+func (q SurveyorQuery) WithUploaded(y int) SurveyorQuery    { q.Page, q.Uploaded = 0, y; return q }
+func (q SurveyorQuery) WithOnePerPlot(b bool) SurveyorQuery { q.Page, q.OnePerPlot = 0, b; return q }
+
+// SurveyorRegion is one line of a profile's "Where" list.
+type SurveyorRegion struct {
+	Region RegionRef
+	Plots  int // plots in the region with a photo of theirs
+	Photos int
+	Land   int // land plots in the region
+}
+
+// SurveyorYear is one line of a profile's "When" list.
+type SurveyorYear struct {
+	Year   int
+	Photos int
+}
+
+// SurveyorPlotList is the data of a profile's GPX and GeoJSON exports.
+type SurveyorPlotList struct {
+	Surveyor SurveyorRef // canonical spelling
+	Plots    []SurveyorPlot
+}
+
+// SurveyorPlot is one plot with a photo of the Surveyor's.
+type SurveyorPlot struct {
+	Plot     PlotRef
+	Lat, Lng float64 // centre of the plot
+	Photos   int     // their photos in the plot
+	First    bool    // they claimed the plot
 }
 
 // SurveyorProfile is what a Surveyor says about themselves.
@@ -102,6 +246,7 @@ type SurveyorStats struct {
 	Plots    int // plots they claimed (first survey); at most Surveyed
 	Photos   int
 	Regions  int // regions with at least one of their photos
+	Days     int // distinct dates (UTC) on which their photos were taken
 }
 
 // Plot is the plot page (/plot/{cell}). A valid res-8 cell inside a region
@@ -195,7 +340,8 @@ func exposure(s float64) string {
 type Region struct {
 	Page
 	Region         RegionRef
-	Kind           string // the region's kind from the regions table: "province" or "country"
+	Country        CountryRef // the country the region lies in; zero if it is not in the list
+	Kind           string     // the region's kind from the regions table: "province" or "country"
 	Coverage       Coverage
 	Counters       Counters // Plots, Photos and Surveyors within the region; Regions is 0
 	Bounds         Bounds   // for the coverage map; the map script fetches /api/coverage
@@ -215,7 +361,7 @@ func (r Region) KindName() string {
 	return strings.ToUpper(r.Kind[:1]) + r.Kind[1:]
 }
 
-// Feed is an RSS feed: /latest.rss, /region/{slug}.rss, /surveyor/{name}.rss.
+// Feed is an RSS feed: /latest.rss, /region/{slug}.rss, /{country}.rss, /surveyor/{name}.rss.
 // Page.Title is the channel title, Page.Canonical the HTML page it mirrors.
 type Feed struct {
 	Page

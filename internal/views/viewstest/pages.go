@@ -35,11 +35,15 @@ func Surveyors() *views.SurveyorList { return must(NewFake().Surveyors(ctx, 1)) 
 func Regions() *views.RegionList { return must(NewFake().Regions(ctx)) }
 
 // Surveyor returns the profile of adrian, the most active fixture surveyor.
-func Surveyor() *views.Surveyor { return must(NewFake().Surveyor(ctx, "adrian", 1)) }
+func Surveyor() *views.Surveyor {
+	return must(NewFake().Surveyor(ctx, "adrian", views.SurveyorQuery{Page: 1}))
+}
 
 // PlaceholderSurveyor returns the profile of a prototype placeholder account
 // (no bio, no home region).
-func PlaceholderSurveyor() *views.Surveyor { return must(NewFake().Surveyor(ctx, "beach-walker", 1)) }
+func PlaceholderSurveyor() *views.Surveyor {
+	return must(NewFake().Surveyor(ctx, "beach-walker", views.SurveyorQuery{Page: 1}))
+}
 
 // Plot returns Pattaya Beach (88658bd11dfffff), the plot with the most photos.
 func Plot() *views.Plot { return must(NewFake().Plot(ctx, "88658bd11dfffff")) }
@@ -56,6 +60,12 @@ func PrototypePhoto() *views.Photo { return must(NewFake().Photo(ctx, photoID(0)
 
 // Region returns Chon Buri.
 func Region() *views.Region { return must(NewFake().Region(ctx, "chon-buri", 1)) }
+
+// Country returns Thailand, the one country the fixture has regions in.
+func Country() *views.Country { return must(NewFake().Country(ctx, "thailand", 1)) }
+
+// CountryNotOpen returns Vietnam, a country in the list without regions.
+func CountryNotOpen() *views.Country { return must(NewFake().Country(ctx, "vietnam", 1)) }
 
 // Feed returns /latest.rss.
 func Feed() *views.Feed { return must(NewFake().LatestFeed(ctx)) }

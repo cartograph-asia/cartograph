@@ -110,7 +110,7 @@ func NewRenderer(cfg Config) (*Renderer, error) {
 	}
 	names := []string{
 		views.PageHome, views.PageLatest, views.PageSurveyors, views.PageRegions, views.PageSurveyor,
-		views.PagePlot, views.PagePhoto, views.PageRegion, views.PageSignIn, views.PageCheckEmail,
+		views.PagePlot, views.PagePhoto, views.PageRegion, views.PageCountry, views.PageSignIn, views.PageCheckEmail,
 		views.PageChooseName, views.PageEditProfile, views.PageConfirmSignIn, views.PageError, "static",
 		views.PageAdminOverview, views.PageAdminPhotos, views.PageAdminPhoto, views.PageAdminConfirm,
 		views.PageAdminFeatured, views.PageAdminSurveyors, views.PageAdminSurveyor, views.PageAdminPlaces,

@@ -1,7 +1,14 @@
 {{define "content" -}}
 <header class="head">
 <h1>Regions</h1>
-<p class="note">Thailand's provinces, newest activity first. Coverage is the share of a region's plots with at least one photo; the names under it are the most active Surveyors of the last {{activeDays}} days.</p>
+<p class="note">Countries and their provinces. Coverage is the share of a region's plots with at least one photo; the names under it are the most active Surveyors of the last {{activeDays}} days.</p>
 </header>
+{{if .Countries}}<section class="block" aria-labelledby="countries-h">
+<div class="head-row"><h2 id="countries-h">Countries</h2></div>
+<ul class="regions">{{range .Countries}}{{template "country-row" .}}{{end}}</ul>
+</section>{{end}}
+<section class="block" aria-labelledby="provinces-h">
+<div class="head-row"><h2 id="provinces-h">Provinces</h2><span class="note">Newest activity first.</span></div>
 <ul class="regions">{{range .Regions}}{{template "region-row" .}}{{end}}</ul>
+</section>
 {{- end}}

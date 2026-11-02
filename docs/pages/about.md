@@ -1,6 +1,6 @@
 # About
 
-Cartograph is a photo survey of South, Southeast and East Asia, made by the people who live and travel there.
+Cartograph is a photo survey of Southeast and East Asia, made by the people who live and travel there.
 
 The land is divided into plots of about 0.74 km² each. A Surveyor takes a photo inside a plot and uploads it. The first photo claims the plot, and its Surveyor stays its first surveyor for good. Everyone who comes later adds to the plot's story: another season, another street, the bridge after it was rebuilt. More in [About the plots](/about/plots).
 

@@ -1,0 +1,45 @@
+{{define "content" -}}
+{{$c := .Country}}
+<header class="head">
+<p class="kicker">Country</p>
+<h1>{{$c.NameEn}}{{template "native" $c}}</h1>
+{{if .Open -}}
+<ul class="figures small">
+<li><b>{{pct .Coverage}}</b> coverage, {{num .Coverage.Claimed}} of {{num .Coverage.Land}} plots</li>
+<li><b>{{num .Counters.Photos}}</b> {{if eq .Counters.Photos 1}}photo{{else}}photos{{end}}</li>
+<li><b>{{num .Counters.Surveyors}}</b> {{if eq .Counters.Surveyors 1}}Surveyor{{else}}Surveyors{{end}}</li>
+<li><b>{{num .Counters.Regions}}</b> of {{num (len .Provinces)}} {{if eq (len .Provinces) 1}}province{{else}}provinces{{end}} surveyed</li>
+</ul>
+<div class="cov big">{{template "covbar" .Coverage}}</div>
+<p class="note">{{with .LastSurveyedAt}}Last survey {{when $.Now .}} · {{else}}Not surveyed yet · {{end}}<a href="{{.Feed}}">RSS feed</a></p>
+{{- else -}}
+<p class="note">Cartograph does not cover {{$c.NameEn}} yet. Plots open here once its map has been imported. <a href="/about">What is Cartograph?</a></p>
+{{- end}}
+</header>
+{{if .Open}}
+<section class="block minimap" aria-labelledby="map-h">
+<div class="head-row"><h2 id="map-h">Coverage</h2><a class="more" href="{{mapHash .Bounds}}">Open on the map <span aria-hidden="true">→</span></a></div>
+<div class="mapbox" data-minimap="coverage" data-bounds="{{bounds .Bounds}}"><p class="mapalt"><a href="{{mapHash .Bounds}}">Open {{$c.NameEn}} on the map</a></p></div>
+</section>
+
+<section class="block" aria-labelledby="provinces-h">
+<div class="head-row"><h2 id="provinces-h">Provinces</h2><span class="note">Newest activity first.</span></div>
+<ul class="regions">{{range .Provinces}}{{template "region-row" .}}{{end}}</ul>
+</section>
+
+<section class="block" aria-labelledby="latest-h">
+<div class="head-row"><h2 id="latest-h">Latest surveys</h2><span class="note">Newest first.</span></div>
+{{if .Latest}}{{template "grid" (grid .Now .Latest true)}}{{else}}<p>Nobody has surveyed a plot in {{$c.NameEn}} yet. <a href="{{mapHash .Bounds}}">Be the first.</a></p>{{end}}
+{{template "pagination" .}}
+</section>
+
+{{if or .ActiveRecent .ActiveAllTime}}<section class="block" aria-labelledby="active-h">
+<div class="head-row"><h2 id="active-h">Most active Surveyors</h2></div>
+<div class="cols">
+<div><h3 class="kicker">Last {{activeDays}} days</h3>{{if .ActiveRecent}}{{template "activity" .ActiveRecent}}{{else}}<p class="note">Nobody in the last {{activeDays}} days.</p>{{end}}</div>
+<div><h3 class="kicker">All time</h3>{{template "activity" .ActiveAllTime}}</div>
+</div>
+</section>{{end}}
+{{template "minimap-script"}}
+{{end}}
+{{- end}}

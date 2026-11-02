@@ -120,6 +120,51 @@ func input(o Options, c country) (Input, error) {
 	return InputFor(o.Data, c.Imp.Extract)
 }
 
+// neighbourInputFor finds a neighbour's file: InputFor, replaced in tests.
+var neighbourInputFor = InputFor
+
+// neighbours is what a run reads to complete its boundaries
+// (countries.Import.Neighbours).
+type neighbours struct {
+	read    []Input  // the neighbours' files, in the settings' order
+	missing []string // cut paths of neighbours with neither cut nor extract (check 6)
+	skipped string   // why none were looked for, "" when they were
+}
+
+// paths returns the files to read.
+func (n neighbours) paths() []string {
+	out := make([]string, len(n.read))
+	for i, in := range n.read {
+		out[i] = in.Path
+	}
+	return out
+}
+
+// neighbourInputs returns the files that complete c's boundaries: for each
+// of the settings' Neighbours its cut in Data, by the rules of InputFor
+// (the cut when it is newer than the extract, else the extract with a
+// note). A neighbour with neither is listed in missing, and check 6 fails.
+// With -pbf and no -data the neighbours are not looked for (the file given
+// may be a merged cut, map/merge-cut.sh). Places never read these files.
+func neighbourInputs(o Options, c country) neighbours {
+	if len(c.Imp.Neighbours) == 0 {
+		return neighbours{}
+	}
+	if o.Data == "" {
+		return neighbours{skipped: "-pbf without -data"}
+	}
+	var n neighbours
+	for _, name := range c.Imp.Neighbours {
+		in, err := neighbourInputFor(o.Data, name)
+		if err != nil {
+			n.missing = append(n.missing, filepath.Join(o.Data, "scan", name+"-latest.osm.pbf.cut.osm.pbf"))
+			continue
+		}
+		n.read = append(n.read, in)
+	}
+	return n
+}
+
 // waterPath returns the water polygons of o: Water, else the file in Data,
 // else "" (no water: sea counts as land, as for the fixture without it).
 func waterPath(o Options) (string, error) {

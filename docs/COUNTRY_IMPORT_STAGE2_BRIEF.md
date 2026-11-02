@@ -211,3 +211,28 @@ Checked against `main`, the branches `country-scan` and `country-import-name-loc
 11. **Figures:** China's district index of 2,674 is level 6, but the scan proposes level 5 (316); China's district level is open. The largest Chinese province holds 1,958,373 land plots, not "about 2.2 M cells". South Korea has 16 level-4 relations, 15 with ISO; the plan did not mention the 16th. Cambodia's districts cover 92.8 %, not "clean".
 12. **Golden file timing:** it must be generated before A or B change anything, so it is A's first commit and B branches after it.
 13. **0151** is no longer conditional (decision 3).
+
+## Added after the first measurements
+
+WP F found that eight of the nine province relations that do not assemble from their own extract are whole when the country's cut is completed with a neighbour's cut (`docs/countries/incomplete-relations.md`); WP C's Thailand acceptance found one duplicate district slug that a fresh import would give differently. Both are settings now (WP C2).
+
+**`Import.Neighbours []string`:** Geofabrik extract names whose cuts, `map/data/scan/<name>-latest.osm.pbf.cut.osm.pbf`, complete the country's boundaries. The importer reads the relations from the country's own cut only and their member ways and nodes from the own cut and the neighbours' cuts (`osmfile.ReadBoundaryDataWith`); a neighbour's own relations are never read.
+
+- A neighbour's file is found by the same rules as the country's own (`InputFor`: the cut when it is newer than the extract, else the extract with a note). A neighbour with neither fails check 6, naming the missing cut and `map/cut.sh <name>`. With `-pbf` and no `-data` the neighbours are not looked for (the file given may be a merged cut); the dry run says so.
+- The dry run lists every neighbour file it read ("Neighbour read for boundaries only: …"); a country without neighbours gets no such line.
+- **The neighbours never feed places**, and neither does a merged cut (`map/merge-cut.sh`): it holds the neighbours' place nodes, and a place outside every province takes the run's country. `places` reads the own cut only, and a test holds it to that. Neighbours never join the base map's `EXTRACTS` either.
+- `cmd/countryscan` reads the same neighbours (`-neighbours`, default: the country's settings, `""` for none), cutting a neighbour's extract like the country's own, so scan and import build the same boundaries. A report without neighbours is unchanged; one with them names them in its first paragraph.
+- C2 fills `Neighbours` for no country; each country PR sets its own from this table (WP F):
+
+| Country | `Neighbours` | `Partial` |
+|---|---|---|
+| Vietnam | `philippines` | – |
+| Malaysia (Brunei, Singapore share the extract) | `philippines` | – |
+| Indonesia | `malaysia-singapore-brunei` | – |
+| Taiwan | `china`, `philippines` | – |
+| North Korea | `china` | – |
+| China | `taiwan`, `philippines`, `bhutan` (Xizang; `bhutan` is not downloaded yet and is read for boundaries only) | – |
+
+- **`LandPlots` from the merged cut:** each country PR takes `LandPlots` from a scan with its neighbours (`cmd/countryscan -country xx`, which now reads them from the settings, or a scan of the merged cut), not from the report of the own extract; against the old figures a whole import of Malaysia (318,281 → 419,805) and North Korea (214,569 → 239,213) would fail check 4. A settings test requires every neighbour to be the `Extract` of some country's settings; China's PR adds `bhutan` to the test's list of boundary-only extracts.
+
+**`Import.LegacyDuplicateSlug bool`, Thailand only:** production stores Thailand's two "Bang Sai" districts of Phra Nakhon Si Ayutthaya as `phra-nakhon-si-ayutthaya-bang-sai` (r10985069) and `phra-nakhon-si-ayutthaya-bang-sai-11024893`, by the old importer's rule; decision 7 would give a fresh import `…-bang-sai-district-10985069` and `…-bang-sai-district-11024893`. Since a stored slug never changes and the development stack, the fixture and production must agree, Thailand keeps the old rule for districts: a stored slug is kept; new districts, in OSM id order, get `<province slug>-<Slug(stripped English name)>`, and `-<osm id>` appended when that slug is taken; names stay stripped, no affix comes back. Provinces, and every other country, follow decision 7. A fresh import of Thailand with this setting gives the same regions, slugs, names, region ids, plot numbers and places as the importers of `main`.

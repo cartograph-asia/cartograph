@@ -94,6 +94,23 @@ func (pl *regionPlan) writeReport(w io.Writer) {
 			fmt.Fprintf(w, "Input note: %s\n", pl.in.Note)
 		}
 	}
+	// Only for a country with Neighbours, so other reports stay as they were.
+	for _, in := range pl.nb.read {
+		kind := "file"
+		if in.Cut {
+			kind = "cut"
+		}
+		fmt.Fprintf(w, "Neighbour read for boundaries only: %s (%s)\n", in.Path, kind)
+		if in.Note != "" {
+			fmt.Fprintf(w, "Neighbour note: %s\n", in.Note)
+		}
+	}
+	for _, m := range pl.nb.missing {
+		fmt.Fprintf(w, "Neighbour missing: %s (check 6)\n", m)
+	}
+	if pl.nb.skipped != "" {
+		fmt.Fprintf(w, "Neighbours not read (%s): %s\n", pl.nb.skipped, strings.Join(pl.c.Imp.Neighbours, ", "))
+	}
 	if !geo.NoBound(pl.clip) {
 		fmt.Fprintf(w, "Clip: %s\n", pl.o.BBox)
 	}

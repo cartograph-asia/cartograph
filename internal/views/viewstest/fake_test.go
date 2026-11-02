@@ -50,12 +50,12 @@ func TestPagesAndErrors(t *testing.T) {
 	if _, err := f.Latest(ctx, 4); !errors.Is(err, views.ErrNotFound) {
 		t.Fatalf("latest p4: %v", err)
 	}
-	s, err := f.Surveyor(ctx, "ADRIAN", 0)
+	s, err := f.Surveyor(ctx, "ADRIAN", views.SurveyorQuery{Page: 0})
 	if err != nil || s.Profile.Name != "adrian" || s.Stats.Plots == 0 || s.Bounds == nil {
 		t.Fatalf("surveyor: %+v %v", s, err)
 	}
 	for _, err := range []error{
-		second(f.Surveyor(ctx, "nobody", 1)), second(f.Plot(ctx, "not-a-cell")),
+		second(f.Surveyor(ctx, "nobody", views.SurveyorQuery{Page: 1})), second(f.Plot(ctx, "not-a-cell")),
 		second(f.Photo(ctx, "nope")), second(f.Region(ctx, "atlantis", 1)),
 	} {
 		if !errors.Is(err, views.ErrNotFound) {

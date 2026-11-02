@@ -158,7 +158,7 @@ button.link:hover, button.link:focus-visible { text-decoration: underline; }
 .more:hover, .more:focus-visible { text-decoration: underline; }
 
 /* Photo grids: photos as large as the column allows, captions in two lines. */
-.grid, .newcomers, .people, .regions, .activity { list-style: none; margin: 0; padding: 0; }
+.grid, .newcomers, .people, .regions, .activity, .tally { list-style: none; margin: 0; padding: 0; }
 .grid, .people {
   display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--s-l) var(--s-m);
@@ -246,6 +246,20 @@ button.link:hover, button.link:focus-visible { text-decoration: underline; }
 .activity a:hover, .activity a:focus-visible { text-decoration: underline; }
 .activity .n { color: var(--ink-muted); font-size: var(--step-meta); text-align: right; }
 .cols { display: grid; gap: var(--s-l) var(--s-xl); }
+/* A profile's breakdowns (where, when): one row each, the counts on the right. */
+.tally { border-top: 1px solid var(--rule); }
+.tally li {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: var(--s-m);
+  padding: var(--s-s) 0; border-bottom: 1px solid var(--rule);
+}
+.tally a { text-decoration: none; overflow: hidden; text-overflow: ellipsis; }
+.tally a:hover, .tally a:focus-visible { text-decoration: underline; }
+.tally .n { color: var(--ink-muted); font-size: var(--step-meta); text-align: right; }
+/* Choices above a list: text links, the chosen one bold and underlined. */
+.opts { display: flex; flex-wrap: wrap; gap: calc(var(--tap) - 1lh) var(--s-m); margin: 0 0 var(--s-m); font-size: var(--step-meta); }
+.opts a { text-decoration: none; padding: calc((var(--tap) - 1lh) / 2) 0; margin: calc((1lh - var(--tap)) / 2) 0; }
+.opts a:hover, .opts a:focus-visible { text-decoration: underline; }
+.opts a[aria-current="true"] { font-weight: 700; text-decoration: underline; text-decoration-color: currentColor; }
 .cols .kicker { margin-bottom: var(--s-s); }
 
 /* Page heads: a kicker that says what the page is, the title, a meta line,

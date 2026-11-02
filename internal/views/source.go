@@ -34,8 +34,12 @@ type Source interface {
 	Surveyors(ctx context.Context, page int) (*SurveyorList, error)
 	// Regions returns /regions.
 	Regions(ctx context.Context) (*RegionList, error)
-	// Surveyor returns one page of a profile, or ErrNotFound.
-	Surveyor(ctx context.Context, name string, page int) (*Surveyor, error)
+	// Surveyor returns one page of a profile, or ErrNotFound (also for an
+	// unknown q.Region or a page past the last one).
+	Surveyor(ctx context.Context, name string, q SurveyorQuery) (*Surveyor, error)
+	// SurveyorPlots returns the plots with a photo of the Surveyor's, for the
+	// GPX and GeoJSON exports, or ErrNotFound.
+	SurveyorPlots(ctx context.Context, name string) (*SurveyorPlotList, error)
 	// Plot returns a plot page. A malformed cell, a cell that is not res 8 or
 	// one outside every region is ErrNotFound; a blank cell in a region is a
 	// page with Surveyed false.

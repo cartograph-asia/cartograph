@@ -143,7 +143,7 @@ func TestHideAndUnhide(t *testing.T) {
 	if f, err := v.LatestFeed(ctx); err != nil || len(f.Items) != 3 {
 		t.Fatalf("feed %d %v", len(f.Items), err)
 	}
-	if s, err := v.Surveyor(ctx, "adrian", 1); err != nil || s.Stats.Photos != 2 || s.Stats.Plots != 2 || len(s.Photos) != 2 {
+	if s, err := v.Surveyor(ctx, "adrian", views.SurveyorQuery{Page: 1}); err != nil || s.Stats.Photos != 2 || s.Stats.Plots != 2 || len(s.Photos) != 2 {
 		t.Fatalf("surveyor %+v %v", s.Stats, err)
 	}
 	if list, err := w.d.Plots(ctx, []string{beachCell, nongPruCell}); err != nil || len(list) != 1 || list[0].Cell != beachCell {

@@ -258,7 +258,7 @@ func TestViews(t *testing.T) {
 		t.Fatalf("country page %+v %v", c, err)
 	}
 
-	s, err := v.Surveyor(ctx, "ADRIAN", 1)
+	s, err := v.Surveyor(ctx, "ADRIAN", views.SurveyorQuery{Page: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -266,7 +266,7 @@ func TestViews(t *testing.T) {
 		s.Bounds == nil || len(s.Photos) != 4 || s.Canonical != "/surveyor/adrian" || s.Feed != "/surveyor/adrian.rss" {
 		t.Fatalf("surveyor %+v", s)
 	}
-	if _, err := v.Surveyor(ctx, "nobody", 1); !errors.Is(err, views.ErrNotFound) {
+	if _, err := v.Surveyor(ctx, "nobody", views.SurveyorQuery{Page: 1}); !errors.Is(err, views.ErrNotFound) {
 		t.Fatalf("unknown surveyor: %v", err)
 	}
 
@@ -368,7 +368,7 @@ func TestSurveyorBoundsFromPlots(t *testing.T) {
 		if c, _ := w.claim(t, name, p[0], p[1], t0); c != cell {
 			t.Fatalf("%s: spot %v is in %s, not %s", name, p, c, cell)
 		}
-		s, err := v.Surveyor(ctx, name, 1)
+		s, err := v.Surveyor(ctx, name, views.SurveyorQuery{Page: 1})
 		if err != nil || s.Bounds == nil {
 			t.Fatalf("%s: %+v %v", name, s, err)
 		}

@@ -39,7 +39,7 @@ package countries
 //     the kind word: city, county or district. The Korean suffixes go gu
 //     first, then gun, then si, each once: 양구군 (Yanggu-gun) loses its 군
 //     and must keep its 구. Five directions (Jung, Dong, Seo, Nam, Buk) name
-//     23 gu and become one-syllable names (중, 동, 서, 남, 북); keeping "-gu"
+//     22 gu and become one-syllable names (중, 동, 서, 남, 북); keeping "-gu"
 //     for them alone would make the list inconsistent.
 //     KindWord matches an affix at either end of a name, and 구리시 (Guri),
 //     구미시, 군산시, 군포시 and 구례군 start with 구 or 군. So the English

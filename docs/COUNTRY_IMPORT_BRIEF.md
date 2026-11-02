@@ -56,7 +56,7 @@ The importers read these settings instead of the fixed rules; Thailand's setting
 `regions -country vn` and `places -country vn` read their extract and settings from stage 2. Silo rules:
 
 - **A run touches only its country's rows.** `places` replaces only the places of that country (by the region they lie in, or a `country` column on `places`); `regions` upserts only its country's provinces and districts. Re-running Thailand changes nothing in Vietnam and the reverse.
-- **Nothing existing is rewritten.** Plot numbers are only added (as today); slugs already in use never change; plots keep their region, place name and number. A border plot already numbered by one country is not numbered again by the neighbour (the `plot_numbers` primary key is the cell; the scan reports how many such cells there are).
+- **Nothing existing is rewritten.** Plot numbers are only added (as today); slugs already in use never change (Thailand's stay without suffix); plots keep their region, place name and number. A border plot already numbered by one country is not numbered again by the neighbour (the `plot_numbers` primary key is the cell; the scan reports how many such cells there are).
 - **Dry run first.** `-dry-run` does everything except writing and prints what would change: provinces and districts added or updated, land plots, new plot numbers, places added, updated and removed, slugs. A real run refuses when the dry run's checks fail: province count outside the range in the settings, slug collision, land plots more than 10 % off the scan's estimate, a province without land plots.
 - **One failing country does not stop the others.** The compose one-shots take a list (`IMPORT_COUNTRIES=th,vn,la`) and run each country on its own; a failure is logged and the next one runs. A production stack runs only what `.env` lists.
 
@@ -64,10 +64,14 @@ After an import the api picks up the new provinces by itself within a minute (`R
 
 ## Names in more than one language
 
-Schema change, proposed here first (alpha: no rewrite without asking):
+Schema change, decided by Adrian (2026-11-02):
 
-- Rename `name_th` to `name_local` on `regions`, `places` and `plots` (`place_name_th` → `place_name_local`), and add `name_local_lang` where it is not implied by the country. A rename keeps every value; Thailand's Thai names stay where they are. Templates get the language from the country (`lang="vi"`), where they hard-code `lang="th"` today.
-- Alternative without a rename: keep `name_th` for Thai and add `name_local` for the others. Two columns for one idea; not recommended.
+- Rename `name_th` to `name_local` on `regions`, `places` and `plots` (`place_name_th` → `place_name_local`), and add `name_local_lang` where it is not implied by the country. A rename keeps every value; Thailand's Thai names stay where they are. Templates get the language from the country (`lang="vi"`), where they hard-code `lang="th"` today. Planned sights (`docs/SIGHTS_BRIEF.md`) use `name_local` from the start.
+- Not chosen: keeping `name_th` for Thai and adding `name_local` for the others (two columns for one idea).
+
+## Slugs of new countries
+
+Decided by Adrian (2026-11-02): every province of a country opened from now on carries its country's slug as a suffix, collision or not: `ha-noi-vietnam`, `vientiane-laos` (`/region/ha-noi-vietnam`, `/plot/ha-noi-vietnam/12`). Districts keep building their slug from the province's. Thailand's slugs stay as they are (`chon-buri`), because addresses already in use never change. The scan still reports names that collide within one country.
 
 ## Order
 
@@ -92,12 +96,12 @@ Small and close countries first, each one PR: first the scan for all sixteen (re
 
 Translating the site, per-country plot of the week, per-country Surveyor ranks, cities as regions, any change to the base map build, importing anything on the production host. Running imports on production is Adrian's step, by hand, per country, after the dry run (`docs/DEPLOY.md` gets the commands).
 
-## Open questions
+## Open questions, decided (Adrian, 2026-11-02)
 
-1. **Name columns:** rename `name_th` to `name_local` (recommended) or add a second column?
-2. **Slug collisions across countries** (a province in two countries with the same English name): append the country's slug (`{name}-{country}`)? Existing Thai slugs never change.
-3. **Large countries:** number every land plot on import (as Thailand) or only on first claim for China and Mongolia? Decided after measuring with the smaller countries.
-4. **Border plots:** a plot whose centre lies in two countries' simplified boundaries belongs to the country imported first (today's rule, applied across countries). Fine, or should the true boundary decide?
-5. **Disputed areas:** OSM maps de facto boundaries; the scan lists overlaps between countries' relations. Who decides how they are shown?
-6. **Province level for the Philippines:** its 17 regions or its roughly 80 provinces? The scan shows which OSM level holds which.
-7. **Order:** is the order above right, and should China and Mongolia be opened at all in alpha?
+1. **Name columns:** rename `name_th` to `name_local` (section "Names in more than one language").
+2. **Slugs:** every new country's provinces carry the country slug as a suffix, collision or not; Thailand's stay (section "Slugs of new countries").
+3. **Large countries:** decided after measuring with the smaller countries whether China and Mongolia number every land plot up front or only on first claim.
+4. **Border plots:** a plot whose centre lies in two countries' simplified boundaries belongs to the country imported first, as between provinces today; its number never changes.
+5. **Disputed areas:** OSM's de facto boundaries apply. The scan lists every overlap between countries; Adrian decides each one, and the decision gets a line in `docs/decisions.md`.
+6. **Philippines:** regions or provinces is decided after the scan has shown which OSM level holds which and how complete it is.
+7. **Order:** as proposed, China and Mongolia last. Whether they open during alpha is decided after the measurement of question 3.

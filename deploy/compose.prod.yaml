@@ -7,7 +7,7 @@
 #
 #   - every secret and URL is required (${VAR:?}): a missing value stops
 #     compose with its message instead of starting with a development default;
-#   - the importers run only on request (--profile tools), the seed never;
+#   - the import runs only on request (--profile tools), the seed never;
 #   - only Cartograph's Caddy publishes a port, on 127.0.0.1, for the host's
 #     Caddy in front of it (deploy/cartograph.asia.caddy);
 #   - memory limits for a shared host, and one photo processed at a time.
@@ -48,15 +48,18 @@ services:
       S3_ACCESS_KEY: ${S3_ACCESS_KEY:?set S3_ACCESS_KEY}
       S3_SECRET_KEY: ${S3_SECRET_KEY:?set S3_SECRET_KEY}
 
-  # The importers run once, by hand:
-  #   docker compose -f docker-compose.yml -f compose.prod.yaml --profile tools run --rm regions
-  #   … run --rm places
-  # with IMPORT_PBF / IMPORT_WATER / IMPORT_BBOX for Thailand in .env.
-  regions:
+  # The country import runs on request, by hand, one country per run
+  # (docs/DEPLOY.md): first a dry run, read it, then the real one.
+  #   deploy/prod.sh --profile tools run --rm import -countries la -dry-run
+  #   deploy/prod.sh --profile tools run --rm import -countries la
+  # It reads the extracts in RUNTIME/map/data (-data from the entrypoint).
+  # The command is replaced, so the fixture overrides of the development
+  # file (IMPORT_PBF, IMPORT_WATER, IMPORT_BBOX) never apply here; without
+  # arguments it imports IMPORT_COUNTRIES (default th).
+  import:
     profiles: ["tools"]
-    environment: *prod-env
-  places:
-    profiles: ["tools"]
+    command: !override
+      - -countries=${IMPORT_COUNTRIES:-th}
     environment: *prod-env
   # Development data only; it never runs in production.
   seed:

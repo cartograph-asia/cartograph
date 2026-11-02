@@ -272,22 +272,25 @@ func adminLevel(t osm.Tags, l countries.Level) int {
 }
 
 // resolveSlugs gives every province and district its slug: a stored row of
-// the same country keeps its slug, a new one gets one by the settings
-// (osmfile.ResolveSlugs: Slug of the English name, the country suffix on
-// provinces when SlugSuffix, a district's from its province's slug,
-// duplicates by decision 7). Districts stored for another country are left
-// out (that country's import placed them first).
+// the same country keeps its slug and whether its names carry their affixes,
+// a new one gets one by the settings (osmfile.ResolveSlugs: Slug of the
+// English name, the country suffix on provinces when SlugSuffix, a
+// district's from its province's slug, duplicates by decision 7, decided on
+// what a fresh import gives). Districts must have their parents
+// (assignParents). Districts stored for another country are left out (that
+// country's import placed them first).
 func resolveSlugs(set *regionSet, c country, stored map[int64]*db.StoredRegion) {
-	own := func(s *db.StoredRegion) string {
+	sibling := func(osmID int64, names osmfile.Named, s *db.StoredRegion) osmfile.Sibling {
+		out := osmfile.Sibling{OSMID: osmID, Names: names}
 		if s != nil && s.Country == c.Code {
-			return s.Slug
+			out.Stored, out.StoredEn, out.StoredLocal = s.Slug, s.NameEn, s.NameLocal
 		}
-		return ""
+		return out
 	}
 	sibs := make([]osmfile.Sibling, len(set.provinces))
 	for i, p := range set.provinces {
 		p.stored = stored[p.osmID]
-		sibs[i] = osmfile.Sibling{OSMID: p.osmID, Names: p.names, Stored: own(p.stored)}
+		sibs[i] = sibling(p.osmID, p.names, p.stored)
 	}
 	osmfile.ResolveSlugs(sibs, func(base string) string {
 		if c.Imp.SlugSuffix {
@@ -326,7 +329,7 @@ func resolveSlugs(set *regionSet, c country, stored map[int64]*db.StoredRegion) 
 		ds := p.districts
 		sibs := make([]osmfile.Sibling, len(ds))
 		for i, d := range ds {
-			sibs[i] = osmfile.Sibling{OSMID: d.osmID, Names: d.names, Stored: own(d.stored)}
+			sibs[i] = sibling(d.osmID, d.names, d.stored)
 		}
 		osmfile.ResolveSlugs(sibs, func(base string) string { return p.slug + "-" + base })
 		for i, d := range ds {

@@ -1,9 +1,130 @@
 package importer
 
 import (
+	"bytes"
+	"context"
 	"slices"
+	"strings"
 	"testing"
+
+	"github.com/cartograph-asia/cartograph/internal/countries"
+	"github.com/cartograph-asia/cartograph/internal/db"
 )
+
+// communes are zz's settings with Vietnam's district words, so that
+// stripping makes siblings collide (decision 7).
+func communes() countries.Import {
+	imp := zzSettings()
+	imp.District = countries.Level{AdminLevels: []int{6}, Kind: "commune",
+		KindByAffix: map[string]string{"Phường": "ward"},
+		Strip:       countries.Affixes{EnPrefix: []string{"Xã ", "Phường "}, LocalPrefix: []string{"Xã ", "Phường "}}}
+	return imp
+}
+
+// regionsRun runs Regions for zz with imp over pbf; the land plots of a
+// first dry run become imp.LandPlots, so check 4 passes.
+func regionsRun(ctx context.Context, t *testing.T, d *db.DB, imp *countries.Import, pbf string, dry bool) (*RegionStats, string) {
+	t.Helper()
+	_, waterPath := Fixture()
+	if imp.LandPlots == 0 {
+		st, _ := Regions(ctx, d, Options{Country: "zz", Settings: imp, PBF: pbf, Water: waterPath, DryRun: true})
+		if st == nil || st.LandCells == 0 {
+			t.Fatalf("no land plots: %+v", st)
+		}
+		imp.LandPlots = st.LandCells
+	}
+	var report bytes.Buffer
+	st, err := Regions(ctx, d, Options{Country: "zz", Settings: imp, PBF: pbf, Water: waterPath, DryRun: dry, Report: &report})
+	if err != nil {
+		t.Fatalf("%v\n%s", err, report.String())
+	}
+	return st, report.String()
+}
+
+func storedDistricts(ctx context.Context, t *testing.T, d *db.DB) map[int64]string {
+	t.Helper()
+	rows, err := d.Pool.Query(ctx, `select r.osm_id, r.slug || ' ' || r.name_en || ' ' || coalesce(r.name_local, 'NULL') || ' in r' || p.osm_id
+		from regions r join regions p on p.id = r.parent_id where r.country = 'zz' and r.kind = 'district'`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	out := map[int64]string{}
+	for rows.Next() {
+		var id int64
+		var s string
+		if err := rows.Scan(&id, &s); err != nil {
+			t.Fatal(err)
+		}
+		out[id] = s
+	}
+	return out
+}
+
+// A second import over the first changes nothing, also for districts that
+// decision 7 gave their affixes or their ids; a new third sibling is
+// resolved against the stored slugs and leaves the others as they are.
+func TestReimportKeepsDuplicateSlugs(t *testing.T) {
+	d := testDB(t)
+	ctx := context.Background()
+	imp := communes()
+	province := testRel{id: 900000101, tags: []string{"admin_level", "4", "ISO3166-2", "ZZ-01", "name", "Zed One"}, outer: []rect{{101.10, 12.90, 101.40, 12.98}}}
+	commune := func(id int64, name string, x float64) testRel {
+		return testRel{id: id, tags: []string{"admin_level", "6", "name", name}, outer: []rect{{x, 12.91, x + 0.04, 12.97}}}
+	}
+	rels := []testRel{province,
+		commune(900000111, "Xã Tân Thành", 101.11),
+		commune(900000112, "Phường Tân Thành", 101.16),
+		commune(900000113, "Xã An Phú", 101.21),
+		commune(900000114, "Xã Ân Phú", 101.26), // folds to the same slug, words and all
+	}
+	regionsRun(ctx, t, d, &imp, writeTestOSM(t, rels, nil), false)
+	first := storedDistricts(ctx, t, d)
+	want := map[int64]string{
+		900000111: "zed-one-zz-xa-tan-thanh Xã Tân Thành NULL in r900000101",
+		900000112: "zed-one-zz-phuong-tan-thanh Phường Tân Thành NULL in r900000101",
+		900000113: "zed-one-zz-xa-an-phu-900000113 Xã An Phú NULL in r900000101",
+		900000114: "zed-one-zz-xa-an-phu-900000114 Xã Ân Phú NULL in r900000101",
+	}
+	for id, w := range want {
+		if first[id] != w {
+			t.Errorf("first run, r%d: %q, want %q", id, first[id], w)
+		}
+	}
+
+	_, report := regionsRun(ctx, t, d, &imp, writeTestOSM(t, rels, nil), true)
+	for _, w := range []string{"Provinces: 1 (0 added, 0 updated, 1 unchanged)", "Districts: 4 (0 added, 0 updated, 4 unchanged", "New slugs: 0"} {
+		if !strings.Contains(report, w) {
+			t.Errorf("second run's report lacks %q:\n%s", w, report)
+		}
+	}
+	all := sums(t, d, "")
+	regionsRun(ctx, t, d, &imp, writeTestOSM(t, rels, nil), false)
+	sameSums(t, "after the second run", all, sums(t, d, ""))
+
+	// A third sibling: it folds to Tân Thành's slug with its word, so it
+	// takes its id; the stored ones stay.
+	rels = append(rels, commune(900000115, "Xã Tân Thạnh", 101.31))
+	imp.LandPlots = 0
+	_, report = regionsRun(ctx, t, d, &imp, writeTestOSM(t, rels, nil), true)
+	for _, w := range []string{"Districts: 5 (1 added, 0 updated, 4 unchanged", "district r900000115: zed-one-zz-xa-tan-thanh-900000115"} {
+		if !strings.Contains(report, w) {
+			t.Errorf("third sibling's report lacks %q:\n%s", w, report)
+		}
+	}
+	regionsRun(ctx, t, d, &imp, writeTestOSM(t, rels, nil), false)
+	got := storedDistricts(ctx, t, d)
+	want[900000115] = "zed-one-zz-xa-tan-thanh-900000115 Xã Tân Thạnh NULL in r900000101"
+	for id, w := range want {
+		if got[id] != w {
+			t.Errorf("after the third sibling, r%d: %q, want %q", id, got[id], w)
+		}
+	}
+	_, report = regionsRun(ctx, t, d, &imp, writeTestOSM(t, rels, nil), true)
+	if !strings.Contains(report, "Districts: 5 (0 added, 0 updated, 5 unchanged") {
+		t.Errorf("run after the third sibling:\n%s", report)
+	}
+}
 
 // A relation in Level.Exclude is never read, and the run counts it.
 func TestLevelsExclude(t *testing.T) {

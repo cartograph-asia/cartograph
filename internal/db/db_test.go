@@ -19,6 +19,21 @@ import (
 // migrations. The test is skipped when the variable is not set.
 func testDB(t *testing.T) *DB {
 	t.Helper()
+	d := emptyDB(t)
+	ctx := context.Background()
+	if err := d.Migrate(ctx, migrations.FS); err != nil {
+		t.Fatal(err)
+	}
+	// Running again is a no-op.
+	if err := d.Migrate(ctx, migrations.FS); err != nil {
+		t.Fatalf("second migrate: %v", err)
+	}
+	return d
+}
+
+// emptyDB connects to TEST_DATABASE_URL in a fresh, empty schema, or skips.
+func emptyDB(t *testing.T) *DB {
+	t.Helper()
 	url := os.Getenv("TEST_DATABASE_URL")
 	if url == "" {
 		t.Skip("TEST_DATABASE_URL not set")
@@ -49,13 +64,6 @@ func testDB(t *testing.T) *DB {
 	}
 	d := &DB{Pool: pool}
 	t.Cleanup(d.Close)
-	if err := d.Migrate(ctx, migrations.FS); err != nil {
-		t.Fatal(err)
-	}
-	// Running again is a no-op.
-	if err := d.Migrate(ctx, migrations.FS); err != nil {
-		t.Fatalf("second migrate: %v", err)
-	}
 	return d
 }
 

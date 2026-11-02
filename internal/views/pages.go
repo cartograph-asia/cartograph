@@ -345,7 +345,7 @@ type Region struct {
 	Page
 	Region         RegionRef
 	Country        CountryRef // the country the region lies in; zero if it is not in the list
-	Kind           string     // the region's kind from the regions table: "province" or "country"
+	Kind           string     // the kind word shown ("province", "prefecture", …): regions.kind_name, else regions.kind
 	Coverage       Coverage
 	Counters       Counters // Plots, Photos and Surveyors within the region; Regions is 0
 	Bounds         Bounds   // for the coverage map; the map script fetches /api/coverage
@@ -356,8 +356,8 @@ type Region struct {
 	LastSurveyedAt *time.Time
 }
 
-// KindName is the region's kind as the page's kicker ("Province"), so that
-// later countries can show their own word; "Region" if the kind is unknown.
+// KindName is the region's kind word as the page's kicker ("Province",
+// "Prefecture"), each country with its own; "Region" if the kind is unknown.
 func (r Region) KindName() string {
 	if r.Kind == "" {
 		return "Region"

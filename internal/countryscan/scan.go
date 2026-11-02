@@ -213,40 +213,20 @@ func (s *scanner) iso(t tagSet) isoState {
 // build reads and assembles the boundaries of the relations keep accepts. A
 // relation with a member way that is not in the file (an extract cuts a
 // relation at its edge) is returned in skipped, not as the partial polygon
-// the assembly would make of the ways that are there.
+// the assembly would make of the ways that are there (osmfile.Assemble with
+// no relation allowed to be partial).
 func (s *scanner) build(keep func(*osm.Relation) bool) (map[int64]osmfile.Boundary, []int64, error) {
 	raw, err := osmfile.ReadBoundaryData(s.o.PBF, keep)
 	if err != nil {
 		return nil, nil, err
 	}
-	ways := make(map[osm.WayID]bool, len(raw.Ways))
-	for _, w := range raw.Ways {
-		ways[w.ID] = true
-	}
-	var whole []*osm.Relation
-	var skipped []int64
-	for _, r := range raw.Relations {
-		complete := true
-		for _, m := range r.Members {
-			if m.Type == osm.TypeWay && !ways[osm.WayID(m.Ref)] {
-				complete = false
-				break
-			}
-		}
-		if complete {
-			whole = append(whole, r)
-		} else {
-			skipped = append(skipped, int64(r.ID))
-		}
-	}
-	raw.Relations = whole
-	bs, notClosed, err := osmfile.BuildBoundaries(raw)
+	a, err := osmfile.Assemble(raw, nil)
 	if err != nil {
 		return nil, nil, err
 	}
-	skipped = append(skipped, notClosed...)
-	out := make(map[int64]osmfile.Boundary, len(bs))
-	for _, b := range bs {
+	skipped := append(a.NotWhole, a.NotClosed...)
+	out := make(map[int64]osmfile.Boundary, len(a.Built))
+	for _, b := range a.Built {
 		out[b.OSMID] = b
 	}
 	return out, skipped, nil

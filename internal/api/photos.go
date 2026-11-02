@@ -15,6 +15,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/cartograph-asia/cartograph/internal/countries"
 	"github.com/cartograph-asia/cartograph/internal/db"
 	"github.com/cartograph-asia/cartograph/internal/h3"
 	"github.com/cartograph-asia/cartograph/internal/photos"
@@ -230,7 +231,11 @@ func (s *Server) createPhoto(w http.ResponseWriter, r *http.Request) {
 	})
 	if errors.Is(err, db.ErrOutsideRegions) {
 		slog.Info("photo outside every region", "cell", cell, "orphaned_keys", []string{keyLarge, keyMedium, keyThumb})
-		writeError(w, http.StatusBadRequest, "this photo was taken outside the area Cartograph covers so far (Thailand)")
+		open, oerr := s.repo.OpenCountries(ctx)
+		if oerr != nil {
+			slog.Error("open countries", "err", oerr)
+		}
+		writeError(w, http.StatusBadRequest, outsideMessage(open))
 		return
 	}
 	if err != nil {
@@ -369,4 +374,23 @@ func parseLatLng(latS, lngS string) (lat, lng float64, ok bool, err error) {
 		return 0, 0, false, errBad
 	}
 	return lat, lng, true, nil
+}
+
+// outsideMessage is the error for a photo taken outside every province. It
+// names the countries that have provinces, in the order of the list: "…
+// covers so far (Thailand)", "(Laos and Thailand)", "(Cambodia, Laos and
+// Thailand)"; with none the sentence stands without brackets.
+func outsideMessage(open []countries.Country) string {
+	msg := "this photo was taken outside the area Cartograph covers so far"
+	names := make([]string, len(open))
+	for i, c := range open {
+		names[i] = c.NameEn
+	}
+	switch len(names) {
+	case 0:
+		return msg
+	case 1:
+		return msg + " (" + names[0] + ")"
+	}
+	return msg + " (" + strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1] + ")"
 }

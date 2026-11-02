@@ -119,22 +119,24 @@ func TestThailandSettingsReproduceOldNames(t *testing.T) {
 		if en != wantEn || local != wantTh {
 			t.Errorf("NamesFor(%v) = %q, %q, want %q, %q", tg, en, local, wantEn, wantTh)
 		}
-		if en, local := Names(tg); en != wantEn || local != wantTh {
-			t.Errorf("Names(%v) = %q, %q, want %q, %q", tg, en, local, wantEn, wantTh)
+		// Places: names as they are, a Latin name:th equal to the English
+		// one included (LatinLocal is false for Thai).
+		if en, local := PlaceNames(tg, th); en != wantEn || local != wantTh {
+			t.Errorf("PlaceNames(%v) = %q, %q, want %q, %q", tg, en, local, wantEn, wantTh)
 		}
 		pe, pl := legacyRegionName(wantEn, wantTh)
 		if e, l := StripName(en, local, th.Province); e != pe || l != pl {
 			t.Errorf("province StripName(%q, %q) = %q, %q, want %q, %q", en, local, e, l, pe, pl)
 		}
-		if e, l := RegionName(en, local); e != pe || l != pl {
-			t.Errorf("RegionName(%q, %q) = %q, %q", en, local, e, l)
+		if n := LevelNames(tg, th, th.Province); n.En != pe || n.Local != pl {
+			t.Errorf("province LevelNames(%v) = %q, %q, want %q, %q", tg, n.En, n.Local, pe, pl)
 		}
 		de, dl := legacyDistrictName(wantEn, wantTh)
 		if e, l := StripName(en, local, th.District); e != de || l != dl {
 			t.Errorf("district StripName(%q, %q) = %q, %q, want %q, %q", en, local, e, l, de, dl)
 		}
-		if e, l := DistrictName(en, local); e != de || l != dl {
-			t.Errorf("DistrictName(%q, %q) = %q, %q", en, local, e, l)
+		if n := LevelNames(tg, th, th.District); n.En != de || n.Local != dl {
+			t.Errorf("district LevelNames(%v) = %q, %q, want %q, %q", tg, n.En, n.Local, de, dl)
 		}
 		// Thailand's kind words follow from regions.kind, so kind_name stays NULL.
 		if k := KindName(en, local, th.Province, "province"); k != "" {
@@ -162,14 +164,8 @@ func TestThailandSettingsReproduceOldLevels(t *testing.T) {
 		tags("admin_level", "4", "ISO3166-2", "TH-20"),
 	} {
 		r := &osm.Relation{ID: 1, Tags: tg}
-		if got, want := IsProvince(r, "th"), legacyIsProvince(r, "th"); got != want {
-			t.Errorf("IsProvince(%v) = %v, want %v", tg, got, want)
-		}
 		if got, want := MatchLevel(r, th.Province), legacyIsProvince(r, "th"); got != want {
 			t.Errorf("MatchLevel(%v, province) = %v, want %v", tg, got, want)
-		}
-		if got, want := IsDistrict(r), legacyIsDistrict(r); got != want {
-			t.Errorf("IsDistrict(%v) = %v, want %v", tg, got, want)
 		}
 		if got, want := MatchLevel(r, th.District), legacyIsDistrict(r); got != want {
 			t.Errorf("MatchLevel(%v, district) = %v, want %v", tg, got, want)

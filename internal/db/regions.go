@@ -150,11 +150,16 @@ func numberPlot(ctx context.Context, tx pgx.Tx, regionID int, cell string) error
 // NumberPlots gives every surveyed plot with a region but no number the next
 // free number in its region, oldest claim first (plots claimed before the
 // import, or outside the land cells). It returns how many were numbered.
-func (d *DB) NumberPlots(ctx context.Context) (int, error) {
+func (d *DB) NumberPlots(ctx context.Context) (int, error) { return d.NumberPlotsOf(ctx, "") }
+
+// NumberPlotsOf is NumberPlots for the plots in the provinces of one country
+// ("" for all): an import never numbers another country's plots.
+func (d *DB) NumberPlotsOf(ctx context.Context, country string) (int, error) {
 	rows, err := d.Pool.Query(ctx, `
 		select pl.cell, pl.region_id from plots pl
 		where pl.region_id is not null and not exists (select 1 from plot_numbers n where n.cell = pl.cell)
-		order by pl.claimed_at, pl.cell`)
+		  and ($1 = '' or exists (select 1 from regions r where r.id = pl.region_id and r.country = $1))
+		order by pl.claimed_at, pl.cell`, country)
 	if err != nil {
 		return 0, fmt.Errorf("db: number plots: %w", err)
 	}
@@ -272,12 +277,16 @@ func (d *DB) ReloadRegions(ctx context.Context) error {
 // MarkUrbanDistricts sets regions.urban on every district whose province is
 // listed in its country's place_naming.urban_regions (all of Bangkok's
 // districts are khet) and clears it on the others.
-func (d *DB) MarkUrbanDistricts(ctx context.Context) error {
+func (d *DB) MarkUrbanDistricts(ctx context.Context) error { return d.MarkUrbanDistrictsOf(ctx, "") }
+
+// MarkUrbanDistrictsOf is MarkUrbanDistricts for the districts of one
+// country ("" for all).
+func (d *DB) MarkUrbanDistrictsOf(ctx context.Context, country string) error {
 	_, err := d.Pool.Exec(ctx, `
 		update regions dist set urban = exists (
 			select 1 from regions prov join place_naming n on n.country = prov.country
 			where prov.id = dist.parent_id and prov.slug = any(n.urban_regions))
-		where dist.kind = 'district'`)
+		where dist.kind = 'district' and ($1 = '' or dist.country = $1)`, country)
 	if err != nil {
 		return fmt.Errorf("db: mark urban districts: %w", err)
 	}
@@ -330,11 +339,16 @@ func (d *DB) LocateRegion(ctx context.Context, lat, lng float64) (id int, ok boo
 
 // RefreshRegionCounts recomputes claimed_cells and last_surveyed_at of every
 // region from plots and photos, so re-imports and backfills stay consistent.
-func (d *DB) RefreshRegionCounts(ctx context.Context) error {
+func (d *DB) RefreshRegionCounts(ctx context.Context) error { return d.RefreshRegionCountsOf(ctx, "") }
+
+// RefreshRegionCountsOf is RefreshRegionCounts for the regions of one
+// country ("" for all).
+func (d *DB) RefreshRegionCountsOf(ctx context.Context, country string) error {
 	_, err := d.Pool.Exec(ctx, `
 		update regions r set
 		  claimed_cells    = coalesce((select count(*) from plots p where p.region_id = r.id and p.photo_count > 0), 0),
-		  last_surveyed_at = (select max(ph.uploaded_at) from visible_photos ph join plots p on p.cell = ph.cell where p.region_id = r.id)`)
+		  last_surveyed_at = (select max(ph.uploaded_at) from visible_photos ph join plots p on p.cell = ph.cell where p.region_id = r.id)
+		where $1 = '' or r.country = $1`, country)
 	if err != nil {
 		return fmt.Errorf("db: refresh region counts: %w", err)
 	}
@@ -354,6 +368,7 @@ type querier interface {
 // PlotLocation is where a plot is: its region and display names.
 type PlotLocation struct {
 	RegionID   int
+	Country    string  // the region's country
 	Region     string  // region name_en
 	PlaceEn    string  // the naming place (see PlaceNaming), else the region's name
 	PlaceLocal *string // Thai name of the same; nil if unknown
@@ -388,11 +403,10 @@ func (d *DB) locatePlot(ctx context.Context, q querier, cell string) (*PlotLocat
 	if inDistrict {
 		loc.DistrictID = &district
 	}
-	var country string
 	err = q.QueryRow(ctx, `
 		select r.name_en, r.name_local, r.country, coalesce((select name_en from regions where id = $2), '')
 		from regions r where r.id = $1`, id, loc.DistrictID,
-	).Scan(&loc.Region, &loc.PlaceLocal, &country, &loc.District)
+	).Scan(&loc.Region, &loc.PlaceLocal, &loc.Country, &loc.District)
 	if errors.Is(err, pgx.ErrNoRows) {
 		// The index is newer or older than the table; treat as outside.
 		return nil, ErrOutsideRegions
@@ -401,6 +415,7 @@ func (d *DB) locatePlot(ctx context.Context, q querier, cell string) (*PlotLocat
 		return nil, fmt.Errorf("db: locate plot: %w", err)
 	}
 	loc.PlaceEn = loc.Region
+	country := loc.Country
 	rules := d.naming(country)
 	cands, err := placesNear(ctx, q, lat, lng, rules.maxRadiusKm())
 	if err != nil {
@@ -441,7 +456,19 @@ func (d *DB) locatePlot(ctx context.Context, q querier, cell string) (*PlotLocat
 // run, and the pages fall back to the region name anyway. Plots outside
 // every region are left alone and counted in outside.
 func (d *DB) BackfillPlots(ctx context.Context) (updated, outside int, err error) {
-	rows, err := d.Pool.Query(ctx, `select cell from plots where region_id is null or place_name is null or district_id is null order by cell`)
+	return d.BackfillPlotsOf(ctx, "")
+}
+
+// BackfillPlotsOf is BackfillPlots for one country's import ("" for all):
+// it fills the plots of that country's provinces and the plots without a
+// region that now lie in one of them; another country's plots are left as
+// they are, also when a new place lies near them.
+func (d *DB) BackfillPlotsOf(ctx context.Context, country string) (updated, outside int, err error) {
+	rows, err := d.Pool.Query(ctx, `
+		select cell from plots p
+		where (region_id is null or place_name is null or district_id is null)
+		  and ($1 = '' or region_id is null or exists (select 1 from regions r where r.id = p.region_id and r.country = $1))
+		order by cell`, country)
 	if err != nil {
 		return 0, 0, fmt.Errorf("db: backfill plots: %w", err)
 	}
@@ -457,6 +484,9 @@ func (d *DB) BackfillPlots(ctx context.Context) (updated, outside int, err error
 		}
 		if err != nil {
 			return updated, outside, err
+		}
+		if country != "" && loc.Country != country {
+			continue // a plot without a region inside another country's province
 		}
 		var placeEn *string
 		placeTh := loc.PlaceLocal

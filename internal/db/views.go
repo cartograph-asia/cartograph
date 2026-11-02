@@ -128,7 +128,7 @@ func (v *Views) base(title, canonical, desc, feed string) views.Page {
 
 // Home implements views.Source.
 func (v *Views) Home(ctx context.Context) (*views.Home, error) {
-	h := &views.Home{Page: v.base("", "/", "A photo for every plot of land in Asia, surveyed by its people.", "/latest.rss")}
+	h := &views.Home{Page: v.base("", "/", "A photo for every plot of land in Southeast and East Asia, surveyed by its people.", "/latest.rss")}
 	err := v.d.Pool.QueryRow(ctx, `select
 		(select count(*) from plots where photo_count > 0),
 		(select count(*) from visible_photos),

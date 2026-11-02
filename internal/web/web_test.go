@@ -15,6 +15,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/cartograph-asia/cartograph/internal/countries"
 	"github.com/cartograph-asia/cartograph/internal/views"
 	"github.com/cartograph-asia/cartograph/internal/views/viewstest"
 )
@@ -165,7 +166,18 @@ func TestEveryPageRenders(t *testing.T) {
 		}},
 		{"latest", views.PageLatest, viewstest.Latest(10), []string{"Latest surveys", `rel="next" href="/latest?page=2"`, "Page 1 of 3"}},
 		{"surveyors", views.PageSurveyors, viewstest.Surveyors(), []string{"ploy88", "beach-walker", `8 plots surveyed, <span class="nb">5 of them first</span>`, `12 photos · <span class="nb">joined`}},
-		{"regions", views.PageRegions, viewstest.Regions(), []string{"Rayong", "Bangkok", "0 of 4,818 plots"}},
+		{"regions", views.PageRegions, viewstest.Regions(), []string{"Rayong", "Bangkok", "0 of 4,818 plots",
+			"<h2 id=\"countries-h\">Countries</h2>", `<a href="/thailand">Thailand</a> <span lang="th" class="th">ประเทศไทย</span>`,
+			`<a href="/vietnam">Vietnam</a>`, "Not open yet"}},
+		{"country", views.PageCountry, viewstest.Country(), []string{
+			"<h1>Thailand <span lang=\"th\" class=\"th\">ประเทศไทย</span></h1>", `<p class="kicker">Country</p>`, "13 of 12,868 plots",
+			`data-minimap="coverage"`, `data-bounds="100.33000,12.50000,101.84000,13.96000"`, "<h2 id=\"provinces-h\">Provinces</h2>",
+			`<a href="/region/chon-buri">Chon Buri</a>`, `<b>2</b> of 3 provinces surveyed`, "Latest surveys", "Most active Surveyors",
+			`href="/thailand.rss"`, "Open Thailand on the map",
+		}},
+		{"country not open", views.PageCountry, viewstest.CountryNotOpen(), []string{
+			"<h1>Vietnam <span lang=\"vi\"", "Cartograph does not cover Vietnam yet.", `name="robots" content="noindex"`,
+		}},
 		{"surveyor", views.PageSurveyor, viewstest.Surveyor(), []string{
 			"<h1>adrian</h1>", "Walking Pattaya", "home region", `data-minimap="plots"`, `<svg class="cells"`,
 			`href="/surveyor/adrian.rss"`, "Edit your profile", `<b>8</b> plots surveyed, <span class="nb">5 of them first</span>`, "8 plots surveyed by adrian",
@@ -180,7 +192,7 @@ func TestEveryPageRenders(t *testing.T) {
 		{"prototype photo", views.PagePhoto, viewstest.PrototypePhoto(), []string{"first survey of this plot", `width="2000" height="1500"`}},
 		{"region", views.PageRegion, viewstest.Region(), []string{
 			"<h1>Chon Buri", "0.20%", "5,921 plots", `data-minimap="coverage"`, `data-bounds="100.68000,12.50000,101.73000,13.59000"`,
-			`<p class="kicker">Province</p>`, "Most active Surveyors", "Last 30 days", "All time", "coverage, 12 of 5,921 plots", `href="/region/chon-buri.rss"`, "Open Chon Buri on the map",
+			`<p class="kicker">Province in <a href="/thailand">Thailand</a></p>`, "Most active Surveyors", "Last 30 days", "All time", "coverage, 12 of 5,921 plots", `href="/region/chon-buri.rss"`, "Open Chon Buri on the map",
 		}},
 		{"signin", views.PageSignIn, viewstest.SignIn(), []string{`action="/signin"`, `name="csrf" value="tok-123"`, `name="next" value="/map"`, `type="email"`, `value="adrian@example"`, "That does not look", `aria-invalid="true" aria-describedby="email-error"`}},
 		{"check-email", views.PageCheckEmail, viewstest.CheckEmail(), []string{"adrian@example.org"}},
@@ -240,7 +252,7 @@ func TestRoutes(t *testing.T) {
 	for _, path := range []string{
 		"/", "/latest", "/surveyors", "/regions", "/surveyor/adrian", "/surveyor/beach-walker",
 		"/plot/88658bd11dfffff", "/plot/88658bd157fffff", "/photo/" + viewstest.FeaturedPhotoID,
-		"/region/chon-buri", "/region/bangkok", "/region/rayong", "/about", "/about/plots", "/principles", "/licence",
+		"/region/chon-buri", "/region/bangkok", "/region/rayong", "/thailand", "/vietnam", "/about", "/about/plots", "/principles", "/licence",
 	} {
 		r := get(t, h, path)
 		if r.status != http.StatusOK {
@@ -578,7 +590,7 @@ func TestHiddenPhotoIsGone(t *testing.T) {
 
 func TestNoInlineStyles(t *testing.T) {
 	// Every page is styled from style.css only (docs/DESIGN_BRIEF.md).
-	for _, name := range []string{"home", "latest", "surveyors", "regions", "surveyor", "plot", "photo", "region",
+	for _, name := range []string{"home", "latest", "surveyors", "regions", "surveyor", "plot", "photo", "region", "country",
 		"signin", "check-email", "choose-name", "edit-profile", "confirm-signin", "error", "static", "layout", "partials",
 		"admin-overview", "admin-photos", "admin-photo", "admin-confirm", "admin-featured", "admin-surveyors", "admin-surveyor",
 		"admin-places", "admin-invites", "admin-log", "signin-again"} {
@@ -849,4 +861,103 @@ func TestDisplayNameForms(t *testing.T) {
 	ep := viewstest.EditProfile()
 	ep.Display = "Adrian Altner"
 	must(t, render(t, views.PageEditProfile, ep), `id="display_name" name="display_name" type="text" value="Adrian Altner"`, "Optional; you can change it any time.")
+}
+
+func TestCountryPages(t *testing.T) {
+	h := newServer(t, 10)
+
+	th := get(t, h, "/thailand")
+	if th.status != http.StatusOK {
+		t.Fatalf("/thailand: %d", th.status)
+	}
+	must(t, th.body, `<link rel="canonical" href="https://cartograph.asia/thailand">`,
+		`<link rel="alternate" type="application/rss+xml" title="cartograph.asia: Thailand" href="https://cartograph.asia/thailand.rss">`,
+		`rel="next" href="/thailand?page=2"`, "Page 1 of 3")
+	mustNot(t, th.body, `name="robots"`)
+	if strings.Count(th.body, `<li><a class="ph"`) != 10 {
+		t.Error("/thailand does not show 10 photos on its first page")
+	}
+	p2 := get(t, h, "/thailand?page=2")
+	must(t, p2.body, `rel="prev" href="/thailand"`, `href="https://cartograph.asia/thailand?page=2"`)
+
+	// In the list, not imported: a short page that says so, not indexed, no feed.
+	vn := get(t, h, "/vietnam")
+	if vn.status != http.StatusOK {
+		t.Fatalf("/vietnam: %d", vn.status)
+	}
+	must(t, vn.body, `name="robots" content="noindex"`, "Cartograph does not cover Vietnam yet.", `<p class="kicker">Country</p>`)
+	mustNot(t, vn.body, "vietnam.rss", `rel="alternate"`, "data-minimap", `class="figures`, "Latest surveys")
+
+	for from, to := range map[string]string{
+		"/Thailand":         "/thailand",
+		"/THAILAND?page=2":  "/thailand?page=2",
+		"/thailand/":        "/thailand",
+		"/Vietnam/":         "/vietnam",
+		"/thailand?page=1":  "/thailand",
+		"/THAILAND.rss":     "/thailand.rss",
+		"/South-Korea":      "/south-korea",
+		"/thailand.rss?x=1": "",
+	} {
+		r := get(t, h, from)
+		if to == "" {
+			if r.status != http.StatusOK {
+				t.Errorf("%s: %d, want 200", from, r.status)
+			}
+			continue
+		}
+		if r.status != http.StatusMovedPermanently || r.header.Get("Location") != to {
+			t.Errorf("%s: %d -> %q, want 301 -> %q", from, r.status, r.header.Get("Location"), to)
+		}
+	}
+
+	// Nothing is guessed: codes, misspellings and unknown names are plain 404s.
+	for _, path := range []string{"/th", "/tailand", "/thailand-2", "/atlantis", "/atlantis/", "/atlantis.rss", "/thailand?page=x",
+		"/thailand?page=0", "/thailand?page=4", "/vietnam?page=2", "/vietnam.rss", "/.rss", "/thailand.rss.rss", "/th.rss"} {
+		r := get(t, h, path)
+		if r.status != http.StatusNotFound {
+			t.Errorf("%s: %d, want 404", path, r.status)
+		}
+	}
+}
+
+func TestCountryFeed(t *testing.T) {
+	r := get(t, newServer(t, 10), "/thailand.rss")
+	if r.status != http.StatusOK || !strings.HasPrefix(r.header.Get("Content-Type"), "application/rss+xml") {
+		t.Fatalf("/thailand.rss: %d %q", r.status, r.header.Get("Content-Type"))
+	}
+	var f feedDoc
+	if err := xml.Unmarshal([]byte(r.body), &f); err != nil {
+		t.Fatal(err)
+	}
+	if f.Channel.Title != "cartograph.asia: Thailand" || len(f.Channel.Items) != 30 {
+		t.Errorf("feed: title %q, %d items", f.Channel.Title, len(f.Channel.Items))
+	}
+	if rss, _ := links(f.Channel.Links); rss != "https://cartograph.asia/thailand" {
+		t.Errorf("feed link %q", rss)
+	}
+}
+
+// Static routes win over /{country}: every page of the site still answers.
+func TestCountryRouteLeavesPagesAlone(t *testing.T) {
+	h := newServer(t, 0)
+	for _, sp := range StaticPages {
+		if r := get(t, h, sp.Path); r.status != http.StatusOK {
+			t.Errorf("%s: %d", sp.Path, r.status)
+		}
+	}
+	for _, path := range []string{"/latest", "/latest.rss", "/regions", "/surveyors"} {
+		if r := get(t, h, path); r.status != http.StatusOK {
+			t.Errorf("%s: %d", path, r.status)
+		}
+	}
+	// And a country slug is never a first segment of a route this package registers.
+	r := chi.NewRouter()
+	NewHandlers(viewstest.NewFake(), newRenderer(t)).Routes(r)
+	_ = chi.Walk(r, func(method, route string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {
+		first, _, _ := strings.Cut(strings.TrimPrefix(route, "/"), "/")
+		if _, ok := countries.BySlug(first); ok {
+			t.Errorf("route %s %s starts with a country's slug", method, route)
+		}
+		return nil
+	})
 }

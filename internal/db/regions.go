@@ -461,11 +461,27 @@ type Place struct {
 	NameLocal string
 	Lat, Lng  float64
 	RegionID  *int
+	Country   string // ISO 3166-1 alpha-2, lower case; empty: the run's country
 }
 
-// ReplacePlaces upserts places by (osm_type, osm_id) and deletes the places
-// not in ps, in one transaction. Plots keep their copied names.
-func (d *DB) ReplacePlaces(ctx context.Context, ps []Place) error {
+// ReplacePlaces stores one country's places: it upserts ps by (osm_type,
+// osm_id) and deletes the places of country that are not in ps, in one
+// transaction. Every place of a run belongs to its country, one outside
+// every province too (RegionID nil); a Place.Country other than country is
+// an error. Other countries' places are never deleted, and a stored place
+// of another country is left as it is, unless that country stored it
+// outside all provinces (region_id null: a Thai extract holds Lao villages
+// beyond the border), which the run then takes over. Plots keep their
+// copied names.
+func (d *DB) ReplacePlaces(ctx context.Context, country string, ps []Place) error {
+	if country == "" {
+		return fmt.Errorf("db: replace places: no country given")
+	}
+	for _, p := range ps {
+		if p.Country != "" && p.Country != country {
+			return fmt.Errorf("db: replace places: place %s%d belongs to country %q, not %q", p.OSMType, p.OSMID, p.Country, country)
+		}
+	}
 	err := pgx.BeginFunc(ctx, d.Pool, func(tx pgx.Tx) error {
 		if _, err := tx.Exec(ctx, `create temp table new_places (
 			osm_type char(1), osm_id bigint, kind text, name_en text, name_local text,
@@ -485,14 +501,16 @@ func (d *DB) ReplacePlaces(ctx context.Context, ps []Place) error {
 			return fmt.Errorf("copy: %w", err)
 		}
 		if _, err := tx.Exec(ctx, `
-			insert into places (osm_type, osm_id, kind, name_en, name_local, lat, lng, region_id)
-			select osm_type, osm_id, kind, name_en, name_local, lat, lng, region_id from new_places
+			insert into places (osm_type, osm_id, kind, name_en, name_local, lat, lng, region_id, country)
+			select osm_type, osm_id, kind, name_en, name_local, lat, lng, region_id, $1 from new_places
 			on conflict (osm_type, osm_id) do update set kind = excluded.kind, name_en = excluded.name_en,
-			  name_local = excluded.name_local, lat = excluded.lat, lng = excluded.lng, region_id = excluded.region_id`); err != nil {
+			  name_local = excluded.name_local, lat = excluded.lat, lng = excluded.lng, region_id = excluded.region_id,
+			  country = excluded.country
+			where places.country = excluded.country or places.region_id is null`, country); err != nil {
 			return fmt.Errorf("upsert: %w", err)
 		}
-		_, err := tx.Exec(ctx, `delete from places p where not exists
-			(select 1 from new_places n where n.osm_type = p.osm_type and n.osm_id = p.osm_id)`)
+		_, err := tx.Exec(ctx, `delete from places p where p.country = $1 and not exists
+			(select 1 from new_places n where n.osm_type = p.osm_type and n.osm_id = p.osm_id)`, country)
 		return err
 	})
 	if err != nil {

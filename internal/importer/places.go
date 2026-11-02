@@ -57,7 +57,8 @@ func Places(ctx context.Context, d *db.DB, o PlaceOptions) (*PlaceStats, error) 
 			st.OutsideRegions++
 		}
 	}
-	if err := d.ReplacePlaces(ctx, rows); err != nil {
+	// Thailand until the import reads the country's settings (WP C).
+	if err := d.ReplacePlaces(ctx, "th", rows); err != nil {
 		return nil, err
 	}
 	if st.PlotsBackfilled, _, err = d.BackfillPlots(ctx); err != nil {

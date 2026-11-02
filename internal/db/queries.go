@@ -8,6 +8,9 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+
+	"github.com/cartograph-asia/cartograph/internal/photos"
 )
 
 // NewPhoto is a photo to be inserted by ClaimPhoto.
@@ -28,6 +31,7 @@ type NewPhoto struct {
 	TakenLocal     *time.Time // camera wall clock (location UTC, not converted)
 	TakenUTCOffset *int       // minutes east of UTC; nil if unknown
 	UploadedAt     time.Time
+	Camera         *photos.Camera // nil stores no camera row (docs/CAMERA_BRIEF.md)
 }
 
 func nullUUID(u uuid.UUID) *uuid.UUID {
@@ -135,6 +139,9 @@ func (d *DB) ClaimPhoto(ctx context.Context, p NewPhoto) (claimed bool, err erro
 		)
 		if err != nil {
 			return fmt.Errorf("insert photo: %w", err)
+		}
+		if err := insertCamera(ctx, tx, p.ID, p.Camera); err != nil {
+			return err
 		}
 		// The plot's stored region: for a plot claimed before the import it
 		// may be null until cmd/regions backfills it.
@@ -265,4 +272,49 @@ func (d *DB) SurveyableBounds(ctx context.Context) (Bounds, bool, error) {
 		return Bounds{}, false, nil
 	}
 	return Bounds{West: *w, South: *s, East: *e, North: *n}, true, nil
+}
+
+// execer is what a pool and a transaction share.
+type execer interface {
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+}
+
+// AddCamera stores camera data for an existing photo, for the development seed
+// (cmd/seed); a photo that has some keeps it. Uploads go through ClaimPhoto.
+func (d *DB) AddCamera(ctx context.Context, photoID uuid.UUID, c *photos.Camera) error {
+	return insertCamera(ctx, d.Pool, photoID, c)
+}
+
+// insertCamera stores the camera data of a new photo; nothing for nil. Zero
+// values are stored as null, so they are never taken for a measurement.
+func insertCamera(ctx context.Context, tx execer, id uuid.UUID, c *photos.Camera) error {
+	if c == nil {
+		return nil
+	}
+	_, err := tx.Exec(ctx, `
+		insert into photo_camera (photo_id, camera, make, model, lens, focal_length_mm, focal_length_35mm,
+		                          f_number, exposure_time_s, iso, flash_fired)
+		values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		on conflict (photo_id) do nothing`,
+		id, c.Label, nullString(c.Make), nullString(c.Model), nullString(c.Lens),
+		nullFloat(c.FocalMM), nullInt16(c.Focal35MM), nullFloat(c.FNumber), nullFloat(c.ExposureS), nullInt(c.ISO), c.Flash)
+	if err != nil {
+		return fmt.Errorf("insert camera: %w", err)
+	}
+	return nil
+}
+
+func nullFloat(f float64) *float64 {
+	if f == 0 {
+		return nil
+	}
+	return &f
+}
+
+func nullInt16(v int) *int16 {
+	if v == 0 {
+		return nil
+	}
+	n := int16(v)
+	return &n
 }

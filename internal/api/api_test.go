@@ -28,6 +28,7 @@ type fakeRepo struct {
 	mu     sync.Mutex
 	plots  map[string]*db.PlotDetail
 	parent map[string][2]string // cell -> parent5, parent6
+	got    []db.NewPhoto        // every photo that was claimed, in order
 }
 
 func newFakeRepo() *fakeRepo {
@@ -37,6 +38,7 @@ func newFakeRepo() *fakeRepo {
 func (f *fakeRepo) ClaimPhoto(_ context.Context, p db.NewPhoto) (bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.got = append(f.got, p)
 	pl, ok := f.plots[p.Cell]
 	if !ok {
 		pl = &db.PlotDetail{Cell: p.Cell, FirstSurveyor: p.Surveyor, ClaimedAt: p.UploadedAt}
@@ -596,5 +598,31 @@ func TestHealthzAndCORS(t *testing.T) {
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent || resp.Header.Get("Access-Control-Allow-Origin") != "*" {
 		t.Errorf("preflight: %d %v", resp.StatusCode, resp.Header)
+	}
+}
+
+// The camera tags of the file reach the claim (docs/CAMERA_BRIEF.md); a file
+// without any claims no camera.
+func TestCreatePhotoPassesCamera(t *testing.T) {
+	e := newEnv(t, 25)
+	iphone, err := os.ReadFile("../../testdata/IMG_1911.jpeg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status, body := e.upload(iphone, nil); status != http.StatusCreated {
+		t.Fatalf("iphone: %d %v", status, body)
+	}
+	if status, body := e.upload(fixture(t, "gps.jpg"), nil); status != http.StatusCreated {
+		t.Fatalf("gps.jpg: %d %v", status, body)
+	}
+	if len(e.repo.got) != 2 {
+		t.Fatalf("%d claims", len(e.repo.got))
+	}
+	c := e.repo.got[0].Camera
+	if c == nil || c.Label != "Apple iPhone 17 Pro" || c.FNumber != 1.8 || c.ISO != 64 || c.Focal35MM != 48 {
+		t.Errorf("iphone camera: %+v", c)
+	}
+	if c := e.repo.got[1].Camera; c != nil {
+		t.Errorf("a file without camera tags got %+v", c)
 	}
 }

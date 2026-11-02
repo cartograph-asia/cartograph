@@ -528,6 +528,10 @@ func (f *Fake) Photo(ctx context.Context, id string) (*views.Photo, error) {
 		Licence: views.CCBYSA4,
 		Count:   len(siblings),
 	}
+	if ph.ID == FeaturedPhotoID {
+		out.Camera = &views.Camera{Label: "Apple iPhone 17 Pro", Lens: "iPhone 17 Pro back triple camera 6.765mm f/1.78",
+			FocalMM: 6.8, Focal35MM: 48, FNumber: 1.8, ExposureS: 1.0 / 250, ISO: 64}
+	}
 	for pos, si := range siblings {
 		if si != i {
 			continue

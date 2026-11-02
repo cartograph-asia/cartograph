@@ -98,6 +98,11 @@ func run(n int, commonsDir string) error {
 		slog.Info("seeded commons photos", "surveyors_created", st.Surveyors, "photos_created", st.Photos, "photos_present", st.Skipped,
 			"outside_regions", st.Outside, "took", time.Since(start).Round(time.Millisecond))
 	}
+	filled, err := SeedCameras(ctx, d)
+	if err != nil {
+		return err
+	}
+	slog.Info("seeded cameras", "photos_filled", filled)
 	return nil
 }
 

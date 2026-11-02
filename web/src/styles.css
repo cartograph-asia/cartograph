@@ -381,14 +381,6 @@ button {
   margin: 0;
   color: var(--ink-muted);
 }
-/* Legal notice and privacy, reachable from the map as from every page. */
-.legal {
-  margin: var(--s-s) 0 0;
-  color: var(--ink-muted);
-}
-.legal a {
-  color: var(--ink-muted);
-}
 .map-status {
   margin: 0;
   color: var(--ink);

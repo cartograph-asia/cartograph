@@ -80,7 +80,7 @@ type regionSet struct {
 //
 // more are the neighbours' cuts (countries.Import.Neighbours): the
 // relations come from path alone, their member ways and nodes from path and
-// more (osmfile.ReadBoundaryDataWith), so a relation the own extract cuts
+// more (osmfile.ReadBoundaries), so a relation the own extract cuts
 // at a border can be assembled. Without neighbours path is read as before.
 func readRegions(path string, more []string, c country, clip orb.Bound, tol float64) (*regionSet, error) {
 	imp := c.Imp
@@ -91,23 +91,17 @@ func readRegions(path string, more []string, c country, clip orb.Bound, tol floa
 			(pl.Parent != 0 && id == pl.Parent) || (dl.Parent != 0 && id == dl.Parent)
 	}
 	start := time.Now()
-	var raw *osm.OSM
-	var err error
-	if len(more) == 0 {
-		raw, err = osmfile.ReadBoundaryData(path, keep)
-	} else {
-		raw, err = osmfile.ReadBoundaryDataWith(path, more, keep)
-	}
+	raw, err := osmfile.ReadBoundaries(path, more, keep)
 	if err != nil {
 		return nil, err
 	}
-	slog.Info("read boundaries", "file", path, "neighbours", more, "relations", len(raw.Relations), "ways", len(raw.Ways), "nodes", len(raw.Nodes),
+	slog.Info("read boundaries", "file", path, "neighbours", more, "relations", len(raw.Relations), "ways", raw.Ways(), "nodes", raw.Nodes(),
 		"took", time.Since(start).Round(time.Millisecond))
 	partial := make(map[int64]bool, len(imp.Partial))
 	for _, id := range imp.Partial {
 		partial[id] = true
 	}
-	a, err := osmfile.Assemble(raw, partial)
+	a, err := raw.Assemble(partial)
 	if err != nil {
 		return nil, err
 	}
@@ -141,7 +135,6 @@ func readRegions(path string, more []string, c country, clip orb.Bound, tol floa
 	for _, r := range raw.Relations {
 		rels[int64(r.ID)] = r
 	}
-	var nodes map[osm.NodeID]orb.Point // for the scope of a province without geometry under Parent
 	for _, id := range slices.Concat(a.NotWhole, a.NotClosed) {
 		r := rels[id]
 		switch {
@@ -150,13 +143,7 @@ func readRegions(path string, more []string, c country, clip orb.Bound, tol floa
 				set.notAssembled = append(set.notAssembled, id)
 				continue
 			}
-			if nodes == nil {
-				nodes = make(map[osm.NodeID]orb.Point, len(raw.Nodes))
-				for _, n := range raw.Nodes {
-					nodes[n.ID] = n.Point()
-				}
-			}
-			switch in, known := memberInside(r, raw, nodes, pParent); {
+			switch in, known := memberInside(r, raw, pParent); {
 			case !known:
 				set.scopeUnknown = append(set.scopeUnknown, id)
 			case in:
@@ -250,23 +237,12 @@ func centre(mp orb.MultiPolygon) orb.Point {
 
 // memberInside reports whether the first node found of r's member ways lies
 // in parent; known is false when none of its nodes is in the data.
-func memberInside(r *osm.Relation, raw *osm.OSM, nodes map[osm.NodeID]orb.Point, parent orb.MultiPolygon) (in, known bool) {
-	ways := map[osm.WayID]*osm.Way{}
-	for _, w := range raw.Ways {
-		ways[w.ID] = w
+func memberInside(r *osm.Relation, raw *osmfile.BoundaryData, parent orb.MultiPolygon) (in, known bool) {
+	p, ok := raw.FirstPoint(r)
+	if !ok {
+		return false, false
 	}
-	for _, m := range r.Members {
-		w := ways[osm.WayID(m.Ref)]
-		if m.Type != osm.TypeWay || w == nil {
-			continue
-		}
-		for _, wn := range w.Nodes {
-			if p, ok := nodes[wn.ID]; ok {
-				return planar.MultiPolygonContains(parent, p), true
-			}
-		}
-	}
-	return false, false
+	return planar.MultiPolygonContains(parent, p), true
 }
 
 // adminLevel is the relation's admin_level, or the level's first one when

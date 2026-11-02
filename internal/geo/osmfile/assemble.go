@@ -28,53 +28,32 @@ type PartialInfo struct {
 // member way absent from o is NotWhole (no geometry) unless partial[id] is
 // true; then it is built from its closed rings only and described in Partial.
 // A relation whose rings cannot be closed is NotClosed (unless partial[id],
-// then the closed rings only, or NotClosed if none closes).
-//
-// Whole relations are assembled by BuildBoundaries (osmgeojson), as before;
-// like it, they count as closed when at least one outer ring closes. A
-// relation listed in partial is assembled here, ring by ring, and appears in
-// Partial only when something was left out. o is not changed.
+// then the closed rings only, or NotClosed if none closes). o is not
+// changed. It is (*BoundaryData).Assemble on o's data.
 func Assemble(o *osm.OSM, partial map[int64]bool) (*Assembled, error) {
-	a := &Assembled{Partial: map[int64]PartialInfo{}}
 	if o == nil {
-		return a, nil
+		return &Assembled{Partial: map[int64]PartialInfo{}}, nil
 	}
-	ways := make(map[osm.WayID]*osm.Way, len(o.Ways))
-	for _, w := range o.Ways {
-		ways[w.ID] = w
-	}
-	var whole, own []*osm.Relation
-	missing := map[int64]int{}
-	for _, r := range o.Relations {
+	return fromOSM(o).Assemble(partial)
+}
+
+// Assemble builds the multipolygons of d's relations; see the function
+// Assemble for the rules.
+//
+// Whole relations are assembled as osmgeojson assembled them before
+// (polygon, the rules of BuildBoundaries): they count as closed when at
+// least one outer ring closes. A relation listed in partial is assembled
+// ring by ring (assembleRings) and appears in Partial only when something
+// was left out.
+func (d *BoundaryData) Assemble(partial map[int64]bool) (*Assembled, error) {
+	a := &Assembled{Partial: map[int64]PartialInfo{}}
+	for _, r := range d.Relations {
 		id := int64(r.ID)
-		n := missingWays(r, ways)
+		missing := d.missingWays(r)
 		switch {
 		case partial[id]:
-			missing[id] = n
-			own = append(own, r)
-		case n > 0:
-			a.NotWhole = append(a.NotWhole, id)
-		default:
-			whole = append(whole, r)
-		}
-	}
-	if len(whole) > 0 {
-		bs, notClosed, err := BuildBoundaries(&osm.OSM{Nodes: o.Nodes, Ways: o.Ways, Relations: whole})
-		if err != nil {
-			return nil, err
-		}
-		a.Built = append(a.Built, bs...)
-		a.NotClosed = append(a.NotClosed, notClosed...)
-	}
-	if len(own) > 0 {
-		nodes := make(map[osm.NodeID]*osm.Node, len(o.Nodes))
-		for _, n := range o.Nodes {
-			nodes[n.ID] = n
-		}
-		for _, r := range own {
-			id := int64(r.ID)
-			g, info := assembleRings(r, ways, nodes)
-			info.MissingWays = missing[id]
+			g, info := d.assembleRings(r)
+			info.MissingWays = missing
 			if len(g) == 0 {
 				a.NotClosed = append(a.NotClosed, id)
 				continue
@@ -83,6 +62,15 @@ func Assemble(o *osm.OSM, partial map[int64]bool) (*Assembled, error) {
 			if info.MissingWays > 0 || info.FragmentsDropped > 0 {
 				a.Partial[id] = info
 			}
+		case missing > 0:
+			a.NotWhole = append(a.NotWhole, id)
+		default:
+			g := d.polygon(r)
+			if len(g) == 0 {
+				a.NotClosed = append(a.NotClosed, id)
+				continue
+			}
+			a.Built = append(a.Built, Boundary{OSMID: id, Tags: r.Tags, Geometry: g})
 		}
 	}
 	sort.Slice(a.Built, func(i, j int) bool { return a.Built[i].OSMID < a.Built[j].OSMID })
@@ -93,12 +81,12 @@ func Assemble(o *osm.OSM, partial map[int64]bool) (*Assembled, error) {
 
 func sortIDs(s []int64) { sort.Slice(s, func(i, j int) bool { return s[i] < s[j] }) }
 
-// missingWays counts the distinct member ways of r (any role) absent from ways.
-func missingWays(r *osm.Relation, ways map[osm.WayID]*osm.Way) int {
+// missingWays counts the distinct member ways of r (any role) absent from d.
+func (d *BoundaryData) missingWays(r *osm.Relation) int {
 	seen := map[osm.WayID]bool{}
 	for _, m := range r.Members {
 		id := osm.WayID(m.Ref)
-		if m.Type != osm.TypeWay || ways[id] != nil || seen[id] {
+		if m.Type != osm.TypeWay || d.HasWay(id) || seen[id] {
 			continue
 		}
 		seen[id] = true
@@ -111,19 +99,20 @@ func missingWays(r *osm.Relation, ways map[osm.WayID]*osm.Way) int {
 // the smallest outer ring that holds it. Outer rings are counter-clockwise,
 // inner rings clockwise, as osmgeojson makes them. The geometry is empty
 // when no outer ring closes.
-func assembleRings(r *osm.Relation, ways map[osm.WayID]*osm.Way, nodes map[osm.NodeID]*osm.Node) (orb.MultiPolygon, PartialInfo) {
+func (d *BoundaryData) assembleRings(r *osm.Relation) (orb.MultiPolygon, PartialInfo) {
 	var outer, inner []orb.LineString
 	seen := map[osm.WayID]bool{}
 	for _, m := range r.Members {
 		if m.Type != osm.TypeWay || (m.Role != "outer" && m.Role != "inner") {
 			continue
 		}
-		w := ways[osm.WayID(m.Ref)]
-		if w == nil || seen[w.ID] {
+		id := osm.WayID(m.Ref)
+		w, ok := d.ways[id]
+		if !ok || seen[id] {
 			continue
 		}
-		seen[w.ID] = true
-		ls := wayLine(w, nodes)
+		seen[id] = true
+		ls := d.line(w)
 		if len(ls) < 2 {
 			continue
 		}
@@ -171,20 +160,6 @@ func assembleRings(r *osm.Relation, ways map[osm.WayID]*osm.Way, nodes map[osm.N
 		info.RingsBuilt++
 	}
 	return mp, info
-}
-
-// wayLine returns the coordinates of w's nodes; nodes absent from the data
-// are left out, as osmgeojson does.
-func wayLine(w *osm.Way, nodes map[osm.NodeID]*osm.Node) orb.LineString {
-	ls := make(orb.LineString, 0, len(w.Nodes))
-	for _, wn := range w.Nodes {
-		if wn.Lon != 0 || wn.Lat != 0 {
-			ls = append(ls, orb.Point{wn.Lon, wn.Lat})
-		} else if n := nodes[wn.ID]; n != nil {
-			ls = append(ls, orb.Point{n.Lon, n.Lat})
-		}
-	}
-	return ls
 }
 
 // joinRings joins lines end to end (reversing them where needed) in the

@@ -221,21 +221,15 @@ func (s *scanner) iso(t tagSet) isoState {
 // build reads and assembles the boundaries of the relations keep accepts. A
 // relation with a member way that is not in the file (an extract cuts a
 // relation at its edge) is returned in skipped, not as the partial polygon
-// the assembly would make of the ways that are there (osmfile.Assemble with
+// the assembly would make of the ways that are there (Assemble with
 // no relation allowed to be partial). With Neighbours the ways and nodes
 // come from the neighbours' cuts as well.
 func (s *scanner) build(keep func(*osm.Relation) bool) (map[int64]osmfile.Boundary, []int64, error) {
-	var raw *osm.OSM
-	var err error
-	if len(s.o.Neighbours) == 0 {
-		raw, err = osmfile.ReadBoundaryData(s.o.PBF, keep)
-	} else {
-		raw, err = osmfile.ReadBoundaryDataWith(s.o.PBF, s.o.Neighbours, keep)
-	}
+	raw, err := osmfile.ReadBoundaries(s.o.PBF, s.o.Neighbours, keep)
 	if err != nil {
 		return nil, nil, err
 	}
-	a, err := osmfile.Assemble(raw, nil)
+	a, err := raw.Assemble(nil)
 	if err != nil {
 		return nil, nil, err
 	}

@@ -298,7 +298,7 @@ func TestSlugFolds(t *testing.T) {
 		"Ōmihachiman":       "omihachiman",
 		"Hà Nội":            "ha-noi",
 		"Liquiçá":           "liquica",
-		"P'yŏngyang":        "p-yongyang",
+		"P'yŏngyang":        "pyongyang",
 		"Chon Buri":         "chon-buri",
 		" Bueng  Kan ":      "bueng-kan",
 		"Ko-Chang!":         "ko-chang",
@@ -340,14 +340,57 @@ func TestSlugKeepsASCII(t *testing.T) {
 		}
 	}
 	ascii := func(b []byte) bool {
-		s := make([]byte, len(b))
+		s, noApos := make([]byte, len(b)), make([]byte, 0, len(b))
 		for i, c := range b {
 			s[i] = c & 0x7f
+			if !IsApostrophe(rune(s[i])) {
+				noApos = append(noApos, s[i])
+			}
 		}
-		return Slug(string(s)) == legacySlug(string(s))
+		// without apostrophes the slug is the old one; an apostrophe is
+		// dropped, which is the one change
+		return Slug(string(s)) == legacySlug(string(noApos))
 	}
 	if err := quick.Check(ascii, nil); err != nil {
 		t.Error(err)
+	}
+}
+
+// Apostrophes are dropped, not turned into separators: a stored slug never
+// changes, so P'yŏngyang must not become p-yongyang.
+func TestSlugDropsApostrophes(t *testing.T) {
+	for in, want := range map[string]string{
+		"P'yŏngyang":   "pyongyang",
+		"Xi'an":        "xian",
+		"Ch'ongjin":    "chongjin",
+		"O'Brien Road": "obrien-road",
+		"Ba’ Dong":     "ba-dong",
+		"Baʼ Dong":     "ba-dong",
+		"Hawaiʻi":      "hawaii",
+		"Ch`ongjin":    "chongjin",
+		"Ch´ongjin":    "chongjin",
+		"'Ilocos":      "ilocos",
+		"Dong' ":       "dong",
+		"A - B":        "a-b",
+		// names from the other settings tests (Laos, Vietnam, Japan), unchanged
+		"Vientiane":                "vientiane",
+		"Vientiane Prefecture":     "vientiane-prefecture",
+		"Attapeu":                  "attapeu",
+		"Pak Sé":                   "pak-se",
+		"Hongsa":                   "hongsa",
+		"Sisattanak":               "sisattanak",
+		"Cao Bằng":                 "cao-bang",
+		"Kyōtango":                 "kyotango",
+		"Ho Chi Minh":              "ho-chi-minh",
+		"Ko-Chang!":                "ko-chang",
+		"Phra Nakhon Si Ayutthaya": "phra-nakhon-si-ayutthaya",
+		"'":                        "",
+		"Rock 'n' Roll":            "rock-n-roll",
+		"Tan Thanh (Ba’ Ria)":      "tan-thanh-ba-ria",
+	} {
+		if got := Slug(in); got != want {
+			t.Errorf("Slug(%q) = %q, want %q", in, got, want)
+		}
 	}
 }
 

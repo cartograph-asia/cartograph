@@ -135,7 +135,7 @@ func (pl *regionPlan) writeReport(w io.Writer) {
 		return 0
 	}
 
-	var pAdded, pUpdated, dAdded, dUpdated, slugs, renamed list
+	var pAdded, pUpdated, dAdded, dUpdated, slugs, renamed, byLand, parentKept list
 	pSame, dSame, landChanged := 0, 0, 0
 	kinds := map[string]int{}
 	land, held, newNumbers, inDistrict := 0, 0, 0, 0
@@ -165,6 +165,14 @@ func (pl *regionPlan) writeReport(w io.Writer) {
 		kinds["district "+q(d.kindName)]++
 		text, _ := geo.EncodeGeometry(d.shape)
 		s := d.stored
+		if d.majority != nil && d.centred != nil && d.majority != d.centred {
+			byLand.add("r%d %s %q: land cells in r%d %s, centre in r%d %s", d.osmID, d.slug, d.names.En,
+				d.majority.osmID, d.majority.names.En, d.centred.osmID, d.centred.names.En)
+		}
+		if s != nil && d.majority != nil && d.majority != d.province {
+			parentKept.add("r%d %s %q: stays in r%d %s, a fresh import gives r%d %s", d.osmID, d.slug, d.names.En,
+				d.province.osmID, d.province.names.En, d.majority.osmID, d.majority.names.En)
+		}
 		if s == nil {
 			dAdded.add("r%d %s %q (%s)", d.osmID, d.slug, d.names.En, q(d.names.Local))
 			slugs.add("district r%d: %s", d.osmID, d.slug)
@@ -204,6 +212,8 @@ func (pl *regionPlan) writeReport(w io.Writer) {
 	if len(pl.c.Imp.Province.Exclude) > 0 || len(pl.c.Imp.District.Exclude) > 0 {
 		fmt.Fprintf(w, "Relations excluded: %d, by settings (Level.Exclude) %v\n", len(set.excluded), set.excluded)
 	}
+	byLand.write(w, "Districts placed by their land cells, not their centre")
+	parentKept.write(w, "Districts whose parent would change (information only: a stored district keeps its parent and slug)")
 	gone.write(w, "Stored rows of this country not in this run (kept as they are)")
 	slugs.write(w, "New slugs")
 	renamed.write(w, "Renamed relations keeping their stored slug")

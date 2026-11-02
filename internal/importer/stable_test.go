@@ -126,6 +126,118 @@ func TestReimportKeepsDuplicateSlugs(t *testing.T) {
 	}
 }
 
+// A district belongs to the province holding most of its land cells, not
+// the one holding its centre; a stored district keeps its parent and slug,
+// and the report names the parent a fresh import would give.
+func TestDistrictParentByLandCells(t *testing.T) {
+	d := testDB(t)
+	ctx := context.Background()
+	imp := zzSettings()
+	imp.Province.Count = [2]int{2, 2}
+	imp.District.Exclude = []int64{900000209}
+	rels := []testRel{
+		{id: 900000201, tags: []string{"admin_level", "4", "ISO3166-2", "ZZ-01", "name", "Zed A"}, outer: []rect{{101.00, 12.50, 101.30, 13.10}}},
+		{id: 900000202, tags: []string{"admin_level", "4", "ISO3166-2", "ZZ-02", "name", "Zed B"}, outer: []rect{{101.30, 12.50, 101.60, 13.10}}},
+		// About 30 % of it in A, where its centroid lies (a thin arm), 70 %
+		// in B (a narrow strip along the border).
+		{id: 900000203, tags: []string{"admin_level", "6", "name", "Straddle"}, outer: []rect{
+			{101.10, 12.78, 101.30, 12.82}, {101.30, 12.50, 101.33, 13.10}}},
+		// Smaller than a plot: no land cell, so its centre decides.
+		{id: 900000204, tags: []string{"admin_level", "6", "name", "Speck"}, outer: []rect{{101.05, 12.60, 101.0512, 12.6012}}},
+		{id: 900000205, tags: []string{"admin_level", "6", "name", "Plain"}, outer: []rect{{101.40, 12.60, 101.50, 12.70}}},
+		// Matches the level, excluded by the settings.
+		{id: 900000209, tags: []string{"admin_level", "6", "name", "Elsewhere"}, outer: []rect{{101.40, 12.80, 101.50, 12.90}}},
+	}
+	pbf := writeTestOSM(t, rels, nil)
+	_, report := regionsRun(ctx, t, d, &imp, pbf, true)
+	for _, w := range []string{
+		"r900000203 zed-b-zz-straddle \"Straddle\": land cells in r900000202 Zed B, centre in r900000201 Zed A",
+		"Relations excluded: 1, by settings (Level.Exclude) [900000209]",
+		"Districts whose parent would change (information only: a stored district keeps its parent and slug): 0",
+	} {
+		if !strings.Contains(report, w) {
+			t.Errorf("fresh report lacks %q:\n%s", w, report)
+		}
+	}
+	regionsRun(ctx, t, d, &imp, pbf, false)
+	want := map[int64]string{
+		900000203: "zed-b-zz-straddle Straddle NULL in r900000202",
+		900000204: "zed-a-zz-speck Speck NULL in r900000201",
+		900000205: "zed-b-zz-plain Plain NULL in r900000202",
+	}
+	if got := storedDistricts(ctx, t, d); !mapsEqual(got, want) {
+		t.Errorf("fresh import: %v, want %v", got, want)
+	}
+
+	// As the centroid rule stored it: under A, with A's slug.
+	if _, err := d.Pool.Exec(ctx, `update regions set slug = 'zed-a-zz-straddle',
+		parent_id = (select id from regions where osm_id = 900000201) where osm_id = 900000203`); err != nil {
+		t.Fatal(err)
+	}
+	all := sums(t, d, "")
+	_, report = regionsRun(ctx, t, d, &imp, pbf, true)
+	for _, w := range []string{
+		"Districts: 3 (0 added, 0 updated, 3 unchanged",
+		"Districts whose parent would change (information only: a stored district keeps its parent and slug): 1",
+		"r900000203 zed-a-zz-straddle \"Straddle\": stays in r900000201 Zed A, a fresh import gives r900000202 Zed B",
+	} {
+		if !strings.Contains(report, w) {
+			t.Errorf("stored report lacks %q:\n%s", w, report)
+		}
+	}
+	regionsRun(ctx, t, d, &imp, pbf, false)
+	sameSums(t, "a run over a district stored under its centre's province", all, sums(t, d, ""))
+}
+
+func mapsEqual(a, b map[int64]string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k, v := range a {
+		if b[k] != v {
+			return false
+		}
+	}
+	return true
+}
+
+// assignParents: the largest share wins, a tie goes to the lower OSM id, no
+// share leaves the centre's province, a stored parent stays.
+func TestAssignParents(t *testing.T) {
+	a, b, c := &province{osmID: 3}, &province{osmID: 2}, &province{osmID: 1}
+	set := &regionSet{provinces: []*province{a, b, c}}
+	dist := func(id int64, centred *province, share map[*province]int) *district {
+		dd := &district{osmID: id, centred: centred, province: centred, share: share}
+		set.districts = append(set.districts, dd)
+		return dd
+	}
+	split := dist(10, a, map[*province]int{a: 3, b: 4, c: 3}) // no majority: the largest share
+	tie := dist(11, a, map[*province]int{a: 5, b: 5})         // a tie: the lower OSM id
+	none := dist(12, c, nil)                                  // no land cell: the centre
+	kept := dist(13, a, map[*province]int{a: 1, c: 9})        // stored under a
+	other := dist(14, a, map[*province]int{b: 9})             // stored for another country
+	gone := dist(15, a, map[*province]int{b: 9})              // stored under a province not in the run
+	parent, goneParent := 1, 2
+	byID := map[int]*db.StoredRegion{1: {ID: 1, OSMID: 3, Country: "zz"}, 2: {ID: 2, OSMID: 99, Country: "zz"}}
+	stored := map[int64]*db.StoredRegion{
+		13: {OSMID: 13, Country: "zz", ParentID: &parent},
+		14: {OSMID: 14, Country: "yy", ParentID: &parent},
+		15: {OSMID: 15, Country: "zz", ParentID: &goneParent},
+	}
+	assignParents(set, country{Code: "zz"}, stored, byID)
+	for _, x := range []struct {
+		d             *district
+		parent, fresh *province
+	}{{split, b, b}, {tie, b, b}, {none, c, c}, {kept, a, c}, {other, b, b}, {gone, b, b}} {
+		if x.d.province != x.parent || x.d.majority != x.fresh {
+			t.Errorf("r%d: parent r%d, majority r%d; want r%d, r%d", x.d.osmID, x.d.province.osmID, x.d.majority.osmID, x.parent.osmID, x.fresh.osmID)
+		}
+		if !slices.Contains(x.d.province.districts, x.d) {
+			t.Errorf("r%d is not among its province's districts", x.d.osmID)
+		}
+	}
+}
+
 // A relation in Level.Exclude is never read, and the run counts it.
 func TestLevelsExclude(t *testing.T) {
 	imp := zzSettings()

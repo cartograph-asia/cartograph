@@ -18,6 +18,7 @@ import (
 type Region struct {
 	OSMID      int64
 	Kind       string // "country", "province", "district" or "city"
+	KindName   string // the display word ("prefecture", "state"); empty: it follows from Kind
 	AdminLevel int
 	ParentID   *int   // the province of a district
 	Urban      bool   // a district that is part of a city (khet)
@@ -29,9 +30,17 @@ type Region struct {
 	LandCells  int
 }
 
+// ErrRegionOtherCountry is returned (wrapped) by UpsertRegions when a
+// relation is already stored for another country.
+var ErrRegionOtherCountry = errors.New("relation is stored for another country")
+
 // UpsertRegions inserts or updates regions by osm_id in one transaction and
-// returns their ids in order. claimed_cells and last_surveyed_at are left
-// alone; call RefreshRegionCounts afterwards.
+// returns their ids in order. A run touches only its own country's rows: a
+// relation stored for another country fails the whole call with
+// ErrRegionOtherCountry and nothing is written. A stored slug never changes
+// (links and the slugs of districts depend on it), so slug is set on insert
+// only. kind_name is NULL where KindName is empty. claimed_cells and
+// last_surveyed_at are left alone; call RefreshRegionCounts afterwards.
 func (d *DB) UpsertRegions(ctx context.Context, rs []Region) ([]int, error) {
 	ids := make([]int, len(rs))
 	err := pgx.BeginFunc(ctx, d.Pool, func(tx pgx.Tx) error {
@@ -41,24 +50,36 @@ func (d *DB) UpsertRegions(ctx context.Context, rs []Region) ([]int, error) {
 				return err
 			}
 			b := r.Boundary.Bound()
-			var th *string
+			var th, kindName *string
 			if r.NameLocal != "" {
 				th = &r.NameLocal
 			}
+			if r.KindName != "" {
+				kindName = &r.KindName
+			}
 			err = tx.QueryRow(ctx, `
 				insert into regions (osm_id, admin_level, country, slug, name_en, name_local, boundary,
-				                     min_lat, min_lng, max_lat, max_lng, land_cells, kind, parent_id, urban)
-				values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+				                     min_lat, min_lng, max_lat, max_lng, land_cells, kind, parent_id, urban, kind_name)
+				values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
 				on conflict (osm_id) do update set
-				  kind = excluded.kind, admin_level = excluded.admin_level, country = excluded.country, slug = excluded.slug,
+				  kind = excluded.kind, kind_name = excluded.kind_name, admin_level = excluded.admin_level,
 				  parent_id = excluded.parent_id, urban = excluded.urban,
 				  name_en = excluded.name_en, name_local = excluded.name_local, boundary = excluded.boundary,
 				  min_lat = excluded.min_lat, min_lng = excluded.min_lng,
 				  max_lat = excluded.max_lat, max_lng = excluded.max_lng, land_cells = excluded.land_cells
+				where regions.country = excluded.country
 				returning id`,
 				r.OSMID, r.AdminLevel, r.Country, r.Slug, r.NameEn, th, text,
-				b.Min[1], b.Min[0], b.Max[1], b.Max[0], r.LandCells, r.Kind, r.ParentID, r.Urban,
+				b.Min[1], b.Min[0], b.Max[1], b.Max[0], r.LandCells, r.Kind, r.ParentID, r.Urban, kindName,
 			).Scan(&ids[i])
+			if errors.Is(err, pgx.ErrNoRows) {
+				// The guard held: the row exists for another country.
+				var other string
+				if err := tx.QueryRow(ctx, `select country from regions where osm_id = $1`, r.OSMID).Scan(&other); err != nil {
+					return fmt.Errorf("upsert region %d (%s): %w", r.OSMID, r.Slug, err)
+				}
+				return fmt.Errorf("upsert region %d (%s) for %q: %w (%q)", r.OSMID, r.Slug, r.Country, ErrRegionOtherCountry, other)
+			}
 			if err != nil {
 				return fmt.Errorf("upsert region %d (%s): %w", r.OSMID, r.Slug, err)
 			}

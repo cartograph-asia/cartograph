@@ -136,7 +136,7 @@ func places(ctx context.Context, d *db.DB, o Options, rp *regionPlan) (*PlaceSta
 	if reach == 0 {
 		reach = DefaultPlaceReachKm
 	}
-	ownProvince := func(id int) bool { _, ok := rp.own[id]; return ok }
+	ownProvince := func(id int) bool { return countryOf(id) == c.Code }
 	// classify gives a place its class and, when strong, the index id of
 	// its province.
 	classify := func(pt orb.Point) (placeClass, int) {

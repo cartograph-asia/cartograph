@@ -182,7 +182,7 @@ func (f *Fake) counters() views.Counters {
 // Home implements views.Source.
 func (f *Fake) Home(ctx context.Context) (*views.Home, error) {
 	h := &views.Home{
-		Page:     base("", "/", "A photo for every plot of land in Asia, surveyed by its people.", "/latest.rss"),
+		Page:     base("", "/", "A photo for every plot of land in Southeast and East Asia, surveyed by its people.", "/latest.rss"),
 		Counters: f.counters(),
 		Regions:  f.regionSummaries(true),
 	}

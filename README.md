@@ -1,8 +1,8 @@
-<img src="web/public/logo.svg" alt="" width="96" height="96" />
+<img src="web/public/logo.png" alt="" width="96" height="96" />
 
 # Cartograph
 
-Cartograph is a community game: a photo for every plot of land in South, Southeast and East Asia. The map is divided into plots of about 0.74 km², and the first Surveyor to upload a geotagged photo into a plot claims it. More about the idea on the [organisation profile](https://github.com/cartograph-asia).
+Cartograph is a community game: a photo for every plot of land in Southeast and East Asia. The map is divided into plots of about 0.74 km², and the first Surveyor to upload a geotagged photo into a plot claims it. More about the idea on the [organisation profile](https://github.com/cartograph-asia).
 
 This repository holds the prototype, Thailand only: a server-rendered community front page with Surveyor, plot, photo and region pages and RSS feeds, the map at `/map`, and magic-link sign-in for uploading.
 

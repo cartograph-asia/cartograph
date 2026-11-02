@@ -629,7 +629,7 @@ func TestStylesheetURLs(t *testing.T) {
 func TestStaticAssets(t *testing.T) {
 	h := newServer(t, 0)
 	rd := newRenderer(t)
-	for _, name := range []string{"style.css", "logo.svg", "apple-touch-icon.png"} {
+	for _, name := range []string{"style.css", "logo.png", "apple-touch-icon.png"} {
 		u := rd.assets.url(name)
 		if !regexp.MustCompile(`^/static/[a-z-]+\.[0-9a-f]{8}\.[a-z]+$`).MatchString(u) {
 			t.Errorf("%s: url %q has no hash", name, u)

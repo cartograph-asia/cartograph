@@ -26,7 +26,9 @@ type Photo struct {
 	Author     string     `json:"author"`
 	Licence    string     `json:"licence"` // e.g. "CC BY-SA 4.0"
 	LicenceURL string     `json:"licence_url,omitempty"`
-	Taken      *time.Time `json:"taken,omitempty"` // as Commons gives it; nil if unknown
+	Taken      *time.Time `json:"taken,omitempty"`   // as Commons gives it; nil if unknown
+	Source     string     `json:"source,omitempty"`  // "commons": the position is the file's; "wikidata": the item's
+	Subject    string     `json:"subject,omitempty"` // the Wikidata item (landmark) the image belongs to
 }
 
 // Manifest lists the photos in the order they were found: by place, nearest first.

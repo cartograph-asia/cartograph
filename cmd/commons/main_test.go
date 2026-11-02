@@ -78,3 +78,27 @@ func TestAPIError(t *testing.T) {
 		}
 	}
 }
+
+func TestParseNearby(t *testing.T) {
+	const body = `{"results":{"bindings":[
+	  {"itemLabel":{"value":"Wat Arun"},"loc":{"value":"Point(100.4889 13.7437)"},"image":{"value":"http://commons.wikimedia.org/wiki/Special:FilePath/Wat%20Arun%20%E0%B8%A7%E0%B8%B1%E0%B8%94.jpg"}},
+	  {"itemLabel":{"value":"No image"},"loc":{"value":"Point(100.5 13.7)"},"image":{"value":"https://example.org/x.jpg"}},
+	  {"itemLabel":{"value":"No position"},"loc":{"value":"nowhere"},"image":{"value":"http://commons.wikimedia.org/wiki/Special:FilePath/X.jpg"}}]}}`
+	got, err := parseNearby([]byte(body))
+	if err != nil || len(got) != 1 {
+		t.Fatalf("%+v %v", got, err)
+	}
+	h := got[0]
+	if h.Title != "File:Wat Arun วัด.jpg" || h.Lat != 13.7437 || h.Lon != 100.4889 || h.Source != "wikidata" || h.Subject != "Wat Arun" {
+		t.Errorf("hit %+v", h)
+	}
+}
+
+func TestMergeHits(t *testing.T) {
+	a := []hit{{Title: "File:A.jpg", Source: "commons"}, {Title: "File:B.jpg", Source: "commons"}}
+	b := []hit{{Title: "File:B.jpg", Source: "wikidata"}, {Title: "File:C.jpg", Source: "wikidata"}}
+	got := mergeHits(a, b)
+	if len(got) != 3 || got[1].Source != "commons" || got[2].Title != "File:C.jpg" {
+		t.Errorf("%+v", got)
+	}
+}

@@ -33,6 +33,7 @@ import (
 
 const (
 	api       = "https://commons.wikimedia.org/w/api.php"
+	sparql    = "https://query.wikidata.org/sparql"
 	userAgent = "cartograph-dev-seed/1.0 (https://github.com/cartograph-asia/cartograph; development data)"
 	thumbPx   = 2000
 	minWidth  = 1600
@@ -77,10 +78,11 @@ func main() {
 	out := flag.String("out", "testdata/commons", "directory for the photos, the manifest and CREDITS.md")
 	per := flag.Int("per-place", 4, "photos to keep per place")
 	radius := flag.Int("radius", 10000, "search radius in metres (at most 10000)")
+	wikidata := flag.Bool("wikidata", false, "also take images of Wikidata items near each place (landmarks with an image)")
 	pause := flag.Duration("pause", 700*time.Millisecond, "pause between requests")
 	flag.Parse()
 	c := &client{http: &http.Client{Timeout: 60 * time.Second}, pause: *pause}
-	if err := run(c, *out, *per, min(*radius, 10000)); err != nil {
+	if err := run(c, *out, *per, min(*radius, 10000), *wikidata); err != nil {
 		slog.Error("commons", "err", err)
 		os.Exit(1)
 	}
@@ -150,10 +152,11 @@ func transient(code string) bool {
 }
 
 type hit struct {
-	PageID int     `json:"pageid"`
-	Title  string  `json:"title"`
-	Lat    float64 `json:"lat"`
-	Lon    float64 `json:"lon"`
+	Title   string  `json:"title"`
+	Lat     float64 `json:"lat"`
+	Lon     float64 `json:"lon"`
+	Source  string  `json:"-"` // "commons" (the file's own position) or "wikidata" (the item's)
+	Subject string  `json:"-"` // the Wikidata item the image belongs to
 }
 
 type meta map[string]struct {
@@ -161,11 +164,62 @@ type meta map[string]struct {
 }
 
 type info struct {
+	PageID  int    `json:"pageid"` // of the file page; set from the page, not the image info
 	Thumb   string `json:"thumburl"`
 	Width   int    `json:"width"`
 	Mime    string `json:"mime"`
 	Page    string `json:"descriptionurl"`
 	Extmeta meta   `json:"extmetadata"`
+}
+
+// nearby asks Wikidata for items within radius metres of p that have an image
+// (P18), nearest first: landmarks, temples, stations, whose photos are on
+// Commons. Their position is the item's, not the file's.
+func (c *client) nearby(p place, radius int) ([]hit, error) {
+	q := fmt.Sprintf(`SELECT ?itemLabel ?loc ?image WHERE {
+  SERVICE wikibase:around { ?item wdt:P625 ?loc . bd:serviceParam wikibase:center "Point(%f %f)"^^geo:wktLiteral .
+    bd:serviceParam wikibase:radius "%d" . bd:serviceParam wikibase:distance ?dist . }
+  ?item wdt:P18 ?image .
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en,th". }
+} ORDER BY ?dist LIMIT 40`, p.lng, p.lat, radius/1000)
+	b, err := c.get(sparql + "?" + url.Values{"query": {q}, "format": {"json"}}.Encode())
+	if err != nil {
+		return nil, err
+	}
+	return parseNearby(b)
+}
+
+// parseNearby reads the SPARQL result of nearby.
+func parseNearby(b []byte) ([]hit, error) {
+	var r struct {
+		Results struct {
+			Bindings []struct {
+				Label struct{ Value string } `json:"itemLabel"`
+				Loc   struct{ Value string } `json:"loc"`
+				Image struct{ Value string } `json:"image"`
+			} `json:"bindings"`
+		} `json:"results"`
+	}
+	if err := json.Unmarshal(b, &r); err != nil {
+		return nil, err
+	}
+	var out []hit
+	for _, x := range r.Results.Bindings {
+		var lat, lng float64
+		if _, err := fmt.Sscanf(x.Loc.Value, "Point(%f %f)", &lng, &lat); err != nil {
+			continue
+		}
+		_, name, ok := strings.Cut(x.Image.Value, "Special:FilePath/")
+		if !ok {
+			continue
+		}
+		name, err := url.PathUnescape(name)
+		if err != nil || name == "" {
+			continue
+		}
+		out = append(out, hit{Title: "File:" + name, Lat: lat, Lon: lng, Source: "wikidata", Subject: x.Label.Value})
+	}
+	return out, nil
 }
 
 func (c *client) search(p place, radius int) ([]hit, error) {
@@ -185,6 +239,9 @@ func (c *client) search(p place, radius int) ([]hit, error) {
 	}
 	if err := json.Unmarshal(b, &r); err != nil {
 		return nil, err
+	}
+	for i := range r.Query.Geosearch {
+		r.Query.Geosearch[i].Source = "commons"
 	}
 	return r.Query.Geosearch, nil
 }
@@ -227,6 +284,7 @@ func (c *client) infoBatch(titles []string) (map[string]info, error) {
 	var r struct {
 		Query struct {
 			Pages []struct {
+				PageID    int    `json:"pageid"`
 				Title     string `json:"title"`
 				ImageInfo []info `json:"imageinfo"`
 			} `json:"pages"`
@@ -238,7 +296,9 @@ func (c *client) infoBatch(titles []string) (map[string]info, error) {
 	out := map[string]info{}
 	for _, p := range r.Query.Pages {
 		if len(p.ImageInfo) > 0 {
-			out[p.Title] = p.ImageInfo[0]
+			in := p.ImageInfo[0]
+			in.PageID = p.PageID
+			out[p.Title] = in
 		}
 	}
 	return out, nil
@@ -286,7 +346,7 @@ func metres(lat1, lng1, lat2, lng2 float64) float64 {
 	return 2 * r * math.Asin(math.Sqrt(a))
 }
 
-func run(c *client, out string, per, radius int) error {
+func run(c *client, out string, per, radius int, wikidata bool) error {
 	if err := os.MkdirAll(out, 0o755); err != nil {
 		return err
 	}
@@ -310,6 +370,13 @@ func run(c *client, out string, per, radius int) error {
 			slog.Warn("search failed, skipped", "place", p.name, "err", short(err))
 			continue
 		}
+		if wikidata {
+			if wd, err := c.nearby(p, radius); err != nil {
+				slog.Warn("wikidata failed", "place", p.name, "err", short(err))
+			} else {
+				hits = mergeHits(hits, wd)
+			}
+		}
 		titles := make([]string, len(hits))
 		for i, h := range hits {
 			titles[i] = h.Title
@@ -328,7 +395,8 @@ func run(c *client, out string, per, radius int) error {
 			}
 			in, ok := got[h.Title]
 			ph := commons.Photo{
-				File: fmt.Sprintf("p%d.jpg", h.PageID), Title: h.Title, Place: p.name, Lat: h.Lat, Lng: h.Lon,
+				File: fmt.Sprintf("p%d.jpg", in.PageID), Title: h.Title, Place: p.name, Lat: h.Lat, Lng: h.Lon,
+				Source: h.Source, Subject: h.Subject,
 				PageURL: in.Page, Author: plain(in.Extmeta["Artist"].Value), Licence: plain(in.Extmeta["LicenseShortName"].Value),
 				LicenceURL: plain(in.Extmeta["LicenseUrl"].Value), Taken: taken(in.Extmeta["DateTimeOriginal"].Value, now),
 			}
@@ -374,6 +442,28 @@ func short(err error) string {
 	return s
 }
 
+// mergeHits puts the Wikidata hits after the Commons ones, without a title twice.
+func mergeHits(commonsHits, wikidataHits []hit) []hit {
+	seen := map[string]bool{}
+	for _, h := range commonsHits {
+		seen[h.Title] = true
+	}
+	for _, h := range wikidataHits {
+		if !seen[h.Title] {
+			seen[h.Title] = true
+			commonsHits = append(commonsHits, h)
+		}
+	}
+	return commonsHits
+}
+
+func subject(p commons.Photo) string {
+	if p.Subject == "" {
+		return ""
+	}
+	return " (" + p.Subject + ")"
+}
+
 func has(ps []commons.Photo, file string) bool {
 	for _, p := range ps {
 		if p.File == file {
@@ -411,7 +501,7 @@ func writeCredits(dir string, m *commons.Manifest) error {
 	var b strings.Builder
 	b.WriteString("# Credits\n\nPhotos from Wikimedia Commons for development data (docs/SEED_PHOTOS_BRIEF.md).\nNot for the repository, not for production, not for the public site.\n\n")
 	for _, p := range m.Photos {
-		fmt.Fprintf(&b, "- %s: %s, %s, %s\n", p.File, p.Author, p.Licence, p.PageURL)
+		fmt.Fprintf(&b, "- %s: %s, %s, %s%s\n", p.File, p.Author, p.Licence, p.PageURL, subject(p))
 	}
 	return os.WriteFile(filepath.Join(dir, "CREDITS.md"), []byte(b.String()), 0o644)
 }

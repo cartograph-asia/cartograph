@@ -131,3 +131,23 @@ func TestRegionKindName(t *testing.T) {
 		}
 	}
 }
+
+func TestCameraLine(t *testing.T) {
+	for _, c := range []struct {
+		c    Camera
+		want string
+	}{
+		{Camera{Label: "Apple iPhone 17 Pro", FocalMM: 6.8, Focal35MM: 48, FNumber: 1.8, ExposureS: 1.0 / 16129, ISO: 64},
+			"Apple iPhone 17 Pro · 6.8 mm (48 mm equiv.) · f/1.8 · 1/16129 s · ISO 64"},
+		{Camera{Label: "Canon EOS R5", FocalMM: 35, FNumber: 2, ExposureS: 1.0 / 250, ISO: 400},
+			"Canon EOS R5 · 35 mm · f/2 · 1/250 s · ISO 400"},
+		{Camera{Label: "SONY ILCE-7M4", ExposureS: 2, FNumber: 8}, "SONY ILCE-7M4 · f/8 · 2 s"},
+		{Camera{Label: "Nikon D850", ExposureS: 0.4}, "Nikon D850 · 0.4 s"},
+		{Camera{Label: "Pixel 9", Focal35MM: 24}, "Pixel 9 · 24 mm equiv."},
+		{Camera{Label: "Unknown camera", Lens: "ignored on the line"}, "Unknown camera"},
+	} {
+		if got := c.c.Line(); got != c.want {
+			t.Errorf("Line() = %q, want %q", got, c.want)
+		}
+	}
+}

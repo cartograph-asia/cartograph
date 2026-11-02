@@ -23,6 +23,9 @@ type Meta struct {
 	// TakenOffset is OffsetTimeOriginal in minutes east of UTC; nil if the
 	// photo has none.
 	TakenOffset *int
+	// Camera is the camera data of the photo (docs/CAMERA_BRIEF.md); nil
+	// when it has none.
+	Camera *Camera
 }
 
 const offsetTimeOriginal exif.FieldName = "OffsetTimeOriginal"
@@ -57,7 +60,8 @@ func (offsetParser) Parse(x *exif.Exif) error {
 	return nil
 }
 
-// ReadMeta extracts GPS position and capture time from the EXIF block of b.
+// ReadMeta extracts GPS position, capture time and camera data from the EXIF
+// block of b.
 // It is best effort: missing or malformed EXIF yields an empty Meta.
 func ReadMeta(b []byte) Meta { return ReadMetaFrom(bytes.NewReader(b)) }
 
@@ -73,6 +77,7 @@ func ReadMetaFrom(r io.Reader) Meta {
 		m.HasGPS, m.Lat, m.Lng = true, lat, lng
 	}
 	m.TakenAt, m.TakenLocal, m.TakenOffset = takenAt(x)
+	m.Camera = cameraFrom(x)
 	return m
 }
 

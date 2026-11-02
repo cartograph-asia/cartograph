@@ -226,6 +226,7 @@ func (s *Server) createPhoto(w http.ResponseWriter, r *http.Request) {
 		TakenLocal:     meta.TakenLocal,
 		TakenUTCOffset: meta.TakenOffset,
 		UploadedAt:     now,
+		Camera:         meta.Camera,
 	})
 	if errors.Is(err, db.ErrOutsideRegions) {
 		slog.Info("photo outside every region", "cell", cell, "orphaned_keys", []string{keyLarge, keyMedium, keyThumb})

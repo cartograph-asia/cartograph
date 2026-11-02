@@ -703,6 +703,9 @@ func (v *Views) Photo(ctx context.Context, id string) (*views.Photo, error) {
 	if licence == views.CCBYSA4.Name {
 		out.Licence = views.CCBYSA4
 	}
+	if out.Camera, err = v.camera(ctx, uid); err != nil {
+		return nil, err
+	}
 	rows, err := v.d.Pool.Query(ctx, `select id from visible_photos where cell = $1 order by uploaded_at, id`, ph.Plot.Cell)
 	if err != nil {
 		return nil, fmt.Errorf("db: photo siblings: %w", err)
@@ -868,4 +871,21 @@ func (v *Views) SurveyorFeed(ctx context.Context, name string) (*views.Feed, err
 	}
 	return v.feed(ctx, views.Wordmark+": "+s.profile.Label(), surveyorPath(s.profile.Name), "The newest photos by "+s.profile.Label()+".",
 		"where ph.surveyor_id = $1", s.id)
+}
+
+// camera returns the camera data of a photo, nil if it has none.
+func (v *Views) camera(ctx context.Context, id uuid.UUID) (*views.Camera, error) {
+	var c views.Camera
+	err := v.d.Pool.QueryRow(ctx, `
+		select camera, coalesce(lens, ''), coalesce(focal_length_mm, 0), coalesce(focal_length_35mm, 0),
+		       coalesce(f_number, 0), coalesce(exposure_time_s, 0), coalesce(iso, 0)
+		from photo_camera where photo_id = $1`, id,
+	).Scan(&c.Label, &c.Lens, &c.FocalMM, &c.Focal35MM, &c.FNumber, &c.ExposureS, &c.ISO)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("db: photo camera: %w", err)
+	}
+	return &c, nil
 }

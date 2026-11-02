@@ -1,6 +1,8 @@
 package views
 
 import (
+	"math"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -136,6 +138,57 @@ type Photo struct {
 	Next     *PhotoItem // newer photo of the same plot; nil for the newest
 	Position int        // 1-based position in the plot, oldest = 1
 	Count    int        // photos in the plot
+	Camera   *Camera    // what the photo's camera recorded; nil for photos without it
+}
+
+// Camera is the camera data of a photo (docs/CAMERA_BRIEF.md). Its texts come
+// from the file and are printed escaped, never as a link or a class.
+type Camera struct {
+	Label     string // "Apple iPhone 17 Pro"
+	Lens      string
+	FocalMM   float64 // 0 if unknown
+	Focal35MM int
+	FNumber   float64
+	ExposureS float64 // seconds
+	ISO       int
+}
+
+// Line is the page's one line of camera data, "Apple iPhone 17 Pro · 6.8 mm
+// (48 mm equiv.) · f/1.8 · 1/16129 s · ISO 64", with what is unknown left
+// out. The lens is not part of it: phones repeat the numbers in it.
+func (c Camera) Line() string {
+	parts := []string{c.Label}
+	if c.FocalMM > 0 {
+		f := strconv.FormatFloat(c.FocalMM, 'f', -1, 64) + " mm"
+		if c.Focal35MM > 0 {
+			f += " (" + strconv.Itoa(c.Focal35MM) + " mm equiv.)"
+		}
+		parts = append(parts, f)
+	} else if c.Focal35MM > 0 {
+		parts = append(parts, strconv.Itoa(c.Focal35MM)+" mm equiv.")
+	}
+	if c.FNumber > 0 {
+		parts = append(parts, "f/"+strconv.FormatFloat(c.FNumber, 'f', -1, 64))
+	}
+	if c.ExposureS > 0 {
+		parts = append(parts, exposure(c.ExposureS))
+	}
+	if c.ISO > 0 {
+		parts = append(parts, "ISO "+strconv.Itoa(c.ISO))
+	}
+	return strings.Join(parts, " · ")
+}
+
+// exposure formats seconds the way cameras show them: "1/250 s" below a
+// second, "0.5 s"-style decimals for fractions like 0.4, "2 s" above.
+func exposure(s float64) string {
+	if s >= 1 {
+		return strconv.FormatFloat(math.Round(s*10)/10, 'f', -1, 64) + " s"
+	}
+	if n := math.Round(1 / s); n >= 2 && math.Abs(1/s-n) < 0.05*n {
+		return "1/" + strconv.Itoa(int(n)) + " s"
+	}
+	return strconv.FormatFloat(math.Round(s*10)/10, 'f', -1, 64) + " s"
 }
 
 // Region is the region page (/region/{slug}).

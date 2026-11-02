@@ -189,7 +189,7 @@ func addPhoto(ctx context.Context, d *db.DB, store storage.Store, id uuid.UUID, 
 	claimed, err := d.ClaimPhoto(ctx, db.NewPhoto{
 		ID: id, Cell: cell, Parent5: p5, Parent6: p6, Surveyor: name, SurveyorID: surveyorID,
 		KeyLarge: prefix + "_large.jpg", KeyMedium: prefix + "_medium.jpg", KeyThumb: prefix + "_thumb.jpg",
-		Width: v.LargeWidth, Height: v.LargeHeight, Lat: meta.Lat, Lng: meta.Lng, TakenAt: meta.TakenAt, TakenLocal: meta.TakenLocal, TakenUTCOffset: meta.TakenOffset, UploadedAt: at,
+		Width: v.LargeWidth, Height: v.LargeHeight, Lat: meta.Lat, Lng: meta.Lng, TakenAt: meta.TakenAt, TakenLocal: meta.TakenLocal, TakenUTCOffset: meta.TakenOffset, UploadedAt: at, Camera: meta.Camera,
 	})
 	if errors.Is(err, db.ErrOutsideRegions) {
 		return fmt.Errorf("%w: import the regions first (cmd/regions)", err)

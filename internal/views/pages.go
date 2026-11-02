@@ -2,6 +2,7 @@ package views
 
 import (
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -64,11 +65,59 @@ type SurveyorListItem struct {
 	LastPhoto *PhotoItem // newest photo; nil if none
 }
 
-// RegionList is /regions: every region, most recent activity first, then by
-// name. The front page's regions counter links here.
+// RegionList is /regions: the countries (see SortCountries), then every region, most recent
+// activity first, then by name. The front page's regions counter links here.
 type RegionList struct {
 	Page
-	Regions []RegionSummary
+	Countries []CountrySummary // every country in the list, in the order of SortCountries
+	Regions   []RegionSummary
+}
+
+// CountrySummary is one row of the countries block on /regions. Open is
+// false for a country in the list whose regions are not imported yet; the
+// other fields are then zero.
+type CountrySummary struct {
+	Country        CountryRef
+	Open           bool
+	Coverage       Coverage
+	LastSurveyedAt *time.Time
+	TopSurveyors   []SurveyorActivity // up to TopSurveyors, most photos in the last ActiveDays first
+}
+
+// SortCountries orders countries as /regions lists them: those with regions
+// first, newest activity first and then by name, then the others by name.
+func SortCountries(cs []CountrySummary) {
+	sort.SliceStable(cs, func(i, j int) bool {
+		a, b := cs[i], cs[j]
+		switch {
+		case a.Open != b.Open:
+			return a.Open
+		case a.Open && (a.LastSurveyedAt == nil) != (b.LastSurveyedAt == nil):
+			return a.LastSurveyedAt != nil
+		case a.Open && a.LastSurveyedAt != nil && !a.LastSurveyedAt.Equal(*b.LastSurveyedAt):
+			return a.LastSurveyedAt.After(*b.LastSurveyedAt)
+		}
+		return a.Country.NameEn < b.Country.NameEn
+	})
+}
+
+// Country is the country page (/{slug}). The country's figures are the sums
+// over its provinces. Open is false for a country in the list whose regions
+// are not imported yet: the page then has only the Country and an
+// explanation (NoIndex is set), and every other field is zero.
+type Country struct {
+	Page
+	Country        CountryRef
+	Open           bool
+	Coverage       Coverage
+	Counters       Counters // Plots, Photos and Surveyors in the country; Regions = provinces with a surveyed plot
+	Bounds         Bounds   // union of the provinces' boxes, for the coverage map
+	Provinces      []RegionSummary
+	Latest         []PhotoItem
+	Pagination     Pagination
+	ActiveRecent   []SurveyorActivity
+	ActiveAllTime  []SurveyorActivity
+	LastSurveyedAt *time.Time
 }
 
 // Surveyor is the profile page (/surveyor/{name}).
@@ -233,7 +282,8 @@ type Photo struct {
 type Region struct {
 	Page
 	Region         RegionRef
-	Kind           string // the region's kind from the regions table: "province" or "country"
+	Country        CountryRef // the country the region lies in; zero if it is not in the list
+	Kind           string     // the region's kind from the regions table: "province" or "country"
 	Coverage       Coverage
 	Counters       Counters // Plots, Photos and Surveyors within the region; Regions is 0
 	Bounds         Bounds   // for the coverage map; the map script fetches /api/coverage
@@ -253,7 +303,7 @@ func (r Region) KindName() string {
 	return strings.ToUpper(r.Kind[:1]) + r.Kind[1:]
 }
 
-// Feed is an RSS feed: /latest.rss, /region/{slug}.rss, /surveyor/{name}.rss.
+// Feed is an RSS feed: /latest.rss, /region/{slug}.rss, /{country}.rss, /surveyor/{name}.rss.
 // Page.Title is the channel title, Page.Canonical the HTML page it mirrors.
 type Feed struct {
 	Page

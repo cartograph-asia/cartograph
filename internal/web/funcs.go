@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cartograph-asia/cartograph/internal/h3"
 	"github.com/cartograph-asia/cartograph/internal/storage"
 	"github.com/cartograph-asia/cartograph/internal/views"
 )
@@ -46,6 +47,7 @@ func (rd *Renderer) funcs() template.FuncMap {
 		"plotSVG":     plotSVG,
 		"cellsSVG":    cellsSVG,
 		"mapHash":     mapHash,
+		"nearbyURL":   nearbyURL,
 		"bounds":      boundsAttr,
 		"plotCells":   func(p *views.Plot) []string { return neighbourCells(p.Plot.Cell, p.Neighbours) },
 		// pathsFor is the link of each cell for data-paths, parallel to data-cells.
@@ -417,6 +419,17 @@ func mapHash(b views.Bounds) string {
 		z = math.Max(5, math.Min(15, math.Floor(math.Log2(360/span))-1))
 	}
 	return fmt.Sprintf("/map#%.0f/%.4f/%.4f", z, (b.MinLat+b.MaxLat)/2, (b.MinLng+b.MaxLng)/2)
+}
+
+// nearbyURL is Wikidata's "Nearby" page for the centre of a plot: the items
+// and images around it. It is the plot's centre, never the position of a
+// photo, so the link tells no more than the plot page already does.
+func nearbyURL(cell string) string {
+	lat, lng, err := h3.Centre(cell)
+	if err != nil {
+		return ""
+	}
+	return fmt.Sprintf("https://www.wikidata.org/wiki/Special:Nearby#/coord/%.4f,%.4f", lat, lng)
 }
 
 // namePattern is views.NamePattern for an HTML pattern attribute: anchors

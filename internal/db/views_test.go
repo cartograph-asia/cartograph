@@ -583,3 +583,104 @@ func region0(t *testing.T, w *world) int {
 	}
 	return id
 }
+
+func TestCountry(t *testing.T) {
+	w := newWorld(t)
+	ctx := context.Background()
+	v := w.d.Views().WithNow(func() time.Time { return t0 })
+
+	c, err := v.Country(ctx, "thailand", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The country's figures are the sums over its provinces: here the one.
+	prov, err := v.Region(ctx, "chon-buri", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !c.Open || c.Coverage != prov.Coverage || c.Coverage.Claimed != 4 || c.Bounds != prov.Bounds || !c.LastSurveyedAt.Equal(*prov.LastSurveyedAt) {
+		t.Fatalf("country %+v, province %+v", c, prov)
+	}
+	if c.Counters != (views.Counters{Plots: 4, Photos: 6, Surveyors: 2, Regions: 1}) {
+		t.Fatalf("counters %+v", c.Counters)
+	}
+	if c.Canonical != "/thailand" || c.Feed != "/thailand.rss" || c.NoIndex || c.Country.NameEn != "Thailand" || c.Country.Lang != "th" {
+		t.Fatalf("page %+v", c.Page)
+	}
+	if len(c.Provinces) != 1 || c.Provinces[0].Region.Slug != "chon-buri" || len(c.Latest) != 6 || c.Latest[0].ID != w.photos[5].String() {
+		t.Fatalf("provinces %+v, latest %d", c.Provinces, len(c.Latest))
+	}
+	if len(c.ActiveRecent) != 2 || c.ActiveRecent[0].Surveyor.Name != "adrian" || c.ActiveRecent[0].Photos != 3 || len(c.ActiveAllTime) != 2 || c.ActiveAllTime[0].Photos != 4 {
+		t.Fatalf("active %+v / %+v", c.ActiveRecent, c.ActiveAllTime)
+	}
+	if prov.Country.Slug != "thailand" || prov.Country.NameEn != "Thailand" {
+		t.Fatalf("province page does not link its country: %+v", prov.Country)
+	}
+
+	// Case-insensitive; a page past the last one and unknown slugs are not found.
+	if c, err := v.Country(ctx, "THAILAND", 1); err != nil || c.Canonical != "/thailand" {
+		t.Fatalf("upper case: %+v %v", c, err)
+	}
+	for _, slug := range []string{"th", "atlantis", "chon-buri"} {
+		if _, err := v.Country(ctx, slug, 1); !errors.Is(err, views.ErrNotFound) {
+			t.Errorf("Country(%q): %v", slug, err)
+		}
+	}
+	if _, err := v.Country(ctx, "thailand", 2); !errors.Is(err, views.ErrNotFound) {
+		t.Errorf("page 2: %v", err)
+	}
+
+	// In the list, no regions: a short page, not indexed, no feed.
+	vn, err := v.Country(ctx, "vietnam", 1)
+	if err != nil || vn.Open || !vn.NoIndex || vn.Feed != "" || vn.Canonical != "/vietnam" || vn.Latest != nil || vn.Provinces != nil {
+		t.Fatalf("vietnam %+v %v", vn, err)
+	}
+	if _, err := v.Country(ctx, "vietnam", 2); !errors.Is(err, views.ErrNotFound) {
+		t.Errorf("vietnam page 2: %v", err)
+	}
+	if _, err := v.CountryFeed(ctx, "vietnam"); !errors.Is(err, views.ErrNotFound) {
+		t.Errorf("vietnam feed: %v", err)
+	}
+
+	// The feed holds this country's photos only: add a province elsewhere.
+	if _, err := w.d.UpsertRegions(ctx, []db.Region{{OSMID: 900001, Kind: "province", AdminLevel: 4, Country: "vn", Slug: "ha-noi", NameEn: "Ha Noi",
+		Boundary: orb.MultiPolygon{{{{105.5, 20.8}, {106.0, 20.8}, {106.0, 21.3}, {105.5, 21.3}, {105.5, 20.8}}}}, LandCells: 50}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.d.ReloadRegions(ctx); err != nil {
+		t.Fatal(err)
+	}
+	w.surveyor(t, "ha-noi-walker", t0.Add(-time.Hour))
+	if _, claimed := w.claim(t, "ha-noi-walker", 21.03, 105.85, t0); !claimed {
+		t.Fatal("the plot in Ha Noi was not claimed")
+	}
+	f, err := v.CountryFeed(ctx, "thailand")
+	if err != nil || len(f.Items) != 6 || f.Canonical != "/thailand" {
+		t.Fatalf("thailand feed: %d items, %+v, %v", len(f.Items), f.Page, err)
+	}
+	if f, err = v.CountryFeed(ctx, "vietnam"); err != nil || len(f.Items) != 1 || f.Items[0].Surveyor.Name != "ha-noi-walker" {
+		t.Fatalf("vietnam feed: %+v %v", f, err)
+	}
+	if vn, err = v.Country(ctx, "vietnam", 1); err != nil || !vn.Open || vn.Coverage.Claimed != 1 || vn.Coverage.Land != 50 || vn.Counters.Photos != 1 {
+		t.Fatalf("vietnam %+v %v", vn, err)
+	}
+	if c, err = v.Country(ctx, "thailand", 1); err != nil || c.Counters.Photos != 6 || c.Coverage.Claimed != 4 {
+		t.Fatalf("thailand after Vietnam: %+v %v", c.Counters, err)
+	}
+
+	// /regions: every country in the list, the open ones with their figures.
+	rl, err := v.Regions(ctx)
+	if err != nil || len(rl.Countries) < 17 || len(rl.Regions) != 2 {
+		t.Fatalf("regions %+v %v", rl, err)
+	}
+	open := map[string]views.CountrySummary{}
+	for _, s := range rl.Countries {
+		if s.Open {
+			open[s.Country.Slug] = s
+		}
+	}
+	if len(open) != 2 || open["thailand"].Coverage.Claimed != 4 || open["vietnam"].Coverage.Claimed != 1 ||
+		len(open["thailand"].TopSurveyors) != 2 || open["thailand"].TopSurveyors[0].Surveyor.Name != "adrian" {
+		t.Fatalf("open countries %+v", open)
+	}
+}

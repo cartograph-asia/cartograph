@@ -47,6 +47,25 @@
 </li>
 {{- end}}
 
+{{/* One country row on /regions: like a region row; a country that is not
+   imported yet has a name and a note, no bar. */}}
+{{define "country-row" -}}
+<li><h3><a href="/{{.Country.Slug}}">{{.Country.NameEn}}</a>{{template "native" .Country}}</h3>
+{{if .Open -}}
+{{template "covbar" .Coverage}}
+<p class="cov"><span class="pct">{{pct .Coverage}}</span> <span class="of">{{num .Coverage.Claimed}} of {{num .Coverage.Land}} plots</span></p>
+{{if .TopSurveyors}}<p class="who">Most active: {{range $i, $s := .TopSurveyors}}{{if $i}}, {{end}}<a href="/surveyor/{{$s.Surveyor.Name}}">{{$s.Surveyor.Label}}</a>{{end}}</p>{{end}}
+{{- else -}}
+<p class="cov"><span class="of">Not open yet</span></p>
+{{- end}}
+</li>
+{{- end}}
+
+{{/* A country's own name beside the English one, when it differs. */}}
+{{define "native" -}}
+{{if and .Native (ne .Native .NameEn)}} <span lang="{{.Lang}}" class="th">{{.Native}}</span>{{end}}
+{{- end}}
+
 {{/* A coverage bar; its length is data, so it is an SVG attribute, not a style. */}}
 {{define "covbar" -}}
 <svg class="bar" viewBox="0 0 100 1" preserveAspectRatio="none" aria-hidden="true" focusable="false"><rect class="track" width="100" height="1"/>{{if .Claimed}}<rect class="fill" width="{{bar .}}" height="1"/>{{end}}</svg>

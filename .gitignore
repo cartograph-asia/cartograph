@@ -14,3 +14,7 @@ backup/
 /seed
 /fixture
 /webpreview
+
+# Free photos fetched from Wikimedia Commons for development data (docs/SEED_PHOTOS_BRIEF.md): never committed
+testdata/commons/
+/commons

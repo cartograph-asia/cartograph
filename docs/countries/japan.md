@@ -152,7 +152,7 @@ English-capable name: the first of `name:en`, `int_name`, `name:ja-Latn`, `name`
 - Local prefixes: none. Suffixes: “市” 790, “町” 742.
 - Slugs: 0 names have no slug (no English-capable name, or nothing in it that a slug can hold); 12 slugs are used more than once: 11/misato (2), 25/fuchu (2), 29/kiso (2), 29/matsukawa (2), 3/echizen (2), 41/shimanto (2), 41/tosa (2), 45/esashi (2), 45/kushiro (2), 45/shibetsu (2).
   (A district's slug is built from its province's; the duplicates above are within one province.)
-- **Accents:** `osmfile.Slug` drops accented letters; with accents folded (NFD, đ → d) the slug is different for 27 names, e.g. Kyōtango: ky-tango → kyotango, Higashiōsaka: higashi-saka → higashiosaka, Ōmihachiman: mihachiman → omihachiman. Stage 2 should fold accents.
+- **Accents:** a slug without folding (as before stage 2) drops accented letters; `osmfile.Slug` folds them (NFD, đ → d), which changes the slug of 27 names, e.g. Kyōtango: ky-tango → kyotango, Higashiōsaka: higashi-saka → higashiosaka, Ōmihachiman: mihachiman → omihachiman.
 
 The slug of a new country's province carries the country as a suffix (`-japan`), decided on 2026-11-02, so it cannot collide with another country's.
 

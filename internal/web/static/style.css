@@ -73,8 +73,8 @@ h3 { font-size: var(--step-body); margin: 0; letter-spacing: 0; }
 p { margin: 0 0 var(--s-m); }
 b { font-variant-numeric: lining-nums; }
 abbr[title] { text-decoration: none; }
-.th { font-family: var(--font-text); font-weight: 400; color: var(--ink-muted); }
-h1 .th { font-size: 0.6em; letter-spacing: 0; }
+.local { font-family: var(--font-text); font-weight: 400; color: var(--ink-muted); }
+h1 .local { font-size: 0.6em; letter-spacing: 0; }
 /* Keeps a plot name's dot with the word before it, so a heading breaks
    after the dot (funcs.go heading). */
 .nb { white-space: nowrap; }
@@ -217,7 +217,7 @@ button.link:hover, button.link:focus-visible { text-decoration: underline; }
 .regions h3 { font-size: var(--step-title); font-family: var(--font-display); letter-spacing: var(--head-tracking); }
 .regions h3 a { text-decoration: none; }
 .regions h3 a:hover, .regions h3 a:focus-visible { text-decoration: underline; }
-.regions .th { font-size: var(--step-meta); }
+.regions .local { font-size: var(--step-meta); }
 .regions .bar { grid-column: 1 / -1; grid-row: 2; }
 .regions .cov { grid-column: 2; grid-row: 1; margin: 0; justify-content: flex-end; text-align: right; }
 .regions .who { grid-column: 1 / -1; }

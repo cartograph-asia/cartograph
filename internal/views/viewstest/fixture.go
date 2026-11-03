@@ -16,9 +16,9 @@ var Now = time.Date(2026, 11, 1, 9, 0, 0, 0, time.UTC)
 
 // Regions of the fixture.
 var (
-	ChonBuri = views.RegionRef{Slug: "chon-buri", NameEn: "Chon Buri", NameLocal: "ชลบุรี"}
-	Rayong   = views.RegionRef{Slug: "rayong", NameEn: "Rayong", NameLocal: "ระยอง"}
-	Bangkok  = views.RegionRef{Slug: "bangkok", NameEn: "Bangkok", NameLocal: "กรุงเทพมหานคร"}
+	ChonBuri = views.RegionRef{Slug: "chon-buri", NameEn: "Chon Buri", NameLocal: "ชลบุรี", Lang: "th"}
+	Rayong   = views.RegionRef{Slug: "rayong", NameEn: "Rayong", NameLocal: "ระยอง", Lang: "th"}
+	Bangkok  = views.RegionRef{Slug: "bangkok", NameEn: "Bangkok", NameLocal: "กรุงเทพมหานคร", Lang: "th"}
 )
 
 // region is a fixture region with its land cell count and bounds.

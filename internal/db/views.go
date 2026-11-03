@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"math"
@@ -12,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/cartograph-asia/cartograph/internal/countries"
 	"github.com/cartograph-asia/cartograph/internal/h3"
 	"github.com/cartograph-asia/cartograph/internal/views"
 )
@@ -42,7 +44,7 @@ const photoCols = `ph.id, ph.key_thumb, coalesce(ph.key_medium, ''), ph.key_larg
 	coalesce(pl.place_name, r.name_en, ''), coalesce(pl.place_name_local, ''),
 	coalesce(r.slug, ''), coalesce(r.name_en, ''), coalesce(r.name_local, ''),
 	coalesce(s.name, ph.surveyor), ph.taken_at, ph.uploaded_at, pl.first_photo is not distinct from ph.id,
-	coalesce(pn.number, 0), coalesce(dr.name_en, ''), coalesce(s.display_name, '')`
+	coalesce(pn.number, 0), coalesce(dr.name_en, ''), coalesce(s.display_name, ''), coalesce(r.country, '')`
 
 const photoFrom = ` from visible_photos ph
 	join plots pl on pl.cell = ph.cell
@@ -53,6 +55,42 @@ const photoFrom = ` from visible_photos ph
 
 // surveyorKey groups photos by account, else by the free-text name.
 const surveyorKey = `coalesce(s.name, ph.surveyor)`
+
+// langOf is a scan destination for a country code that stores the language
+// of the country's local names (regionLang) in each of the strings.
+func langOf(dst ...*string) sql.Scanner { return langScan(dst) }
+
+type langScan []*string
+
+func (l langScan) Scan(src any) error {
+	var code string
+	switch s := src.(type) {
+	case nil:
+	case string:
+		code = s
+	case []byte:
+		code = string(s)
+	default:
+		return fmt.Errorf("db: country code of type %T", src)
+	}
+	for _, d := range l {
+		*d = regionLang(code)
+	}
+	return nil
+}
+
+// regionLang is the BCP 47 tag of the local names of a country's regions and
+// places: the country's import setting, else the language of its native name,
+// else "" (no lang attribute).
+func regionLang(code string) string {
+	if imp, ok := countries.ImportOf(code); ok && imp.LocalLang != "" {
+		return imp.LocalLang
+	}
+	if c, ok := countries.ByCode(code); ok {
+		return c.Lang
+	}
+	return ""
+}
 
 func scanPhoto(row pgx.CollectableRow) (views.PhotoItem, error) {
 	var p views.PhotoItem
@@ -66,7 +104,7 @@ func scanPhoto(row pgx.CollectableRow) (views.PhotoItem, error) {
 func photoDest(p *views.PhotoItem, id *uuid.UUID) []any {
 	return []any{id, &p.Keys.Thumb, &p.Keys.Medium, &p.Keys.Large, &p.Width, &p.Height, &p.Plot.Cell,
 		&p.Plot.Place, &p.Plot.PlaceLocal, &p.Plot.Region.Slug, &p.Plot.Region.NameEn, &p.Plot.Region.NameLocal,
-		&p.Surveyor.Name, &p.TakenAt, &p.UploadedAt, &p.FirstSurvey, &p.Plot.Number, &p.Plot.District, &p.Surveyor.Display}
+		&p.Surveyor.Name, &p.TakenAt, &p.UploadedAt, &p.FirstSurvey, &p.Plot.Number, &p.Plot.District, &p.Surveyor.Display, langOf(&p.Plot.Region.Lang)}
 }
 
 func finishPhoto(p *views.PhotoItem, id uuid.UUID) {
@@ -233,19 +271,19 @@ func (v *Views) photosByID(ctx context.Context, ids []uuid.UUID) (map[string]vie
 type regionRow struct {
 	id   int
 	ref  views.RegionRef
-	kind string
+	kind string // the display word: kind_name, else kind
 	cov  views.Coverage
 	last *time.Time
 	b    views.Bounds
 }
 
-const regionCols = `id, kind, slug, name_en, coalesce(name_local, ''), claimed_cells, land_cells, last_surveyed_at,
-	min_lat, min_lng, max_lat, max_lng`
+const regionCols = `id, coalesce(kind_name, kind), slug, name_en, coalesce(name_local, ''), claimed_cells, land_cells, last_surveyed_at,
+	min_lat, min_lng, max_lat, max_lng, country`
 
 func scanRegion(r pgx.CollectableRow) (regionRow, error) {
 	var x regionRow
 	err := r.Scan(&x.id, &x.kind, &x.ref.Slug, &x.ref.NameEn, &x.ref.NameLocal, &x.cov.Claimed, &x.cov.Land, &x.last,
-		&x.b.MinLat, &x.b.MinLng, &x.b.MaxLat, &x.b.MaxLng)
+		&x.b.MinLat, &x.b.MinLng, &x.b.MaxLat, &x.b.MaxLng, langOf(&x.ref.Lang))
 	if x.last != nil {
 		t := x.last.UTC()
 		x.last = &t
@@ -414,11 +452,12 @@ type surveyorRow struct {
 func (v *Views) surveyor(ctx context.Context, name string) (*surveyorRow, error) {
 	var s surveyorRow
 	var slug, en, th *string
+	var lang string
 	err := v.d.Pool.QueryRow(ctx, `
-		select s.id, s.name, coalesce(s.display_name, ''), s.joined_at, s.bio, r.slug, r.name_en, r.name_local
+		select s.id, s.name, coalesce(s.display_name, ''), s.joined_at, s.bio, r.slug, r.name_en, r.name_local, coalesce(r.country, '')
 		from surveyors s left join regions r on r.id = s.home_region_id
 		where lower(s.name) = lower($1)`, name,
-	).Scan(&s.id, &s.profile.Name, &s.profile.Display, &s.profile.JoinedAt, &s.profile.Bio, &slug, &en, &th)
+	).Scan(&s.id, &s.profile.Name, &s.profile.Display, &s.profile.JoinedAt, &s.profile.Bio, &slug, &en, &th, langOf(&lang))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, views.ErrNotFound
 	}
@@ -427,7 +466,7 @@ func (v *Views) surveyor(ctx context.Context, name string) (*surveyorRow, error)
 	}
 	s.profile.JoinedAt = s.profile.JoinedAt.UTC()
 	if slug != nil {
-		s.profile.HomeRegion = &views.RegionRef{Slug: *slug, NameEn: *en, NameLocal: deref(th)}
+		s.profile.HomeRegion = &views.RegionRef{Slug: *slug, NameEn: *en, NameLocal: deref(th), Lang: lang}
 	}
 	return &s, nil
 }
@@ -498,8 +537,8 @@ func (v *Views) Surveyor(ctx context.Context, name string, q views.SurveyorQuery
 	if q.Region != "" {
 		var id int
 		var ref views.RegionRef
-		err := v.d.Pool.QueryRow(ctx, `select id, slug, name_en, coalesce(name_local, '') from regions where slug = lower($1)`, q.Region).
-			Scan(&id, &ref.Slug, &ref.NameEn, &ref.NameLocal)
+		err := v.d.Pool.QueryRow(ctx, `select id, slug, name_en, coalesce(name_local, ''), country from regions where slug = lower($1)`, q.Region).
+			Scan(&id, &ref.Slug, &ref.NameEn, &ref.NameLocal, langOf(&ref.Lang))
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, views.ErrNotFound
 		}
@@ -597,14 +636,14 @@ func (v *Views) Surveyor(ctx context.Context, name string, q views.SurveyorQuery
 // Surveyor's, most plots first.
 func (v *Views) surveyorRegions(ctx context.Context, id uuid.UUID) ([]views.SurveyorRegion, error) {
 	rows, err := v.d.Pool.Query(ctx, `
-		select r.slug, r.name_en, coalesce(r.name_local, ''), count(distinct ph.cell), count(*), r.land_cells
+		select r.slug, r.name_en, coalesce(r.name_local, ''), r.country, count(distinct ph.cell), count(*), r.land_cells
 		from visible_photos ph join plots pl on pl.cell = ph.cell join regions r on r.id = pl.region_id
-		where ph.surveyor_id = $1 group by r.id order by 4 desc, r.name_en, r.id`, id)
+		where ph.surveyor_id = $1 group by r.id order by 5 desc, r.name_en, r.id`, id)
 	if err != nil {
 		return nil, fmt.Errorf("db: surveyor regions: %w", err)
 	}
 	out, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (x views.SurveyorRegion, err error) {
-		err = r.Scan(&x.Region.Slug, &x.Region.NameEn, &x.Region.NameLocal, &x.Plots, &x.Photos, &x.Land)
+		err = r.Scan(&x.Region.Slug, &x.Region.NameEn, &x.Region.NameLocal, langOf(&x.Region.Lang), &x.Plots, &x.Photos, &x.Land)
 		return
 	})
 	if err != nil {
@@ -642,7 +681,8 @@ func (v *Views) SurveyorPlots(ctx context.Context, name string) (*views.Surveyor
 	rows, err := v.d.Pool.Query(ctx, `
 		select ph.cell, coalesce(pl.place_name, r.name_en, ''), coalesce(pl.place_name_local, ''),
 		       coalesce(r.slug, ''), coalesce(r.name_en, ''), coalesce(r.name_local, ''),
-		       coalesce(pn.number, 0), coalesce(dr.name_en, ''), count(*), pl.first_surveyor_id is not distinct from $1
+		       coalesce(pn.number, 0), coalesce(dr.name_en, ''), count(*), pl.first_surveyor_id is not distinct from $1,
+			       coalesce(r.country, '')
 		from visible_photos ph
 		join plots pl on pl.cell = ph.cell
 		left join plot_numbers pn on pn.cell = ph.cell
@@ -657,7 +697,7 @@ func (v *Views) SurveyorPlots(ctx context.Context, name string) (*views.Surveyor
 	out := &views.SurveyorPlotList{Surveyor: views.SurveyorRef{Name: s.profile.Name, Display: s.profile.Display}}
 	out.Plots, err = pgx.CollectRows(rows, func(r pgx.CollectableRow) (x views.SurveyorPlot, err error) {
 		p := &x.Plot
-		err = r.Scan(&p.Cell, &p.Place, &p.PlaceLocal, &p.Region.Slug, &p.Region.NameEn, &p.Region.NameLocal, &p.Number, &p.District, &x.Photos, &x.First)
+		err = r.Scan(&p.Cell, &p.Place, &p.PlaceLocal, &p.Region.Slug, &p.Region.NameEn, &p.Region.NameLocal, &p.Number, &p.District, &x.Photos, &x.First, langOf(&p.Region.Lang))
 		return
 	})
 	if err != nil {
@@ -680,17 +720,17 @@ func (v *Views) Plot(ctx context.Context, cell string) (*views.Plot, error) {
 	}
 	out := &views.Plot{Plot: views.PlotRef{Cell: cell}}
 	var place, placeTh, firstName, slug, en, th, district *string
-	var firstDisplay string
+	var firstDisplay, lang string
 	var claimedAt *time.Time
 	err = v.d.Pool.QueryRow(ctx, `
 		select pl.photo_count, pl.claimed_at, pl.place_name, pl.place_name_local,
-		       coalesce(s.name, pl.first_surveyor), coalesce(s.display_name, ''), r.slug, r.name_en, r.name_local, dr.name_en
+		       coalesce(s.name, pl.first_surveyor), coalesce(s.display_name, ''), r.slug, r.name_en, r.name_local, dr.name_en, coalesce(r.country, '')
 		from plots pl
 		left join surveyors s on s.id = pl.first_surveyor_id
 		left join regions r on r.id = pl.region_id
 		left join regions dr on dr.id = pl.district_id
 		where pl.cell = $1 and pl.photo_count > 0`, cell,
-	).Scan(&out.PhotoCount, &claimedAt, &place, &placeTh, &firstName, &firstDisplay, &slug, &en, &th, &district)
+	).Scan(&out.PhotoCount, &claimedAt, &place, &placeTh, &firstName, &firstDisplay, &slug, &en, &th, &district, langOf(&lang))
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
 	case err != nil:
@@ -703,7 +743,7 @@ func (v *Views) Plot(ctx context.Context, cell string) (*views.Plot, error) {
 			out.FirstSurveyor = &views.SurveyorRef{Name: *firstName, Display: firstDisplay}
 		}
 		if slug != nil {
-			out.Plot.Region = views.RegionRef{Slug: *slug, NameEn: *en, NameLocal: deref(th)}
+			out.Plot.Region = views.RegionRef{Slug: *slug, NameEn: *en, NameLocal: deref(th), Lang: lang}
 		}
 		out.Plot.Place, out.Plot.PlaceLocal, out.Plot.District = deref(place), deref(placeTh), deref(district)
 	}
@@ -846,8 +886,8 @@ func plural(n int, word string) string {
 
 func (v *Views) regionRef(ctx context.Context, id int) (views.RegionRef, error) {
 	var r views.RegionRef
-	err := v.d.Pool.QueryRow(ctx, `select slug, name_en, coalesce(name_local, '') from regions where id = $1`, id).
-		Scan(&r.Slug, &r.NameEn, &r.NameLocal)
+	err := v.d.Pool.QueryRow(ctx, `select slug, name_en, coalesce(name_local, ''), country from regions where id = $1`, id).
+		Scan(&r.Slug, &r.NameEn, &r.NameLocal, langOf(&r.Lang))
 	if err != nil {
 		return r, fmt.Errorf("db: region ref: %w", err)
 	}
@@ -1005,13 +1045,13 @@ func (v *Views) Region(ctx context.Context, slug string, page int) (*views.Regio
 
 // RegionRefs implements views.Source.
 func (v *Views) RegionRefs(ctx context.Context) ([]views.RegionRef, error) {
-	rows, err := v.d.Pool.Query(ctx, `select slug, name_en, coalesce(name_local, '') from regions where kind = 'province' order by name_en`)
+	rows, err := v.d.Pool.Query(ctx, `select slug, name_en, coalesce(name_local, ''), country from regions where kind = 'province' order by name_en`)
 	if err != nil {
 		return nil, fmt.Errorf("db: region refs: %w", err)
 	}
 	out, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (views.RegionRef, error) {
 		var x views.RegionRef
-		return x, r.Scan(&x.Slug, &x.NameEn, &x.NameLocal)
+		return x, r.Scan(&x.Slug, &x.NameEn, &x.NameLocal, langOf(&x.Lang))
 	})
 	if err != nil {
 		return nil, fmt.Errorf("db: region refs: %w", err)

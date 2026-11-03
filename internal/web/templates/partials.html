@@ -40,7 +40,7 @@
 
 {{/* One region row: name, coverage, bar, most active Surveyors. */}}
 {{define "region-row" -}}
-<li><h3><a href="/region/{{.Region.Slug}}">{{.Region.NameEn}}</a>{{with .Region.NameLocal}} <span lang="th" class="th">{{.}}</span>{{end}}</h3>
+<li><h3><a href="/region/{{.Region.Slug}}">{{.Region.NameEn}}</a>{{with .Region.NameLocal}} <span{{with $.Region.Lang}} lang="{{.}}"{{end}} class="local">{{.}}</span>{{end}}</h3>
 {{template "covbar" .Coverage}}
 <p class="cov"><span class="pct">{{pct .Coverage}}</span> <span class="of">{{num .Coverage.Claimed}} of {{num .Coverage.Land}} plots</span></p>
 {{if .TopSurveyors}}<p class="who">Most active: {{range $i, $s := .TopSurveyors}}{{if $i}}, {{end}}<a href="/surveyor/{{$s.Surveyor.Name}}">{{$s.Surveyor.Label}}</a>{{end}}</p>{{end}}
@@ -63,7 +63,7 @@
 
 {{/* A country's own name beside the English one, when it differs. */}}
 {{define "native" -}}
-{{if and .Native (ne .Native .NameEn)}} <span lang="{{.Lang}}" class="th">{{.Native}}</span>{{end}}
+{{if and .Native (ne .Native .NameEn)}} <span lang="{{.Lang}}" class="local">{{.Native}}</span>{{end}}
 {{- end}}
 
 {{/* A coverage bar; its length is data, so it is an SVG attribute, not a style. */}}

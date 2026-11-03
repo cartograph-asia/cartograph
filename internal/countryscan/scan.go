@@ -48,8 +48,13 @@ const (
 
 // Options configures Scan.
 type Options struct {
-	Country     countries.Country
-	PBF         string // the extract, or the file the scan reads directly
+	Country countries.Country
+	PBF     string // the extract, or the file the scan reads directly
+	// Neighbours are the neighbours' cuts (countries.Import.Neighbours):
+	// the member ways and nodes of PBF's relations are read from them too,
+	// as the importer does, so scan and import build the same boundaries.
+	// Relations and places come from PBF alone.
+	Neighbours  []string
 	Water       string // water polygons (.shp or .zip); empty counts sea as land
 	Res         int    // H3 resolution of the land set, default 8
 	GeometryCap int    // default DefaultGeometryCap
@@ -70,6 +75,9 @@ func Scan(ctx context.Context, o Options) (*Result, error) {
 	}
 	s := &scanner{o: o, cc: strings.ToUpper(o.Country.Code), lang: langSubtag(o.Country.Lang), recs: map[int][]shapeRec{}}
 	r := &Result{Country: o.Country, Extract: filepath.Base(o.PBF), Res: o.Res, Workers: o.Workers}
+	for _, n := range o.Neighbours {
+		r.Neighbours = append(r.Neighbours, filepath.Base(n))
+	}
 	s.r = r
 
 	t := time.Now()
@@ -213,40 +221,21 @@ func (s *scanner) iso(t tagSet) isoState {
 // build reads and assembles the boundaries of the relations keep accepts. A
 // relation with a member way that is not in the file (an extract cuts a
 // relation at its edge) is returned in skipped, not as the partial polygon
-// the assembly would make of the ways that are there.
+// the assembly would make of the ways that are there (Assemble with
+// no relation allowed to be partial). With Neighbours the ways and nodes
+// come from the neighbours' cuts as well.
 func (s *scanner) build(keep func(*osm.Relation) bool) (map[int64]osmfile.Boundary, []int64, error) {
-	raw, err := osmfile.ReadBoundaryData(s.o.PBF, keep)
+	raw, err := osmfile.ReadBoundaries(s.o.PBF, s.o.Neighbours, keep)
 	if err != nil {
 		return nil, nil, err
 	}
-	ways := make(map[osm.WayID]bool, len(raw.Ways))
-	for _, w := range raw.Ways {
-		ways[w.ID] = true
-	}
-	var whole []*osm.Relation
-	var skipped []int64
-	for _, r := range raw.Relations {
-		complete := true
-		for _, m := range r.Members {
-			if m.Type == osm.TypeWay && !ways[osm.WayID(m.Ref)] {
-				complete = false
-				break
-			}
-		}
-		if complete {
-			whole = append(whole, r)
-		} else {
-			skipped = append(skipped, int64(r.ID))
-		}
-	}
-	raw.Relations = whole
-	bs, notClosed, err := osmfile.BuildBoundaries(raw)
+	a, err := raw.Assemble(nil)
 	if err != nil {
 		return nil, nil, err
 	}
-	skipped = append(skipped, notClosed...)
-	out := make(map[int64]osmfile.Boundary, len(bs))
-	for _, b := range bs {
+	skipped := append(a.NotWhole, a.NotClosed...)
+	out := make(map[int64]osmfile.Boundary, len(a.Built))
+	for _, b := range a.Built {
 		out[b.OSMID] = b
 	}
 	return out, skipped, nil

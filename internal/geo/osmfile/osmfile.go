@@ -12,14 +12,13 @@ import (
 	"os"
 	"runtime"
 	"strings"
-	"unicode"
 
 	"github.com/paulmach/orb"
 	"github.com/paulmach/osm"
-	"github.com/paulmach/osm/osmgeojson"
 	"github.com/paulmach/osm/osmpbf"
 	"github.com/paulmach/osm/osmxml"
 
+	"github.com/cartograph-asia/cartograph/internal/countries"
 	"github.com/cartograph-asia/cartograph/internal/geo"
 )
 
@@ -81,73 +80,19 @@ func scan(name string, opts scanOpts, fn func(osm.Object)) error {
 	return nil
 }
 
-// IsProvince reports whether r is an admin_level-4 boundary of the country
-// with ISO 3166-1 code country (e.g. "th"), judged by its ISO3166-2 tag.
-func IsProvince(r *osm.Relation, country string) bool {
-	t := r.Tags
-	return t.Find("boundary") == "administrative" && t.Find("admin_level") == "4" &&
-		strings.HasPrefix(strings.ToUpper(t.Find("ISO3166-2")), strings.ToUpper(country)+"-")
-}
-
-// IsDistrict reports whether r is a district boundary (admin_level 6). OSM
-// districts carry no ISO code; the importer keeps those inside a province.
-func IsDistrict(r *osm.Relation) bool {
-	t := r.Tags
-	return t.Find("boundary") == "administrative" && t.Find("admin_level") == "6"
-}
-
-// DistrictName returns a district's English and Thai names without the
-// words for district ("Bang Kapi District", "เขตบางกะปิ", "อำเภอบ้านโคก").
-// Whether a district is urban comes from place_naming, not from its name.
-func DistrictName(en, th string) (string, string) {
-	en = strings.TrimSpace(en)
-	en = strings.TrimSpace(strings.TrimSuffix(en, " District"))
-	for _, p := range []string{"Khet ", "Amphoe "} {
-		en = strings.TrimSpace(strings.TrimPrefix(en, p))
-	}
-	th = strings.TrimSpace(th)
-	for _, p := range []string{"เขต", "อำเภอ"} {
-		th = strings.TrimSpace(strings.TrimPrefix(th, p))
-	}
-	return en, th
-}
-
 // ReadBoundaryData reads the relations accepted by keep together with all
-// their member ways and those ways' nodes, in three passes. The result is the
-// raw OSM data, for BuildBoundaries or for writing a fixture.
+// their member ways and those ways' nodes, in three passes. The result is
+// raw OSM data for BuildBoundaries, Assemble or a fixture, made from
+// ReadBoundaries: the relations as read, ways and nodes with their ids and
+// positions only (no tags, no metadata), each sorted by id. Callers that
+// need no raw objects should use ReadBoundaries itself, which holds a
+// fraction of the memory.
 func ReadBoundaryData(name string, keep func(*osm.Relation) bool) (*osm.OSM, error) {
-	o := &osm.OSM{}
-	wayIDs := map[osm.WayID]bool{}
-	err := scan(name, scanOpts{relations: true, filterRelation: keep}, func(obj osm.Object) {
-		r := obj.(*osm.Relation)
-		o.Relations = append(o.Relations, r)
-		for _, m := range r.Members {
-			if m.Type == osm.TypeWay {
-				wayIDs[osm.WayID(m.Ref)] = true
-			}
-		}
-	})
+	d, err := ReadBoundaries(name, nil, keep)
 	if err != nil {
 		return nil, err
 	}
-	nodeIDs := map[osm.NodeID]bool{}
-	err = scan(name, scanOpts{ways: true, filterWay: func(w *osm.Way) bool { return wayIDs[w.ID] }}, func(obj osm.Object) {
-		w := obj.(*osm.Way)
-		o.Ways = append(o.Ways, w)
-		for _, n := range w.Nodes {
-			nodeIDs[n.ID] = true
-		}
-	})
-	if err != nil {
-		return nil, err
-	}
-	err = scan(name, scanOpts{nodes: true, filterNode: func(n *osm.Node) bool { return nodeIDs[n.ID] }}, func(obj osm.Object) {
-		o.Nodes = append(o.Nodes, obj.(*osm.Node))
-	})
-	if err != nil {
-		return nil, err
-	}
-	return o, nil
+	return d.OSM(), nil
 }
 
 // Boundary is one administrative boundary relation with its geometry.
@@ -157,31 +102,14 @@ type Boundary struct {
 	Geometry orb.MultiPolygon
 }
 
-// BuildBoundaries assembles the multipolygon of every relation in o.
-// Relations whose rings cannot be closed are returned in skipped.
+// BuildBoundaries assembles the multipolygon of every relation in o, in
+// o's order, as osmgeojson built it (polygon). Relations whose rings cannot
+// be closed are returned in skipped.
 func BuildBoundaries(o *osm.OSM) (out []Boundary, skipped []int64, err error) {
-	fc, err := osmgeojson.Convert(o, osmgeojson.NoMeta(true), osmgeojson.NoRelationMembership(true))
-	if err != nil {
-		return nil, nil, fmt.Errorf("geo: build boundaries: %w", err)
-	}
-	geom := map[int64]orb.MultiPolygon{}
-	for _, f := range fc.Features {
-		id, ok := f.ID.(string)
-		if !ok || !strings.HasPrefix(id, "relation/") {
-			continue
-		}
-		var rid int64
-		fmt.Sscanf(id, "relation/%d", &rid)
-		switch g := f.Geometry.(type) {
-		case orb.Polygon:
-			geom[rid] = orb.MultiPolygon{g}
-		case orb.MultiPolygon:
-			geom[rid] = g
-		}
-	}
+	d := fromOSM(o)
 	for _, r := range o.Relations {
-		g, ok := geom[int64(r.ID)]
-		if !ok || len(g) == 0 {
+		g := d.polygon(r)
+		if len(g) == 0 {
 			skipped = append(skipped, int64(r.ID))
 			continue
 		}
@@ -190,7 +118,7 @@ func BuildBoundaries(o *osm.OSM) (out []Boundary, skipped []int64, err error) {
 	return out, skipped, nil
 }
 
-// Place is an OSM place node of one of PlaceKinds.
+// Place is an OSM place node of one of a country's place kinds.
 type Place struct {
 	OSMType   string // "n", "w" or "r"
 	OSMID     int64
@@ -200,93 +128,42 @@ type Place struct {
 	Point     orb.Point
 }
 
-// PlaceKinds are the place=* values imported as plot names. Only nodes are
-// read; places mapped as areas alone are not imported.
+// PlaceKinds are the place=* values imported as plot names unless a
+// country's settings name others (PlaceKindsFor). Only nodes are read;
+// places mapped as areas alone are not imported.
 var PlaceKinds = map[string]bool{
 	"city": true, "town": true, "village": true,
 	"suburb": true, "quarter": true, "neighbourhood": true,
 }
 
-// ReadPlaces reads the place nodes of PlaceKinds inside bound (whole file if
-// geo.NoBound(bound)) that have a Latin-script name (see Names).
-func ReadPlaces(name string, bound orb.Bound) ([]Place, error) {
+// ReadPlaces reads the place nodes of imp's kinds (PlaceKindsFor) inside
+// bound (whole file if geo.NoBound(bound)) that have an English name, with
+// their names by imp's rules (PlaceNames).
+func ReadPlaces(name string, bound orb.Bound, imp countries.Import) ([]Place, error) {
 	var out []Place
+	kinds := PlaceKindsFor(imp)
 	keep := func(n *osm.Node) bool {
-		if !PlaceKinds[n.Tags.Find("place")] {
+		if !kinds[n.Tags.Find("place")] {
 			return false
 		}
 		return geo.NoBound(bound) || bound.Contains(n.Point())
 	}
 	err := scan(name, scanOpts{nodes: true, filterNode: keep}, func(obj osm.Object) {
 		n := obj.(*osm.Node)
-		en, th := Names(n.Tags)
+		en, local := PlaceNames(n.Tags, imp)
 		if en == "" {
 			return
 		}
-		out = append(out, Place{OSMType: "n", OSMID: int64(n.ID), Kind: n.Tags.Find("place"), NameEn: en, NameLocal: th, Point: n.Point()})
+		out = append(out, Place{OSMType: "n", OSMID: int64(n.ID), Kind: n.Tags.Find("place"), NameEn: en, NameLocal: local, Point: n.Point()})
 	})
 	return out, err
 }
 
-// Names returns the English and Thai display names from OSM tags: English is
-// the first of name:en, int_name, name:th-Latn, name that is not written in
-// Thai script (empty if none); Thai is name:th, else name when it is Thai.
-func Names(t osm.Tags) (en, th string) {
-	for _, k := range []string{"name:en", "int_name", "name:th-Latn", "name"} {
-		if v := strings.TrimSpace(t.Find(k)); v != "" && !hasThai(v) {
-			en = v
-			break
-		}
-	}
-	th = strings.TrimSpace(t.Find("name:th"))
-	if th == "" && hasThai(t.Find("name")) {
-		th = strings.TrimSpace(t.Find("name"))
-	}
-	return en, th
-}
-
-func hasThai(s string) bool {
-	for _, r := range s {
-		if unicode.Is(unicode.Thai, r) {
-			return true
-		}
-	}
-	return false
-}
-
-// RegionName returns a province's English and Thai names without the word
-// "province" (OSM has e.g. "Chon Buri Province" and "จังหวัดชลบุรี").
-func RegionName(en, th string) (string, string) {
-	en = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(en), " Province"))
-	th = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(th), "จังหวัด"))
-	return en, th
-}
-
-// Slug turns an English name into a URL slug: lower-case ASCII letters and
-// digits separated by single hyphens.
-func Slug(s string) string {
-	var b strings.Builder
-	dash := false
-	for _, r := range strings.ToLower(s) {
-		switch {
-		case r >= 'a' && r <= 'z' || r >= '0' && r <= '9':
-			if dash && b.Len() > 0 {
-				b.WriteByte('-')
-			}
-			b.WriteRune(r)
-			dash = false
-		default:
-			dash = true
-		}
-	}
-	return b.String()
-}
-
-// ReadPlacesRaw returns the raw place nodes of PlaceKinds inside bound.
-func ReadPlacesRaw(name string, bound orb.Bound) ([]*osm.Node, error) {
+// ReadPlacesRaw returns the raw place nodes of kinds inside bound.
+func ReadPlacesRaw(name string, bound orb.Bound, kinds map[string]bool) ([]*osm.Node, error) {
 	var out []*osm.Node
 	keep := func(n *osm.Node) bool {
-		return PlaceKinds[n.Tags.Find("place")] && (geo.NoBound(bound) || bound.Contains(n.Point()))
+		return kinds[n.Tags.Find("place")] && (geo.NoBound(bound) || bound.Contains(n.Point()))
 	}
 	err := scan(name, scanOpts{nodes: true, filterNode: keep}, func(obj osm.Object) {
 		out = append(out, obj.(*osm.Node))

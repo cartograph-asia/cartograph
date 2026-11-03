@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"slices"
+	"strconv"
 
 	"github.com/paulmach/orb"
 	"github.com/paulmach/orb/geojson"
@@ -22,18 +24,24 @@ const SimplifyTolerance = 0.0005
 // slivers between simplified neighbours and beaches cut off by the coastline.
 const NearTolerance = 0.01
 
-// Simplify returns mp simplified for storage; rings that collapse are dropped.
+// Simplify returns mp simplified for storage; rings that collapse are
+// dropped. The rings it returns are fresh slices of their own length, so
+// they do not keep mp's (or the simplifier's) larger arrays alive.
 func Simplify(mp orb.MultiPolygon, tol float64) orb.MultiPolygon {
-	s := simplify.DouglasPeucker(tol).MultiPolygon(mp.Clone())
+	dp := simplify.DouglasPeucker(tol)
 	var out orb.MultiPolygon
-	for _, p := range s {
-		if len(p) == 0 || len(p[0]) < 4 {
+	for _, p := range mp {
+		if len(p) == 0 {
 			continue
 		}
-		q := orb.Polygon{p[0]}
+		outer := dp.Ring(slices.Clone(p[0]))
+		if len(outer) < 4 {
+			continue
+		}
+		q := orb.Polygon{slices.Clone(outer)}
 		for _, h := range p[1:] {
-			if len(h) >= 4 {
-				q = append(q, h)
+			if h = dp.Ring(slices.Clone(h)); len(h) >= 4 {
+				q = append(q, slices.Clone(h))
 			}
 		}
 		out = append(out, q)
@@ -119,17 +127,80 @@ func (x *RegionIndex) Len() int {
 }
 
 // Contains returns the region whose boundary contains p.
-func (x *RegionIndex) Contains(p orb.Point) (int, bool) {
+func (x *RegionIndex) Contains(p orb.Point) (int, bool) { return x.ContainsOf(p, nil) }
+
+// ContainsOf is Contains among the regions for which want(id) is true (nil:
+// all): the first of them, in index order, whose boundary contains p.
+func (x *RegionIndex) ContainsOf(p orb.Point, want func(id int) bool) (int, bool) {
 	if x == nil {
 		return 0, false
 	}
 	for i := range x.shapes {
 		s := &x.shapes[i]
-		if len(s.Geometry) > 0 && s.bound.Contains(p) && planar.MultiPolygonContains(s.Geometry, p) {
+		if len(s.Geometry) > 0 && s.bound.Contains(p) && (want == nil || want(s.ID)) && planar.MultiPolygonContains(s.Geometry, p) {
 			return s.ID, true
 		}
 	}
 	return 0, false
+}
+
+// KmPerDegree is the length of one degree of latitude in kilometres (a
+// sphere of radius 6371 km), as plot naming measures distances.
+const KmPerDegree = 111.195
+
+// Nearest returns, among the regions for which want(id) is true (nil: all),
+// the one whose boundary is nearest to p, with its distance in kilometres,
+// when that is at most km; a region containing p is at distance 0. The
+// distance is measured on a local equirectangular projection around p,
+// which is exact enough for the few kilometres it is used for.
+func (x *RegionIndex) Nearest(p orb.Point, km float64, want func(id int) bool) (id int, dist float64, ok bool) {
+	if x == nil || km < 0 {
+		return 0, 0, false
+	}
+	cos := math.Cos(p[1] * math.Pi / 180)
+	dLat := km / KmPerDegree
+	pad := orb.Bound{Min: orb.Point{p[0] - dLat/cos, p[1] - dLat}, Max: orb.Point{p[0] + dLat/cos, p[1] + dLat}}
+	best := math.Inf(1)
+	for i := range x.shapes {
+		s := &x.shapes[i]
+		if len(s.Geometry) == 0 || !s.bound.Intersects(pad) || (want != nil && !want(s.ID)) {
+			continue
+		}
+		d := 0.0
+		if !s.bound.Contains(p) || !planar.MultiPolygonContains(s.Geometry, p) {
+			d = kmToBoundary(s.Geometry, p, cos)
+		}
+		if d < best {
+			id, best = s.ID, d
+		}
+	}
+	if best <= km {
+		return id, best, true
+	}
+	return 0, 0, false
+}
+
+// kmToBoundary is the distance in kilometres from p to the nearest ring of
+// mp, with longitudes scaled by cos (the cosine of p's latitude).
+func kmToBoundary(mp orb.MultiPolygon, p orb.Point, cos float64) float64 {
+	best := math.Inf(1)
+	for _, poly := range mp {
+		for _, r := range poly {
+			for j := 1; j < len(r); j++ {
+				ax, ay := (r[j-1][0]-p[0])*cos, r[j-1][1]-p[1]
+				bx, by := (r[j][0]-p[0])*cos, r[j][1]-p[1]
+				dx, dy := bx-ax, by-ay
+				t := 0.0
+				if l := dx*dx + dy*dy; l > 0 {
+					t = math.Max(0, math.Min(1, -(ax*dx+ay*dy)/l))
+				}
+				if d := math.Hypot(ax+t*dx, ay+t*dy); d < best {
+					best = d
+				}
+			}
+		}
+	}
+	return best * KmPerDegree
 }
 
 // Locate returns the region containing p, else the region whose boundary is
@@ -157,41 +228,95 @@ func (x *RegionIndex) Locate(p orb.Point) (int, bool) {
 	return 0, false
 }
 
-// LandCell is a res-8 cell that counts as land in a region.
+// LandCell is a res-8 cell that counts as land in a region: its raw 64-bit
+// H3 index and its centre (24 bytes, no string).
 type LandCell struct {
-	Cell   string
+	ID     uint64
 	Centre orb.Point
 }
+
+// Cell returns the cell's index as the 15-character hex string the
+// database stores (h3-go formats a cell with strconv.FormatUint, base 16).
+func (c LandCell) Cell() string { return strconv.FormatUint(c.ID, 16) }
 
 // LandCells returns the res-8 cells whose centre lies inside shape (and is
 // located to shape by idx, so overlapping neighbours never count a cell
 // twice), is not in water, and lies inside clip unless clip is empty.
 func LandCells(shape RegionShape, idx *RegionIndex, water *Water, clip orb.Bound) ([]LandCell, error) {
-	var out []LandCell
+	out, _, err := LandCellsOf(shape, idx, water, clip, nil)
+	return out, err
+}
+
+// LandCellsOf is LandCells that also counts the land cells whose centre lies
+// inside shape but which idx gives to a region for which held(id) is true
+// (a border plot another country holds). held may be nil. It holds one
+// polygon's cell ids at a time, never their strings.
+func LandCellsOf(shape RegionShape, idx *RegionIndex, water *Water, clip orb.Bound, held func(id int) bool) (out []LandCell, heldCells int, err error) {
 	for _, poly := range shape.Geometry {
 		holes := make([][][2]float64, 0, len(poly)-1)
 		for _, h := range poly[1:] {
 			holes = append(holes, ringPairs(h))
 		}
-		cells, err := h3.PolygonCells(ringPairs(poly[0]), holes, h3.PlotRes)
+		ids, err := h3.PolygonCellIDs(ringPairs(poly[0]), holes, h3.PlotRes)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
-		for _, c := range cells {
-			p := orb.Point{c.Lng, c.Lat}
+		for _, c := range ids {
+			lat, lng, err := h3.IDCentre(c)
+			if err != nil {
+				return nil, 0, err
+			}
+			p := orb.Point{lng, lat}
 			if !NoBound(clip) && !clip.Contains(p) {
 				continue
 			}
 			if id, ok := idx.Contains(p); !ok || id != shape.ID {
+				if ok && held != nil && held(id) && !water.Contains(p) {
+					heldCells++
+				}
 				continue
 			}
 			if water.Contains(p) {
 				continue
 			}
-			out = append(out, LandCell{Cell: c.Cell, Centre: p})
+			out = append(out, LandCell{ID: c, Centre: p})
 		}
 	}
-	return out, nil
+	return out, heldCells, nil
+}
+
+// LandCellsBesides calls f with the centre of every res-8 cell whose centre
+// lies inside shape (by h3 and by planar containment) and inside clip unless
+// clip is empty, that is not in water and for which known(id, centre) is
+// false. It finds the land cells of a district that its provinces'
+// LandCellsOf did not give (known: one of those cells), so that only they
+// cost a water and a containment test.
+func LandCellsBesides(shape orb.MultiPolygon, known func(id uint64, centre orb.Point) bool, water *Water, clip orb.Bound, f func(centre orb.Point)) error {
+	for _, poly := range shape {
+		holes := make([][][2]float64, 0, len(poly)-1)
+		for _, h := range poly[1:] {
+			holes = append(holes, ringPairs(h))
+		}
+		ids, err := h3.PolygonCellIDs(ringPairs(poly[0]), holes, h3.PlotRes)
+		if err != nil {
+			return err
+		}
+		for _, id := range ids {
+			lat, lng, err := h3.IDCentre(id)
+			if err != nil {
+				return err
+			}
+			p := orb.Point{lng, lat}
+			if known(id, p) {
+				continue
+			}
+			if !NoBound(clip) && !clip.Contains(p) || !planar.MultiPolygonContains(shape, p) || water.Contains(p) {
+				continue
+			}
+			f(p)
+		}
+	}
+	return nil
 }
 
 func ringPairs(r orb.Ring) [][2]float64 {

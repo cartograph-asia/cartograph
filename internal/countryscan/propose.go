@@ -183,12 +183,12 @@ func (s *scanner) names() {
 			if en != "" && en == loc {
 				n.SameAsLocal++
 			}
-			slug := foldSlug(en)
+			slug := osmfile.Slug(en)
 			if slug == "" {
 				n.EmptySlug++
 				continue
 			}
-			if plain := osmfile.Slug(en); plain != slug {
+			if plain := plainSlug(en); plain != slug {
 				n.AccentLoss++
 				if len(n.AccentEx) < 3 {
 					n.AccentEx = append(n.AccentEx, fmt.Sprintf("%s: %s → %s", en, plain, slug))

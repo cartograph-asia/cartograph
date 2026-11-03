@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/cartograph-asia/cartograph/internal/countries"
+	"github.com/cartograph-asia/cartograph/internal/geo/osmfile"
 )
 
 var (
@@ -58,16 +59,20 @@ func TestReportIsDeterministic(t *testing.T) {
 	}
 }
 
-func TestFoldSlug(t *testing.T) {
-	for in, want := range map[string]string{
-		"Hà Nội":                "ha-noi",
-		"Thành phố Hồ Chí Minh": "thanh-pho-ho-chi-minh",
-		"Đà Nẵng":               "da-nang",
-		"Chon Buri":             "chon-buri",
-		"ชลบุรี":                "",
+// The accent line compares the folding slug the import uses with the slug
+// before stage 2.
+func TestAccentSlugs(t *testing.T) {
+	for in, want := range map[string][2]string{
+		"Hà Nội":                {"h-n-i", "ha-noi"},
+		"Thành phố Hồ Chí Minh": {"th-nh-ph-h-ch-minh", "thanh-pho-ho-chi-minh"},
+		"Đà Nẵng":               {"n-ng", "da-nang"},
+		"Chon Buri":             {"chon-buri", "chon-buri"},
+		"O'Brien Road":          {"obrien-road", "obrien-road"},
+		"P'yŏngyang":            {"py-ngyang", "pyongyang"},
+		"ชลบุรี":                {"", ""},
 	} {
-		if got := foldSlug(in); got != want {
-			t.Errorf("foldSlug(%q) = %q, want %q", in, got, want)
+		if got := [2]string{plainSlug(in), osmfile.Slug(in)}; got != want {
+			t.Errorf("slugs of %q = %q, want %q", in, got, want)
 		}
 	}
 }
@@ -226,5 +231,28 @@ func TestReportEscapesOSMText(t *testing.T) {
 	// The Go sketch: the Quote of an affix carries no backtick.
 	if strings.Count(sketch, "```") != 1 || strings.Contains(sketch, "`d`") {
 		t.Fatalf("code block broken:\n%s", sketch)
+	}
+}
+
+// A scan with neighbours' cuts reads their ways and nodes only: with the
+// fixture as its own neighbour every figure stays, and the report differs
+// only by the sentence naming the neighbours.
+func TestNeighboursOnlyNamedInReport(t *testing.T) {
+	plain := scanFixture(t).Report()
+	c, _ := countries.ByCode("th")
+	r, err := Scan(context.Background(), Options{Country: c, PBF: fixture, Neighbours: []string{fixture}, Water: fixtureWater, Workers: 4})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(r.Neighbours, []string{"pattaya.osm.gz"}) {
+		t.Errorf("neighbours %v", r.Neighbours)
+	}
+	sentence := "Boundaries completed with the ways and nodes of the neighbours' cuts `pattaya.osm.gz` (relations and places from the own file only). "
+	with := r.Report()
+	if !strings.Contains(with, sentence) || strings.Replace(with, sentence, "", 1) != plain {
+		t.Errorf("report with neighbours is not the plain report plus one sentence:\n%s", with)
+	}
+	if strings.Contains(plain, "neighbours") {
+		t.Error("the plain report mentions neighbours")
 	}
 }

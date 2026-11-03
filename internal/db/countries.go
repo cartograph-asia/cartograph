@@ -5,9 +5,54 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+
 	"github.com/cartograph-asia/cartograph/internal/countries"
 	"github.com/cartograph-asia/cartograph/internal/views"
 )
+
+// OpenCountries returns the countries that have provinces, in the order of
+// countries.All (codes not in the list are left out), for texts such as the
+// upload error ("… covers so far (Laos and Thailand)"). It reads the set
+// cached by ReloadRegions, loading it first if nothing is loaded yet, so it
+// follows an import as the region index does.
+func (d *DB) OpenCountries(ctx context.Context) ([]countries.Country, error) {
+	d.regions.mu.Lock()
+	open, loaded := d.regions.open, !d.regions.loadedAt.IsZero()
+	d.regions.mu.Unlock()
+	if !loaded {
+		if err := d.ReloadRegions(ctx); err != nil {
+			return nil, err
+		}
+		d.regions.mu.Lock()
+		open = d.regions.open
+		d.regions.mu.Unlock()
+	}
+	var out []countries.Country
+	for _, c := range countries.All {
+		if open[c.Code] {
+			out = append(out, c)
+		}
+	}
+	return out, nil
+}
+
+// loadOpenCountries returns the set of country codes that have provinces.
+func (d *DB) loadOpenCountries(ctx context.Context) (map[string]bool, error) {
+	rows, err := d.Pool.Query(ctx, `select distinct country from regions where kind = 'province'`)
+	if err != nil {
+		return nil, fmt.Errorf("db: open countries: %w", err)
+	}
+	codes, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		return nil, fmt.Errorf("db: open countries: %w", err)
+	}
+	open := make(map[string]bool, len(codes))
+	for _, c := range codes {
+		open[c] = true
+	}
+	return open, nil
+}
 
 func countryRef(c countries.Country) views.CountryRef {
 	return views.CountryRef{Slug: c.Slug, NameEn: c.NameEn, Native: c.Native, Lang: c.Lang}

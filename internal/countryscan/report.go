@@ -101,6 +101,10 @@ func (r *Result) Report() string {
 
 	w("# Country scan: %s\n\n", c.NameEn)
 	w("Written by `go run ./cmd/countryscan -country %s` from `%s`; stage 1 of `docs/COUNTRY_IMPORT_BRIEF.md`. ", c.Code, r.Extract)
+	if len(r.Neighbours) > 0 {
+		w("Boundaries completed with the ways and nodes of the neighbours' cuts `%s` (relations and places from the own file only). ",
+			strings.Join(r.Neighbours, "`, `"))
+	}
 	w("Nothing was imported. The same extract gives the same report; run it again after an extract update and compare.\n\n")
 
 	r.writeSummary(&b)
@@ -270,7 +274,7 @@ func (r *Result) writeNames(b *strings.Builder) {
 			w("  (A district's slug is built from its province's; the duplicates above are within one province.)\n")
 		}
 		if n.AccentLoss > 0 {
-			w("- **Accents:** `osmfile.Slug` drops accented letters; with accents folded (NFD, đ → d) the slug is different for %d names, e.g. %s. Stage 2 should fold accents.\n", n.AccentLoss, join(mdTexts(n.AccentEx)))
+			w("- **Accents:** a slug without folding (as before stage 2) drops accented letters; `osmfile.Slug` folds them (NFD, đ → d), which changes the slug of %d names, e.g. %s.\n", n.AccentLoss, join(mdTexts(n.AccentEx)))
 		}
 		w("\n")
 	}

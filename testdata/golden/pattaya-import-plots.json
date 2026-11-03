@@ -1,0 +1,251 @@
+{
+  "counts": {
+    "photos": 14,
+    "place_naming": 1,
+    "place_overrides": 1,
+    "places": 5,
+    "places_without_region": 0,
+    "plot_numbers": 244,
+    "plots": 12,
+    "regions": 4,
+    "regions_district": 3,
+    "regions_other": 0,
+    "regions_province": 1
+  },
+  "regions": [
+    {
+      "osm_id": 1908773,
+      "kind": "province",
+      "admin_level": 4,
+      "country": "th",
+      "slug": "chon-buri",
+      "name_en": "Chon Buri",
+      "name_local": "ชลบุรี",
+      "parent_osm_id": null,
+      "urban": false,
+      "land_cells": 240,
+      "bbox": "100.453444,12.281286,101.719720,13.589400",
+      "claimed_cells": 10,
+      "last_surveyed_at": "2026-10-10T09:00:00Z",
+      "boundary_sha256": "42c21e91cf8a09254683ed3f030b0e92689d2eac75cb02a0697387533d565591"
+    },
+    {
+      "osm_id": 18994506,
+      "kind": "district",
+      "admin_level": 6,
+      "country": "th",
+      "slug": "chon-buri-si-racha",
+      "name_en": "Si Racha",
+      "name_local": "ศรีราชา",
+      "parent_osm_id": 1908773,
+      "urban": false,
+      "land_cells": 0,
+      "bbox": "100.871752,12.995636,101.228139,13.281806",
+      "boundary_sha256": "38b3c2bffe7af55cd98d12e8ba1a436448932906b7d2b9ce722df08e84b7bb8a"
+    },
+    {
+      "osm_id": 18996908,
+      "kind": "district",
+      "admin_level": 6,
+      "country": "th",
+      "slug": "chon-buri-sattahip",
+      "name_en": "Sattahip",
+      "name_local": "สัตหีบ",
+      "parent_osm_id": 1908773,
+      "urban": false,
+      "land_cells": 0,
+      "bbox": "100.698066,12.508109,101.015482,12.866480",
+      "boundary_sha256": "59432dada90fed124760d1ec55fe87ae5559ebcb0845cae54d1438519f4d89fa"
+    },
+    {
+      "osm_id": 19051992,
+      "kind": "district",
+      "admin_level": 6,
+      "country": "th",
+      "slug": "chon-buri-bang-lamung",
+      "name_en": "Bang Lamung",
+      "name_local": "บางละมุง",
+      "parent_osm_id": 1908773,
+      "urban": false,
+      "land_cells": 0,
+      "bbox": "100.646932,12.757679,101.103597,13.084661",
+      "boundary_sha256": "a228bb0be3a889f96dfc247d54f50295cfdfce05867a944c36b796582f385a1e"
+    }
+  ],
+  "plot_numbers": [
+    {
+      "province": "chon-buri",
+      "count": 244,
+      "sha256": "d163bfa186a1a4c40ac5e7867732e967c8fd3a5682be3b5b9c49685da1d705a8",
+      "first": [
+        "8865886981fffff:1",
+        "8865886985fffff:2",
+        "8865886987fffff:3",
+        "8865886983fffff:4",
+        "88658869bdfffff:5"
+      ]
+    }
+  ],
+  "places": [
+    {
+      "osm_type": "n",
+      "osm_id": 278056967,
+      "kind": "city",
+      "name_en": "Pattaya",
+      "name_local": "พัทยา",
+      "lat": "12.9366924",
+      "lng": "100.8865002",
+      "region": "chon-buri"
+    },
+    {
+      "osm_type": "n",
+      "osm_id": 1793087300,
+      "kind": "neighbourhood",
+      "name_en": "Chom Thian",
+      "name_local": "จอมเทียน",
+      "lat": "12.8962512",
+      "lng": "100.8728188",
+      "region": "chon-buri"
+    },
+    {
+      "osm_type": "n",
+      "osm_id": 2076658818,
+      "kind": "village",
+      "name_en": "Ban Chak Ngaeo",
+      "name_local": "บ้านชากแง้ว",
+      "lat": "12.8323041",
+      "lng": "100.9649141",
+      "region": "chon-buri"
+    },
+    {
+      "osm_type": "n",
+      "osm_id": 7366568645,
+      "kind": "town",
+      "name_en": "Nong Prue",
+      "name_local": "หนองปรือ",
+      "lat": "12.9442328",
+      "lng": "100.9396630",
+      "region": "chon-buri"
+    },
+    {
+      "osm_type": "n",
+      "osm_id": 9997690445,
+      "kind": "village",
+      "name_en": "Ban Na Chom Thian",
+      "name_local": "บ้านนาจอมเทียน",
+      "lat": "12.8575568",
+      "lng": "100.9087586",
+      "region": "chon-buri"
+    }
+  ],
+  "plots": [
+    {
+      "cell": "8864a4b139fffff",
+      "place_name": null,
+      "place_name_local": null,
+      "region": null,
+      "district": null,
+      "number": null,
+      "photo_count": 1
+    },
+    {
+      "cell": "8864a50a21fffff",
+      "place_name": null,
+      "place_name_local": null,
+      "region": null,
+      "district": null,
+      "number": null,
+      "photo_count": 2
+    },
+    {
+      "cell": "8865886985fffff",
+      "place_name": "Ban Chak Ngaeo",
+      "place_name_local": "บ้านชากแง้ว",
+      "region": "chon-buri",
+      "district": "chon-buri-bang-lamung",
+      "number": 2,
+      "photo_count": 1
+    },
+    {
+      "cell": "8865886f41fffff",
+      "place_name": null,
+      "place_name_local": null,
+      "region": "chon-buri",
+      "district": "chon-buri-sattahip",
+      "number": 244,
+      "photo_count": 1
+    },
+    {
+      "cell": "88658a366bfffff",
+      "place_name": null,
+      "place_name_local": null,
+      "region": "chon-buri",
+      "district": "chon-buri-si-racha",
+      "number": 243,
+      "photo_count": 1
+    },
+    {
+      "cell": "88658aa4bbfffff",
+      "place_name": "Nong Prue",
+      "place_name_local": "หนองปรือ",
+      "region": "chon-buri",
+      "district": "chon-buri-bang-lamung",
+      "number": 198,
+      "photo_count": 1
+    },
+    {
+      "cell": "88658bd029fffff",
+      "place_name": "Chom Thian",
+      "place_name_local": "จอมเทียน",
+      "region": "chon-buri",
+      "district": "chon-buri-bang-lamung",
+      "number": 97,
+      "photo_count": 1
+    },
+    {
+      "cell": "88658bd099fffff",
+      "place_name": null,
+      "place_name_local": null,
+      "region": "chon-buri",
+      "district": null,
+      "number": 242,
+      "photo_count": 1
+    },
+    {
+      "cell": "88658bd103fffff",
+      "place_name": "Pattaya",
+      "place_name_local": "พัทยา",
+      "region": "chon-buri",
+      "district": "chon-buri-bang-lamung",
+      "number": 154,
+      "photo_count": 1
+    },
+    {
+      "cell": "88658bd13bfffff",
+      "place_name": "Pattaya",
+      "place_name_local": "พัทยา",
+      "region": "chon-buri",
+      "district": null,
+      "number": 241,
+      "photo_count": 1
+    },
+    {
+      "cell": "88658bd155fffff",
+      "place_name": "Preset Name",
+      "place_name_local": null,
+      "region": "chon-buri",
+      "district": "chon-buri-bang-lamung",
+      "number": 84,
+      "photo_count": 1
+    },
+    {
+      "cell": "88658bd353fffff",
+      "place_name": "Ban Na Chom Thian",
+      "place_name_local": "บ้านนาจอมเทียน",
+      "region": "chon-buri",
+      "district": "chon-buri-sattahip",
+      "number": 114,
+      "photo_count": 2
+    }
+  ]
+}

@@ -162,15 +162,15 @@ func TestEveryPageRenders(t *testing.T) {
 			"Latest surveys", "Plot of the week", viewstest.FeaturedText, "New Surveyors", "Regions",
 			`<b>13</b> plots surveyed`, `href="/surveyors"`, `href="/regions"`, `<abbr class="first" title="First survey of this plot">first</abbr>`, "Chon Buri", `class="lede"`, `<svg class="bar"`,
 			`title="Pattaya, Bang Lamung · Chon Buri 2417"><span class="pl">Pattaya</span><span class="pn">&#8288; · Chon Buri 2417</span></a>`,
-			`<span lang="th" class="th">ชลบุรี</span>`, `href="/latest">More surveys`, "Welcome",
+			`<span lang="th" class="local">ชลบุรี</span>`, `href="/latest">More surveys`, "Welcome",
 		}},
 		{"latest", views.PageLatest, viewstest.Latest(10), []string{"Latest surveys", `rel="next" href="/latest?page=2"`, "Page 1 of 3"}},
 		{"surveyors", views.PageSurveyors, viewstest.Surveyors(), []string{"ploy88", "beach-walker", `8 plots surveyed, <span class="nb">5 of them first</span>`, `12 photos · <span class="nb">joined`}},
 		{"regions", views.PageRegions, viewstest.Regions(), []string{"Rayong", "Bangkok", "0 of 4,818 plots",
-			"<h2 id=\"countries-h\">Countries</h2>", `<a href="/thailand">Thailand</a> <span lang="th" class="th">ประเทศไทย</span>`,
+			"<h2 id=\"countries-h\">Countries</h2>", `<a href="/thailand">Thailand</a> <span lang="th" class="local">ประเทศไทย</span>`,
 			`<a href="/vietnam">Vietnam</a>`, "Not open yet"}},
 		{"country", views.PageCountry, viewstest.Country(), []string{
-			"<h1>Thailand <span lang=\"th\" class=\"th\">ประเทศไทย</span></h1>", `<p class="kicker">Country</p>`, "13 of 12,868 plots",
+			"<h1>Thailand <span lang=\"th\" class=\"local\">ประเทศไทย</span></h1>", `<p class="kicker">Country</p>`, "13 of 12,868 plots",
 			`data-minimap="coverage"`, `data-bounds="100.33000,12.50000,101.84000,13.96000"`, "<h2 id=\"provinces-h\">Provinces</h2>",
 			`<a href="/region/chon-buri">Chon Buri</a>`, `<b>2</b> of 3 provinces surveyed`, "Latest surveys", "Most active Surveyors",
 			`href="/thailand.rss"`, "Open Thailand on the map",
@@ -960,4 +960,63 @@ func TestCountryRouteLeavesPagesAlone(t *testing.T) {
 		}
 		return nil
 	})
+}
+
+// The language of a local name follows the region's country, row by row: one
+// list shows provinces of several countries, and where the language is not
+// known there is no lang attribute at all.
+func TestLocalNameLanguagePerCountry(t *testing.T) {
+	list := viewstest.Regions()
+	list.Regions = []views.RegionSummary{
+		{Region: views.RegionRef{Slug: "a", NameEn: "Alpha", NameLocal: "ອາ", Lang: "lo"}},
+		{Region: views.RegionRef{Slug: "b", NameEn: "Beta", NameLocal: "บี", Lang: "th"}},
+		{Region: views.RegionRef{Slug: "c", NameEn: "Gamma", NameLocal: "Γ"}},
+	}
+	body := render(t, views.PageRegions, list)
+	must(t, body,
+		`<a href="/region/a">Alpha</a> <span lang="lo" class="local">ອາ</span>`,
+		`<a href="/region/b">Beta</a> <span lang="th" class="local">บี</span>`,
+		`<a href="/region/c">Gamma</a> <span class="local">Γ</span>`)
+	mustNot(t, body, `class="th"`, `lang=""`)
+
+	for _, tc := range []struct{ lang, want string }{
+		{"lo", `<h1>Alpha <span lang="lo" class="local">ອາ</span></h1>`},
+		{"", `<h1>Alpha <span class="local">ອາ</span></h1>`},
+	} {
+		r := viewstest.Region()
+		r.Region = views.RegionRef{Slug: "a", NameEn: "Alpha", NameLocal: "ອາ", Lang: tc.lang}
+		body := render(t, views.PageRegion, r)
+		must(t, body, tc.want)
+		mustNot(t, body, `lang=""`)
+
+		pl := viewstest.Plot()
+		pl.Plot.Region.Lang, pl.Plot.PlaceLocal = tc.lang, "ປາກ"
+		body = render(t, views.PagePlot, pl)
+		attr := ""
+		if tc.lang != "" {
+			attr = ` lang="` + tc.lang + `"`
+		}
+		must(t, body, `<span`+attr+` class="local">ປາກ</span></h1>`)
+		mustNot(t, body, `lang=""`, `class="th"`)
+	}
+}
+
+// The kicker of a region page is the kind word the data carries: a country
+// whose provinces are districts or regions says so.
+func TestRegionKickerKindWord(t *testing.T) {
+	for _, tc := range []struct{ kind, country, want string }{
+		{"province", "thailand", `<p class="kicker">Province in <a href="/thailand">Thailand</a></p>`},
+		{"province", "laos", `<p class="kicker">Province in <a href="/laos">Laos</a></p>`},
+		{"district", "brunei", `<p class="kicker">District in <a href="/brunei">Brunei</a></p>`},
+		{"region", "singapore", `<p class="kicker">Region in <a href="/singapore">Singapore</a></p>`},
+	} {
+		c, ok := countries.BySlug(tc.country)
+		if !ok {
+			t.Fatal(tc.country)
+		}
+		r := viewstest.Region()
+		r.Kind = tc.kind
+		r.Country = views.CountryRef{Slug: c.Slug, NameEn: c.NameEn, Native: c.Native, Lang: c.Lang}
+		must(t, render(t, views.PageRegion, r), tc.want)
+	}
 }

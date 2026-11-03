@@ -123,11 +123,16 @@ type Licence struct {
 // CCBYSA4 is the licence of every photo (see docs/decisions.md, Home).
 var CCBYSA4 = Licence{Name: "CC BY-SA 4.0", URL: "https://creativecommons.org/licenses/by-sa/4.0/"}
 
-// RegionRef identifies a region (a Thai province for now) for links and labels.
+// RegionRef identifies a region (a province) for links and labels.
 type RegionRef struct {
 	Slug      string // URL slug from name:en, e.g. "chon-buri"
 	NameEn    string // e.g. "Chon Buri"
 	NameLocal string // e.g. "ชลบุรี"; may be empty
+	// Lang is the BCP 47 tag of NameLocal (and of the local names of the
+	// region's places), from the region's country; empty where unknown, then
+	// no lang attribute is written. It is per region because one list shows
+	// provinces of several countries.
+	Lang string
 }
 
 // CountryRef identifies a country for links and labels (/{slug}).
@@ -149,6 +154,10 @@ type PlotRef struct {
 	// the word "district"; empty where none is imported.
 	District string
 }
+
+// LocalLang is the language tag of PlaceLocal: that of the plot's region,
+// empty outside every region.
+func (p PlotRef) LocalLang() string { return p.Region.Lang }
 
 // Name is the plot's user-facing name, "{place}, {district} · {province}
 // {number}", e.g. "Hua Mak, Bang Kapi · Bangkok 1000". Without a nearby

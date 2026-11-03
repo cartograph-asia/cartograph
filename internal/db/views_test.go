@@ -198,7 +198,7 @@ func TestViews(t *testing.T) {
 		t.Fatalf("latest %+v", h.Latest)
 	}
 	it := h.Latest[0]
-	if it.Plot.Place == "" || it.Plot.Region != (views.RegionRef{Slug: "chon-buri", NameEn: "Chon Buri", NameLocal: "ชลบุรี"}) ||
+	if it.Plot.Place == "" || it.Plot.Region != (views.RegionRef{Slug: "chon-buri", NameEn: "Chon Buri", NameLocal: "ชลบุรี", Lang: "th"}) ||
 		it.Surveyor.Name != "adrian" || it.Keys.Medium == "" || it.Width != 2000 || !it.UploadedAt.Equal(t0.Add(-30*time.Minute)) {
 		t.Fatalf("item %+v", it)
 	}
@@ -497,7 +497,7 @@ func TestPlaceTiers(t *testing.T) {
 	at := func(km float64) (float64, float64) { return lat + km/111.195, lng }
 	place := func(id int64, kind, name string, km float64) {
 		la, ln := at(km)
-		if _, err := d.Pool.Exec(ctx, `insert into places (osm_type, osm_id, kind, name_en, lat, lng) values ('n', $1, $2, $3, $4, $5)`,
+		if _, err := d.Pool.Exec(ctx, `insert into places (osm_type, osm_id, kind, name_en, lat, lng, country) values ('n', $1, $2, $3, $4, $5, 'th')`,
 			id, kind, name, la, ln); err != nil {
 			t.Fatal(err)
 		}

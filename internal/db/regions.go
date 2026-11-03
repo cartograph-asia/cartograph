@@ -18,6 +18,7 @@ import (
 type Region struct {
 	OSMID      int64
 	Kind       string // "country", "province", "district" or "city"
+	KindName   string // the display word ("prefecture", "state"); empty: it follows from Kind
 	AdminLevel int
 	ParentID   *int   // the province of a district
 	Urban      bool   // a district that is part of a city (khet)
@@ -29,9 +30,17 @@ type Region struct {
 	LandCells  int
 }
 
+// ErrRegionOtherCountry is returned (wrapped) by UpsertRegions when a
+// relation is already stored for another country.
+var ErrRegionOtherCountry = errors.New("relation is stored for another country")
+
 // UpsertRegions inserts or updates regions by osm_id in one transaction and
-// returns their ids in order. claimed_cells and last_surveyed_at are left
-// alone; call RefreshRegionCounts afterwards.
+// returns their ids in order. A run touches only its own country's rows: a
+// relation stored for another country fails the whole call with
+// ErrRegionOtherCountry and nothing is written. A stored slug never changes
+// (links and the slugs of districts depend on it), so slug is set on insert
+// only. kind_name is NULL where KindName is empty. claimed_cells and
+// last_surveyed_at are left alone; call RefreshRegionCounts afterwards.
 func (d *DB) UpsertRegions(ctx context.Context, rs []Region) ([]int, error) {
 	ids := make([]int, len(rs))
 	err := pgx.BeginFunc(ctx, d.Pool, func(tx pgx.Tx) error {
@@ -41,24 +50,36 @@ func (d *DB) UpsertRegions(ctx context.Context, rs []Region) ([]int, error) {
 				return err
 			}
 			b := r.Boundary.Bound()
-			var th *string
+			var th, kindName *string
 			if r.NameLocal != "" {
 				th = &r.NameLocal
 			}
+			if r.KindName != "" {
+				kindName = &r.KindName
+			}
 			err = tx.QueryRow(ctx, `
 				insert into regions (osm_id, admin_level, country, slug, name_en, name_local, boundary,
-				                     min_lat, min_lng, max_lat, max_lng, land_cells, kind, parent_id, urban)
-				values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+				                     min_lat, min_lng, max_lat, max_lng, land_cells, kind, parent_id, urban, kind_name)
+				values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
 				on conflict (osm_id) do update set
-				  kind = excluded.kind, admin_level = excluded.admin_level, country = excluded.country, slug = excluded.slug,
+				  kind = excluded.kind, kind_name = excluded.kind_name, admin_level = excluded.admin_level,
 				  parent_id = excluded.parent_id, urban = excluded.urban,
 				  name_en = excluded.name_en, name_local = excluded.name_local, boundary = excluded.boundary,
 				  min_lat = excluded.min_lat, min_lng = excluded.min_lng,
 				  max_lat = excluded.max_lat, max_lng = excluded.max_lng, land_cells = excluded.land_cells
+				where regions.country = excluded.country
 				returning id`,
 				r.OSMID, r.AdminLevel, r.Country, r.Slug, r.NameEn, th, text,
-				b.Min[1], b.Min[0], b.Max[1], b.Max[0], r.LandCells, r.Kind, r.ParentID, r.Urban,
+				b.Min[1], b.Min[0], b.Max[1], b.Max[0], r.LandCells, r.Kind, r.ParentID, r.Urban, kindName,
 			).Scan(&ids[i])
+			if errors.Is(err, pgx.ErrNoRows) {
+				// The guard held: the row exists for another country.
+				var other string
+				if err := tx.QueryRow(ctx, `select country from regions where osm_id = $1`, r.OSMID).Scan(&other); err != nil {
+					return fmt.Errorf("upsert region %d (%s): %w", r.OSMID, r.Slug, err)
+				}
+				return fmt.Errorf("upsert region %d (%s) for %q: %w (%q)", r.OSMID, r.Slug, r.Country, ErrRegionOtherCountry, other)
+			}
 			if err != nil {
 				return fmt.Errorf("upsert region %d (%s): %w", r.OSMID, r.Slug, err)
 			}
@@ -76,11 +97,13 @@ func (d *DB) UpsertRegions(ctx context.Context, rs []Region) ([]int, error) {
 // region id), shared by the import and by claims.
 const plotNumberLock = 0x706c6f74 // "plot"
 
-// AssignPlotNumbers gives each cell in cells that has no number yet the next
-// free number in region, in the order given (the importer passes them
-// sorted along a Hilbert curve). Existing numbers are never changed, so a
-// re-import only appends. It returns how many numbers were added.
-func (d *DB) AssignPlotNumbers(ctx context.Context, regionID int, cells []string) (int, error) {
+// AssignPlotNumbers gives each cell in cells (raw 64-bit H3 indexes) that
+// has no number yet the next free number in region, in the order given
+// (the importer passes them sorted along a Hilbert curve). Existing numbers
+// are never changed, so a re-import only appends. The cells are sent as the
+// 15-character hex strings the table stores, formatted one row at a time.
+// It returns how many numbers were added.
+func (d *DB) AssignPlotNumbers(ctx context.Context, regionID int, cells []uint64) (int, error) {
 	var added int64
 	err := pgx.BeginFunc(ctx, d.Pool, func(tx pgx.Tx) error {
 		if _, err := tx.Exec(ctx, `select pg_advisory_xact_lock($1, $2)`, plotNumberLock, regionID); err != nil {
@@ -90,7 +113,7 @@ func (d *DB) AssignPlotNumbers(ctx context.Context, regionID int, cells []string
 			return err
 		}
 		if _, err := tx.CopyFrom(ctx, pgx.Identifier{"new_cells"}, []string{"cell", "ord"},
-			pgx.CopyFromSlice(len(cells), func(i int) ([]any, error) { return []any{cells[i], i}, nil })); err != nil {
+			pgx.CopyFromSlice(len(cells), func(i int) ([]any, error) { return []any{cellText(cells[i]), i}, nil })); err != nil {
 			return err
 		}
 		tag, err := tx.Exec(ctx, `
@@ -129,11 +152,16 @@ func numberPlot(ctx context.Context, tx pgx.Tx, regionID int, cell string) error
 // NumberPlots gives every surveyed plot with a region but no number the next
 // free number in its region, oldest claim first (plots claimed before the
 // import, or outside the land cells). It returns how many were numbered.
-func (d *DB) NumberPlots(ctx context.Context) (int, error) {
+func (d *DB) NumberPlots(ctx context.Context) (int, error) { return d.NumberPlotsOf(ctx, "") }
+
+// NumberPlotsOf is NumberPlots for the plots in the provinces of one country
+// ("" for all): an import never numbers another country's plots.
+func (d *DB) NumberPlotsOf(ctx context.Context, country string) (int, error) {
 	rows, err := d.Pool.Query(ctx, `
 		select pl.cell, pl.region_id from plots pl
 		where pl.region_id is not null and not exists (select 1 from plot_numbers n where n.cell = pl.cell)
-		order by pl.claimed_at, pl.cell`)
+		  and ($1 = '' or exists (select 1 from regions r where r.id = pl.region_id and r.country = $1))
+		order by pl.claimed_at, pl.cell`, country)
 	if err != nil {
 		return 0, fmt.Errorf("db: number plots: %w", err)
 	}
@@ -196,8 +224,10 @@ type regionCache struct {
 	mu        sync.Mutex
 	idx       *geo.RegionIndex // provinces
 	districts *geo.RegionIndex
+	parent    map[int]int             // district id -> its province (parent_id)
 	urban     map[int]bool            // district ids that are all urban (see MarkUrbanDistricts)
 	naming    map[string]*PlaceNaming // place_naming by country
+	open      map[string]bool         // countries with provinces (see OpenCountries)
 	loadedAt  time.Time
 }
 
@@ -218,25 +248,42 @@ func (d *DB) ReloadRegions(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	rows, err := d.Pool.Query(ctx, `select id from regions where kind = 'district' and urban`)
+	rows, err := d.Pool.Query(ctx, `select id, coalesce(parent_id, 0), urban from regions where kind = 'district'`)
 	if err != nil {
-		return fmt.Errorf("db: urban districts: %w", err)
+		return fmt.Errorf("db: districts: %w", err)
 	}
-	ids, err := pgx.CollectRows(rows, pgx.RowTo[int])
+	type district struct {
+		id, parent int
+		urban      bool
+	}
+	list, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (district, error) {
+		var x district
+		return x, r.Scan(&x.id, &x.parent, &x.urban)
+	})
 	if err != nil {
-		return fmt.Errorf("db: urban districts: %w", err)
+		return fmt.Errorf("db: districts: %w", err)
 	}
-	urban := make(map[int]bool, len(ids))
-	for _, id := range ids {
-		urban[id] = true
+	urban := make(map[int]bool)
+	parent := make(map[int]int, len(list))
+	for _, x := range list {
+		parent[x.id] = x.parent
+		if x.urban {
+			urban[x.id] = true
+		}
 	}
 	naming, err := d.loadNaming(ctx)
+	if err != nil {
+		return err
+	}
+	open, err := d.loadOpenCountries(ctx)
 	if err != nil {
 		return err
 	}
 	idx, didx := geo.NewRegionIndex(shapes), geo.NewRegionIndex(ds)
 	d.regions.mu.Lock()
 	d.regions.idx, d.regions.districts, d.regions.urban, d.regions.naming = idx, didx, urban, naming
+	d.regions.parent = parent
+	d.regions.open = open
 	d.regions.loadedAt = time.Now()
 	d.regions.mu.Unlock()
 	return nil
@@ -245,12 +292,16 @@ func (d *DB) ReloadRegions(ctx context.Context) error {
 // MarkUrbanDistricts sets regions.urban on every district whose province is
 // listed in its country's place_naming.urban_regions (all of Bangkok's
 // districts are khet) and clears it on the others.
-func (d *DB) MarkUrbanDistricts(ctx context.Context) error {
+func (d *DB) MarkUrbanDistricts(ctx context.Context) error { return d.MarkUrbanDistrictsOf(ctx, "") }
+
+// MarkUrbanDistrictsOf is MarkUrbanDistricts for the districts of one
+// country ("" for all).
+func (d *DB) MarkUrbanDistrictsOf(ctx context.Context, country string) error {
 	_, err := d.Pool.Exec(ctx, `
 		update regions dist set urban = exists (
 			select 1 from regions prov join place_naming n on n.country = prov.country
 			where prov.id = dist.parent_id and prov.slug = any(n.urban_regions))
-		where dist.kind = 'district'`)
+		where dist.kind = 'district' and ($1 = '' or dist.country = $1)`, country)
 	if err != nil {
 		return fmt.Errorf("db: mark urban districts: %w", err)
 	}
@@ -265,14 +316,18 @@ func (d *DB) inDistrict(id int, lat, lng float64) bool {
 	return idx.In(id, orb.Point{lng, lat})
 }
 
-// locateDistrict returns the district containing (lat, lng) from the index
-// loaded with the provinces, and whether it is urban; ok is false outside
-// every imported district.
-func (d *DB) locateDistrict(lat, lng float64) (id int, urban, ok bool) {
+// locateDistrict returns the district of province containing (lat, lng)
+// from the index loaded with the provinces, and whether it is urban; ok is
+// false outside every imported district of that province. Only the
+// province's own districts count: where simplified boundaries of two
+// countries overlap (Sarawak's Marudi over a corner of Belait), a plot of
+// one country's province never takes the other's district.
+func (d *DB) locateDistrict(lat, lng float64, province int) (id int, urban, ok bool) {
 	d.regions.mu.Lock()
-	idx, u := d.regions.districts, d.regions.urban
+	idx, u, parent := d.regions.districts, d.regions.urban, d.regions.parent
 	d.regions.mu.Unlock()
-	if id, ok = idx.Contains(orb.Point{lng, lat}); ok {
+	own := func(id int) bool { return parent[id] == province }
+	if id, ok = idx.ContainsOf(orb.Point{lng, lat}, own); ok {
 		return id, u[id], true
 	}
 	return 0, false, false
@@ -303,11 +358,16 @@ func (d *DB) LocateRegion(ctx context.Context, lat, lng float64) (id int, ok boo
 
 // RefreshRegionCounts recomputes claimed_cells and last_surveyed_at of every
 // region from plots and photos, so re-imports and backfills stay consistent.
-func (d *DB) RefreshRegionCounts(ctx context.Context) error {
+func (d *DB) RefreshRegionCounts(ctx context.Context) error { return d.RefreshRegionCountsOf(ctx, "") }
+
+// RefreshRegionCountsOf is RefreshRegionCounts for the regions of one
+// country ("" for all).
+func (d *DB) RefreshRegionCountsOf(ctx context.Context, country string) error {
 	_, err := d.Pool.Exec(ctx, `
 		update regions r set
 		  claimed_cells    = coalesce((select count(*) from plots p where p.region_id = r.id and p.photo_count > 0), 0),
-		  last_surveyed_at = (select max(ph.uploaded_at) from visible_photos ph join plots p on p.cell = ph.cell where p.region_id = r.id)`)
+		  last_surveyed_at = (select max(ph.uploaded_at) from visible_photos ph join plots p on p.cell = ph.cell where p.region_id = r.id)
+		where $1 = '' or r.country = $1`, country)
 	if err != nil {
 		return fmt.Errorf("db: refresh region counts: %w", err)
 	}
@@ -327,12 +387,14 @@ type querier interface {
 // PlotLocation is where a plot is: its region and display names.
 type PlotLocation struct {
 	RegionID   int
+	Country    string  // the region's country
 	Region     string  // region name_en
 	PlaceEn    string  // the naming place (see PlaceNaming), else the region's name
 	PlaceLocal *string // Thai name of the same; nil if unknown
 	Near       bool    // PlaceEn is an OSM place, not the region fallback
-	// DistrictID is the district (admin_level 6) containing the centre; nil
-	// where none is imported. District is its name_en.
+	// DistrictID is the district of the region (parent_id = RegionID)
+	// containing the centre; nil where none is imported or none of the
+	// region's districts holds it. District is its name_en.
 	DistrictID *int
 	District   string
 	Lat, Lng   float64 // cell centre
@@ -357,15 +419,14 @@ func (d *DB) locatePlot(ctx context.Context, q querier, cell string) (*PlotLocat
 		return nil, ErrOutsideRegions
 	}
 	loc := &PlotLocation{RegionID: id, Lat: lat, Lng: lng}
-	district, urban, inDistrict := d.locateDistrict(lat, lng)
+	district, urban, inDistrict := d.locateDistrict(lat, lng, id)
 	if inDistrict {
 		loc.DistrictID = &district
 	}
-	var country string
 	err = q.QueryRow(ctx, `
 		select r.name_en, r.name_local, r.country, coalesce((select name_en from regions where id = $2), '')
 		from regions r where r.id = $1`, id, loc.DistrictID,
-	).Scan(&loc.Region, &loc.PlaceLocal, &country, &loc.District)
+	).Scan(&loc.Region, &loc.PlaceLocal, &loc.Country, &loc.District)
 	if errors.Is(err, pgx.ErrNoRows) {
 		// The index is newer or older than the table; treat as outside.
 		return nil, ErrOutsideRegions
@@ -374,6 +435,7 @@ func (d *DB) locatePlot(ctx context.Context, q querier, cell string) (*PlotLocat
 		return nil, fmt.Errorf("db: locate plot: %w", err)
 	}
 	loc.PlaceEn = loc.Region
+	country := loc.Country
 	rules := d.naming(country)
 	cands, err := placesNear(ctx, q, lat, lng, rules.maxRadiusKm())
 	if err != nil {
@@ -411,10 +473,23 @@ func (d *DB) locatePlot(ctx context.Context, q querier, cell string) (*PlotLocat
 // lack them (claimed before the import, or before places were imported;
 // place names are only filled, never replaced). Only a real nearby place is
 // written: the region fallback would otherwise stick before cmd/places has
-// run, and the pages fall back to the region name anyway. Plots outside
-// every region are left alone and counted in outside.
+// run, and the pages fall back to the region name anyway. The district is
+// one of the region's own (see locateDistrict). Plots outside every region
+// are left alone and counted in outside.
 func (d *DB) BackfillPlots(ctx context.Context) (updated, outside int, err error) {
-	rows, err := d.Pool.Query(ctx, `select cell from plots where region_id is null or place_name is null or district_id is null order by cell`)
+	return d.BackfillPlotsOf(ctx, "")
+}
+
+// BackfillPlotsOf is BackfillPlots for one country's import ("" for all):
+// it fills the plots of that country's provinces and the plots without a
+// region that now lie in one of them; another country's plots are left as
+// they are, also when a new place lies near them.
+func (d *DB) BackfillPlotsOf(ctx context.Context, country string) (updated, outside int, err error) {
+	rows, err := d.Pool.Query(ctx, `
+		select cell from plots p
+		where (region_id is null or place_name is null or district_id is null)
+		  and ($1 = '' or region_id is null or exists (select 1 from regions r where r.id = p.region_id and r.country = $1))
+		order by cell`, country)
 	if err != nil {
 		return 0, 0, fmt.Errorf("db: backfill plots: %w", err)
 	}
@@ -430,6 +505,9 @@ func (d *DB) BackfillPlots(ctx context.Context) (updated, outside int, err error
 		}
 		if err != nil {
 			return updated, outside, err
+		}
+		if country != "" && loc.Country != country {
+			continue // a plot without a region inside another country's province
 		}
 		var placeEn *string
 		placeTh := loc.PlaceLocal
@@ -461,11 +539,28 @@ type Place struct {
 	NameLocal string
 	Lat, Lng  float64
 	RegionID  *int
+	Country   string // ISO 3166-1 alpha-2, lower case; empty: the run's country
 }
 
-// ReplacePlaces upserts places by (osm_type, osm_id) and deletes the places
-// not in ps, in one transaction. Plots keep their copied names.
-func (d *DB) ReplacePlaces(ctx context.Context, ps []Place) error {
+// ReplacePlaces stores one country's places: it upserts ps by (osm_type,
+// osm_id) and deletes the places of country that are not in ps, in one
+// transaction. Every place of a run belongs to its country, one outside
+// every province too (RegionID nil); a Place.Country other than country is
+// an error. Other countries' places are never deleted, and a stored place
+// of another country is left as it is, unless that country stored it
+// outside all provinces (region_id null: a "weak" place, a Thai extract's
+// Lao village beyond the border), which the run then takes over. The
+// importer sends such a place only when it lies inside one of the run's
+// provinces (internal/importer, places). Plots keep their copied names.
+func (d *DB) ReplacePlaces(ctx context.Context, country string, ps []Place) error {
+	if country == "" {
+		return fmt.Errorf("db: replace places: no country given")
+	}
+	for _, p := range ps {
+		if p.Country != "" && p.Country != country {
+			return fmt.Errorf("db: replace places: place %s%d belongs to country %q, not %q", p.OSMType, p.OSMID, p.Country, country)
+		}
+	}
 	err := pgx.BeginFunc(ctx, d.Pool, func(tx pgx.Tx) error {
 		if _, err := tx.Exec(ctx, `create temp table new_places (
 			osm_type char(1), osm_id bigint, kind text, name_en text, name_local text,
@@ -485,14 +580,16 @@ func (d *DB) ReplacePlaces(ctx context.Context, ps []Place) error {
 			return fmt.Errorf("copy: %w", err)
 		}
 		if _, err := tx.Exec(ctx, `
-			insert into places (osm_type, osm_id, kind, name_en, name_local, lat, lng, region_id)
-			select osm_type, osm_id, kind, name_en, name_local, lat, lng, region_id from new_places
+			insert into places (osm_type, osm_id, kind, name_en, name_local, lat, lng, region_id, country)
+			select osm_type, osm_id, kind, name_en, name_local, lat, lng, region_id, $1 from new_places
 			on conflict (osm_type, osm_id) do update set kind = excluded.kind, name_en = excluded.name_en,
-			  name_local = excluded.name_local, lat = excluded.lat, lng = excluded.lng, region_id = excluded.region_id`); err != nil {
+			  name_local = excluded.name_local, lat = excluded.lat, lng = excluded.lng, region_id = excluded.region_id,
+			  country = excluded.country
+			where places.country = excluded.country or places.region_id is null`, country); err != nil {
 			return fmt.Errorf("upsert: %w", err)
 		}
-		_, err := tx.Exec(ctx, `delete from places p where not exists
-			(select 1 from new_places n where n.osm_type = p.osm_type and n.osm_id = p.osm_id)`)
+		_, err := tx.Exec(ctx, `delete from places p where p.country = $1 and not exists
+			(select 1 from new_places n where n.osm_type = p.osm_type and n.osm_id = p.osm_id)`, country)
 		return err
 	})
 	if err != nil {

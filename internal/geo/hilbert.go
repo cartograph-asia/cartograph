@@ -1,7 +1,8 @@
 package geo
 
 import (
-	"sort"
+	"cmp"
+	"slices"
 
 	"github.com/paulmach/orb"
 )
@@ -12,7 +13,9 @@ const hilbertOrder = 16
 
 // HilbertSort orders cells along a Hilbert curve laid over the square that
 // contains b, so cells next to each other on the ground get nearby positions.
-// Cells in the same grid square keep their order by cell index.
+// Cells in the same grid square keep their order by cell index (the raw
+// index orders as the 15-character hex string does: every cell index has
+// 15 hex digits).
 func HilbertSort(cells []LandCell, b orb.Bound) {
 	side := max(b.Max[0]-b.Min[0], b.Max[1]-b.Min[1])
 	if side <= 0 {
@@ -23,17 +26,23 @@ func HilbertSort(cells []LandCell, b orb.Bound) {
 		f := (v - lo) / side * (n - 1)
 		return uint32(max(0, min(f, n-1)))
 	}
-	keys := make(map[string]uint64, len(cells))
-	for _, c := range cells {
-		keys[c.Cell] = hilbertIndex(scale(c.Centre[0], b.Min[0]), scale(c.Centre[1], b.Min[1]))
+	type keyed struct {
+		key uint64
+		c   LandCell
 	}
-	sort.Slice(cells, func(i, j int) bool {
-		ki, kj := keys[cells[i].Cell], keys[cells[j].Cell]
-		if ki != kj {
-			return ki < kj
+	ks := make([]keyed, len(cells))
+	for i, c := range cells {
+		ks[i] = keyed{hilbertIndex(scale(c.Centre[0], b.Min[0]), scale(c.Centre[1], b.Min[1])), c}
+	}
+	slices.SortFunc(ks, func(a, b keyed) int {
+		if a.key != b.key {
+			return cmp.Compare(a.key, b.key)
 		}
-		return cells[i].Cell < cells[j].Cell
+		return cmp.Compare(a.c.ID, b.c.ID)
 	})
+	for i := range ks {
+		cells[i] = ks[i].c
+	}
 }
 
 // hilbertIndex maps (x, y) on the 2^hilbertOrder grid to its distance along

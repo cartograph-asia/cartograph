@@ -24,6 +24,7 @@ import (
 
 	"github.com/cartograph-asia/cartograph/internal/db"
 	"github.com/cartograph-asia/cartograph/internal/geo"
+	"github.com/cartograph-asia/cartograph/internal/h3"
 )
 
 // FixtureBBox is the area of testdata/pattaya.osm.gz and
@@ -331,11 +332,9 @@ func (pl *regionPlan) candidates() []*district {
 // counts as in them. A district with no share whose centre no province
 // holds is left out, since it cannot be kept.
 func (pl *regionPlan) districtLand(w *geo.Water) error {
-	var known []uint64
 	for _, p := range pl.set.provinces {
-		known = append(known, p.cells...)
+		p.bound = p.shape.Bound()
 	}
-	slices.Sort(known)
 	var ds []*district
 	for _, d := range pl.candidates() {
 		d.in, d.other, d.none = 0, 0, 0
@@ -355,7 +354,7 @@ func (pl *regionPlan) districtLand(w *geo.Water) error {
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
-			errs[i] = geo.LandCellsBesides(d.shape, known, w, pl.clip, func(c orb.Point) {
+			errs[i] = geo.LandCellsBesides(d.shape, pl.landCell, w, pl.clip, func(c orb.Point) {
 				switch id, ok := pl.idx.Contains(c); {
 				case !ok:
 					d.none++
@@ -384,18 +383,55 @@ func (pl *regionPlan) provinceCells(ctx context.Context, d *db.DB, p *province, 
 	}
 	// Number along a curve over the whole province (not the clip), so the
 	// order does not depend on what was imported first.
-	geo.HilbertSort(cells, p.shape.Bound())
 	p.land, p.held = len(cells), n
 	p.dcells = countDistrictCells(cells, pl.candidates(), p.shape.Bound())
+	// Only the raw ids are kept, sorted by id (8 bytes a cell); the order
+	// along the Hilbert curve is computed from them when they are numbered
+	// (numberingOrder), the dry run does not need it.
 	p.cells = make([]uint64, len(cells))
 	for i, c := range cells {
-		if p.cells[i], err = strconv.ParseUint(c.Cell, 16, 64); err != nil {
-			return fmt.Errorf("cell %q: %w", c.Cell, err)
+		p.cells[i] = c.ID
+	}
+	cells = nil
+	slices.Sort(p.cells)
+	// What AssignPlotNumbers would add; a real run replaces it by what it added.
+	p.newNumbers, err = d.CountUnnumbered(ctx, p.cells)
+	return err
+}
+
+// numberingOrder returns p's land cells in the order they are numbered:
+// along a Hilbert curve over the whole province (not the clip), so the
+// order does not depend on what was imported first; cells in the same
+// square of the curve's grid by their index.
+func numberingOrder(p *province) ([]uint64, error) {
+	cells := make([]geo.LandCell, len(p.cells))
+	for i, id := range p.cells {
+		lat, lng, err := h3.IDCentre(id)
+		if err != nil {
+			return nil, err
+		}
+		cells[i] = geo.LandCell{ID: id, Centre: orb.Point{lng, lat}}
+	}
+	geo.HilbertSort(cells, p.shape.Bound())
+	out := make([]uint64, len(cells))
+	for i, c := range cells {
+		out[i] = c.ID
+	}
+	return out, nil
+}
+
+// landCell reports whether id is one of the land cells the run's provinces
+// gave (their cells, sorted by id): only a province whose bound holds the
+// cell's centre can have it.
+func (pl *regionPlan) landCell(id uint64, centre orb.Point) bool {
+	for _, p := range pl.set.provinces {
+		if p.bound.Contains(centre) {
+			if _, ok := slices.BinarySearch(p.cells, id); ok {
+				return true
+			}
 		}
 	}
-	// What AssignPlotNumbers would add; a real run replaces it by what it added.
-	p.newNumbers, err = d.CountUnnumbered(ctx, cellStrings(p.cells))
-	return err
+	return false
 }
 
 // districtCells counts one province's land cells by the districts whose
@@ -480,16 +516,6 @@ func (pl *regionPlan) districtCover() {
 	}
 }
 
-// cellStrings turns raw cell ids back into the 15-character hex strings the
-// database stores (h3-go formats a cell with strconv.FormatUint, base 16).
-func cellStrings(ids []uint64) []string {
-	out := make([]string, len(ids))
-	for i, id := range ids {
-		out[i] = strconv.FormatUint(id, 16)
-	}
-	return out
-}
-
 func (pl *regionPlan) stats() *RegionStats {
 	st := &RegionStats{Checks: pl.checks}
 	if pl.set == nil {
@@ -556,8 +582,13 @@ func (pl *regionPlan) apply(ctx context.Context, d *db.DB, st *RegionStats) erro
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
-			p.newNumbers, errs[i] = d.AssignPlotNumbers(ctx, p.id, cellStrings(p.cells))
+			order, err := numberingOrder(p)
+			if err != nil {
+				errs[i] = err
+				return
+			}
 			p.cells = nil
+			p.newNumbers, errs[i] = d.AssignPlotNumbers(ctx, p.id, order)
 		}()
 	}
 	wg.Wait()

@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
-	"slices"
+	"strconv"
 
 	"github.com/paulmach/orb"
 	"github.com/paulmach/orb/geojson"
@@ -221,11 +221,16 @@ func (x *RegionIndex) Locate(p orb.Point) (int, bool) {
 	return 0, false
 }
 
-// LandCell is a res-8 cell that counts as land in a region.
+// LandCell is a res-8 cell that counts as land in a region: its raw 64-bit
+// H3 index and its centre (24 bytes, no string).
 type LandCell struct {
-	Cell   string
+	ID     uint64
 	Centre orb.Point
 }
+
+// Cell returns the cell's index as the 15-character hex string the
+// database stores (h3-go formats a cell with strconv.FormatUint, base 16).
+func (c LandCell) Cell() string { return strconv.FormatUint(c.ID, 16) }
 
 // LandCells returns the res-8 cells whose centre lies inside shape (and is
 // located to shape by idx, so overlapping neighbours never count a cell
@@ -237,19 +242,24 @@ func LandCells(shape RegionShape, idx *RegionIndex, water *Water, clip orb.Bound
 
 // LandCellsOf is LandCells that also counts the land cells whose centre lies
 // inside shape but which idx gives to a region for which held(id) is true
-// (a border plot another country holds). held may be nil.
+// (a border plot another country holds). held may be nil. It holds one
+// polygon's cell ids at a time, never their strings.
 func LandCellsOf(shape RegionShape, idx *RegionIndex, water *Water, clip orb.Bound, held func(id int) bool) (out []LandCell, heldCells int, err error) {
 	for _, poly := range shape.Geometry {
 		holes := make([][][2]float64, 0, len(poly)-1)
 		for _, h := range poly[1:] {
 			holes = append(holes, ringPairs(h))
 		}
-		cells, err := h3.PolygonCells(ringPairs(poly[0]), holes, h3.PlotRes)
+		ids, err := h3.PolygonCellIDs(ringPairs(poly[0]), holes, h3.PlotRes)
 		if err != nil {
 			return nil, 0, err
 		}
-		for _, c := range cells {
-			p := orb.Point{c.Lng, c.Lat}
+		for _, c := range ids {
+			lat, lng, err := h3.IDCentre(c)
+			if err != nil {
+				return nil, 0, err
+			}
+			p := orb.Point{lng, lat}
 			if !NoBound(clip) && !clip.Contains(p) {
 				continue
 			}
@@ -262,7 +272,7 @@ func LandCellsOf(shape RegionShape, idx *RegionIndex, water *Water, clip orb.Bou
 			if water.Contains(p) {
 				continue
 			}
-			out = append(out, LandCell{Cell: c.Cell, Centre: p})
+			out = append(out, LandCell{ID: c, Centre: p})
 		}
 	}
 	return out, heldCells, nil
@@ -270,11 +280,11 @@ func LandCellsOf(shape RegionShape, idx *RegionIndex, water *Water, clip orb.Bou
 
 // LandCellsBesides calls f with the centre of every res-8 cell whose centre
 // lies inside shape (by h3 and by planar containment) and inside clip unless
-// clip is empty, that is not in water and whose raw index is not in known
-// (sorted ascending). It finds the land cells of a district that its
-// provinces' LandCellsOf did not give (known: those cells), so that only
-// they cost a water and a containment test.
-func LandCellsBesides(shape orb.MultiPolygon, known []uint64, water *Water, clip orb.Bound, f func(centre orb.Point)) error {
+// clip is empty, that is not in water and for which known(id, centre) is
+// false. It finds the land cells of a district that its provinces'
+// LandCellsOf did not give (known: one of those cells), so that only they
+// cost a water and a containment test.
+func LandCellsBesides(shape orb.MultiPolygon, known func(id uint64, centre orb.Point) bool, water *Water, clip orb.Bound, f func(centre orb.Point)) error {
 	for _, poly := range shape {
 		holes := make([][][2]float64, 0, len(poly)-1)
 		for _, h := range poly[1:] {
@@ -285,14 +295,14 @@ func LandCellsBesides(shape orb.MultiPolygon, known []uint64, water *Water, clip
 			return err
 		}
 		for _, id := range ids {
-			if _, ok := slices.BinarySearch(known, id); ok {
-				continue
-			}
 			lat, lng, err := h3.IDCentre(id)
 			if err != nil {
 				return err
 			}
 			p := orb.Point{lng, lat}
+			if known(id, p) {
+				continue
+			}
 			if !NoBound(clip) && !clip.Contains(p) || !planar.MultiPolygonContains(shape, p) || water.Contains(p) {
 				continue
 			}

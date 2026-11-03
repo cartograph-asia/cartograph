@@ -37,7 +37,8 @@ type province struct {
 	held       int           // land cells another country holds (border cells skipped)
 	inDistrict int           // land cells inside one of its districts
 	dcells     districtCells // land cells by district, until the districts have their parents
-	cells      []uint64      // the land cells along the Hilbert curve, until numbered
+	cells      []uint64      // the land cells' raw ids sorted by id, until numbered
+	bound      orb.Bound     // shape's bound, for districtLand
 	newNumbers int           // cells without a number (dry run: counted; run: added)
 	id         int           // region id once stored
 }

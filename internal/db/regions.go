@@ -97,11 +97,13 @@ func (d *DB) UpsertRegions(ctx context.Context, rs []Region) ([]int, error) {
 // region id), shared by the import and by claims.
 const plotNumberLock = 0x706c6f74 // "plot"
 
-// AssignPlotNumbers gives each cell in cells that has no number yet the next
-// free number in region, in the order given (the importer passes them
-// sorted along a Hilbert curve). Existing numbers are never changed, so a
-// re-import only appends. It returns how many numbers were added.
-func (d *DB) AssignPlotNumbers(ctx context.Context, regionID int, cells []string) (int, error) {
+// AssignPlotNumbers gives each cell in cells (raw 64-bit H3 indexes) that
+// has no number yet the next free number in region, in the order given
+// (the importer passes them sorted along a Hilbert curve). Existing numbers
+// are never changed, so a re-import only appends. The cells are sent as the
+// 15-character hex strings the table stores, formatted one row at a time.
+// It returns how many numbers were added.
+func (d *DB) AssignPlotNumbers(ctx context.Context, regionID int, cells []uint64) (int, error) {
 	var added int64
 	err := pgx.BeginFunc(ctx, d.Pool, func(tx pgx.Tx) error {
 		if _, err := tx.Exec(ctx, `select pg_advisory_xact_lock($1, $2)`, plotNumberLock, regionID); err != nil {
@@ -111,7 +113,7 @@ func (d *DB) AssignPlotNumbers(ctx context.Context, regionID int, cells []string
 			return err
 		}
 		if _, err := tx.CopyFrom(ctx, pgx.Identifier{"new_cells"}, []string{"cell", "ord"},
-			pgx.CopyFromSlice(len(cells), func(i int) ([]any, error) { return []any{cells[i], i}, nil })); err != nil {
+			pgx.CopyFromSlice(len(cells), func(i int) ([]any, error) { return []any{cellText(cells[i]), i}, nil })); err != nil {
 			return err
 		}
 		tag, err := tx.Exec(ctx, `

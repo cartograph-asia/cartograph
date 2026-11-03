@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
@@ -65,18 +66,36 @@ func (d *DB) StoredRegions(ctx context.Context) ([]StoredRegion, error) {
 	return out, nil
 }
 
-// CountUnnumbered returns how many of cells have no plot number yet: the
-// numbers AssignPlotNumbers would add.
-func (d *DB) CountUnnumbered(ctx context.Context, cells []string) (int, error) {
-	var n int
-	err := d.Pool.QueryRow(ctx, `
-		select count(*) from unnest($1::text[]) c(cell)
-		where not exists (select 1 from plot_numbers p where p.cell = c.cell)`, cells).Scan(&n)
-	if err != nil {
-		return 0, fmt.Errorf("db: count unnumbered: %w", err)
+// unnumberedChunk is how many cells CountUnnumbered sends in one query.
+const unnumberedChunk = 50_000
+
+// CountUnnumbered returns how many of cells (raw 64-bit H3 indexes) have no
+// plot number yet: the numbers AssignPlotNumbers would add. It sends them in
+// chunks, so it never holds more than one chunk's strings.
+func (d *DB) CountUnnumbered(ctx context.Context, cells []uint64) (int, error) {
+	total := 0
+	for len(cells) > 0 {
+		k := min(len(cells), unnumberedChunk)
+		chunk := make([]string, k)
+		for i, c := range cells[:k] {
+			chunk[i] = cellText(c)
+		}
+		cells = cells[k:]
+		var n int
+		err := d.Pool.QueryRow(ctx, `
+			select count(*) from unnest($1::text[]) c(cell)
+			where not exists (select 1 from plot_numbers p where p.cell = c.cell)`, chunk).Scan(&n)
+		if err != nil {
+			return 0, fmt.Errorf("db: count unnumbered: %w", err)
+		}
+		total += n
 	}
-	return n, nil
+	return total, nil
 }
+
+// cellText is a raw cell index as the 15-character hex string the tables
+// store (h3-go formats a cell with strconv.FormatUint, base 16).
+func cellText(id uint64) string { return strconv.FormatUint(id, 16) }
 
 // StoredPlace is a stored row of places as the importer compares it.
 type StoredPlace struct {

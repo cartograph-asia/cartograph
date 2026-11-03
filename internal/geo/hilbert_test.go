@@ -34,14 +34,14 @@ func TestHilbertIndexIsAContinuousCurve(t *testing.T) {
 func TestHilbertSortKeepsNeighboursClose(t *testing.T) {
 	b := orb.Bound{Min: orb.Point{100, 12}, Max: orb.Point{101, 13}}
 	cells := []LandCell{
-		{Cell: "far", Centre: orb.Point{100.95, 12.05}},
-		{Cell: "a", Centre: orb.Point{100.01, 12.01}},
-		{Cell: "c", Centre: orb.Point{100.95, 12.95}},
-		{Cell: "b", Centre: orb.Point{100.02, 12.01}},
+		{ID: 4, Centre: orb.Point{100.95, 12.05}},
+		{ID: 1, Centre: orb.Point{100.01, 12.01}},
+		{ID: 3, Centre: orb.Point{100.95, 12.95}},
+		{ID: 2, Centre: orb.Point{100.02, 12.01}},
 	}
 	HilbertSort(cells, b)
-	got := []string{cells[0].Cell, cells[1].Cell}
-	if got[0] != "a" || got[1] != "b" {
+	got := []uint64{cells[0].ID, cells[1].ID}
+	if got[0] != 1 || got[1] != 2 {
 		t.Fatalf("order %v: the two neighbouring cells should come first", cells)
 	}
 }

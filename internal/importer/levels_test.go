@@ -150,8 +150,8 @@ func TestLevelsNamesKindsAndDuplicates(t *testing.T) {
 func TestCellStringsRoundTrip(t *testing.T) {
 	for _, c := range []string{"8865a8a5b1fffff", "88283082a3fffff"} {
 		id, err := strconv.ParseUint(c, 16, 64)
-		if err != nil || cellStrings([]uint64{id})[0] != c {
-			t.Errorf("%s: %v %v", c, cellStrings([]uint64{id}), err)
+		if err != nil || (geo.LandCell{ID: id}).Cell() != c {
+			t.Errorf("%s: %v %v", c, (geo.LandCell{ID: id}).Cell(), err)
 		}
 	}
 }

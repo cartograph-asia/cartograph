@@ -135,7 +135,17 @@ func (pl *regionPlan) writeReport(w io.Writer) {
 		return 0
 	}
 
-	var pAdded, pUpdated, dAdded, dUpdated, slugs, renamed, byLand, parentKept list
+	var pAdded, pUpdated, dAdded, dUpdated, slugs, renamed, byLand, parentKept, rescued, landDropped, storedKept list
+	split := func(d *district) string {
+		return fmt.Sprintf("%d of %d land plots in the run's provinces, %d in another country's, %d in none",
+			d.in, d.in+d.other+d.none, d.other, d.none)
+	}
+	for _, d := range set.landDropped {
+		landDropped.add("r%d %q, centre in r%d %s: %s", d.osmID, d.names.En, d.centred.osmID, d.centred.names.En, split(d))
+	}
+	for _, d := range set.storedKept {
+		storedKept.add("r%d %q, centre in r%d %s: %s", d.osmID, d.names.En, d.centred.osmID, d.centred.names.En, split(d))
+	}
 	pSame, dSame, landChanged := 0, 0, 0
 	kinds := map[string]int{}
 	land, held, newNumbers, inDistrict := 0, 0, 0, 0
@@ -165,6 +175,9 @@ func (pl *regionPlan) writeReport(w io.Writer) {
 		kinds["district "+q(d.kindName)]++
 		text, _ := geo.EncodeGeometry(d.shape)
 		s := d.stored
+		if d.rescued {
+			rescued.add("r%d %s %q, in r%d %s: %s", d.osmID, d.slug, d.names.En, d.majority.osmID, d.majority.names.En, split(d))
+		}
 		if d.majority != nil && d.centred != nil && d.majority != d.centred {
 			byLand.add("r%d %s %q: land cells in r%d %s, centre in r%d %s", d.osmID, d.slug, d.names.En,
 				d.majority.osmID, d.majority.names.En, d.centred.osmID, d.centred.names.En)
@@ -207,8 +220,11 @@ func (pl *regionPlan) writeReport(w io.Writer) {
 	dAdded.write(w, "Districts added")
 	dUpdated.write(w, "Districts updated")
 	dr := set.dropped
-	fmt.Fprintf(w, "Districts dropped: no English name %d, centre outside the provinces %d, not assembled %d, stored for another country %d, outside the parent %d\n",
+	fmt.Fprintf(w, "Districts dropped: no English name %d, outside the provinces (most land cells, else the centre) %d, not assembled %d, stored for another country %d, outside the parent %d\n",
 		dr.NoEnglish, dr.Outside, dr.NotAssembled, dr.OtherCountry, dr.OutsideParent)
+	rescued.write(w, "Districts kept by their land cells, their centre outside the provinces")
+	landDropped.write(w, "Districts dropped by their land cells, their centre in a province")
+	storedKept.write(w, "Stored districts kept, although a fresh import drops them by their land cells (information only)")
 	if len(pl.c.Imp.Province.Exclude) > 0 || len(pl.c.Imp.District.Exclude) > 0 {
 		fmt.Fprintf(w, "Relations excluded: %d, by settings (Level.Exclude) %v\n", len(set.excluded), set.excluded)
 	}

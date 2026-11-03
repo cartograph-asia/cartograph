@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"slices"
 
 	"github.com/paulmach/orb"
 	"github.com/paulmach/orb/geojson"
@@ -265,6 +266,40 @@ func LandCellsOf(shape RegionShape, idx *RegionIndex, water *Water, clip orb.Bou
 		}
 	}
 	return out, heldCells, nil
+}
+
+// LandCellsBesides calls f with the centre of every res-8 cell whose centre
+// lies inside shape (by h3 and by planar containment) and inside clip unless
+// clip is empty, that is not in water and whose raw index is not in known
+// (sorted ascending). It finds the land cells of a district that its
+// provinces' LandCellsOf did not give (known: those cells), so that only
+// they cost a water and a containment test.
+func LandCellsBesides(shape orb.MultiPolygon, known []uint64, water *Water, clip orb.Bound, f func(centre orb.Point)) error {
+	for _, poly := range shape {
+		holes := make([][][2]float64, 0, len(poly)-1)
+		for _, h := range poly[1:] {
+			holes = append(holes, ringPairs(h))
+		}
+		ids, err := h3.PolygonCellIDs(ringPairs(poly[0]), holes, h3.PlotRes)
+		if err != nil {
+			return err
+		}
+		for _, id := range ids {
+			if _, ok := slices.BinarySearch(known, id); ok {
+				continue
+			}
+			lat, lng, err := h3.IDCentre(id)
+			if err != nil {
+				return err
+			}
+			p := orb.Point{lng, lat}
+			if !NoBound(clip) && !clip.Contains(p) || !planar.MultiPolygonContains(shape, p) || water.Contains(p) {
+				continue
+			}
+			f(p)
+		}
+	}
+	return nil
 }
 
 func ringPairs(r orb.Ring) [][2]float64 {

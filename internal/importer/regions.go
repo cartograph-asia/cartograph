@@ -161,6 +161,7 @@ func planRegions(ctx context.Context, d *db.DB, o Options) (*regionPlan, error) 
 	if err := pl.landCells(ctx, d); err != nil {
 		return nil, err
 	}
+	keepDistricts(pl.set, c, pl.byOSM)
 	assignParents(pl.set, c, pl.byOSM, pl.byID)
 	resolveSlugs(pl.set, c, pl.byOSM)
 	pl.districtCover()
@@ -241,6 +242,18 @@ func (pl *regionPlan) landCells(ctx context.Context, d *db.DB) error {
 		for _, p := range ps[1:] {
 			waterBound = waterBound.Union(p.shape.Bound())
 		}
+		// The districts reaching into the provinces count their land
+		// outside them too (districtLand); points inside the provinces'
+		// bound see the same water polygons as before.
+		pb := waterBound
+		for _, d := range pl.set.outside {
+			if d.bound.Intersects(pb) {
+				waterBound = waterBound.Union(d.bound)
+			}
+		}
+		for _, d := range pl.set.districts {
+			waterBound = waterBound.Union(d.bound)
+		}
 	}
 	wp, err := waterPath(pl.o)
 	if err != nil {
@@ -281,7 +294,7 @@ func (pl *regionPlan) landCells(ctx context.Context, d *db.DB) error {
 		}
 		land += ps[i].land
 	}
-	for _, d := range pl.set.districts {
+	for _, d := range pl.candidates() {
 		d.share = map[*province]int{}
 	}
 	for _, p := range ps {
@@ -295,6 +308,71 @@ func (pl *regionPlan) landCells(ctx context.Context, d *db.DB) error {
 		}
 	}
 	slog.Info("counted land cells", "provinces", len(ps), "cells", land, "took", time.Since(t).Round(time.Millisecond))
+	t = time.Now()
+	if err := pl.districtLand(w); err != nil {
+		return err
+	}
+	slog.Info("counted districts' land cells", "districts", len(pl.set.districts)+len(pl.set.outside), "took", time.Since(t).Round(time.Millisecond))
+	return nil
+}
+
+// candidates are the districts read, whose centre a province holds or not,
+// until keepDistricts.
+func (pl *regionPlan) candidates() []*district {
+	return slices.Concat(pl.set.districts, pl.set.outside)
+}
+
+// districtLand counts every district's land cells for keepDistricts: in
+// the run's provinces (its share of their land cells), and the others,
+// besides the run's land cells, by the province the combined index gives
+// them (of another country, or a stored one not in the run) or none. A
+// cell the index gives to one of the run's provinces that the province's
+// own land cells missed (h3 and planar containment disagreeing on an edge)
+// counts as in them. A district with no share whose centre no province
+// holds is left out, since it cannot be kept.
+func (pl *regionPlan) districtLand(w *geo.Water) error {
+	var known []uint64
+	for _, p := range pl.set.provinces {
+		known = append(known, p.cells...)
+	}
+	slices.Sort(known)
+	var ds []*district
+	for _, d := range pl.candidates() {
+		d.in, d.other, d.none = 0, 0, 0
+		for _, n := range d.share {
+			d.in += n
+		}
+		if d.in > 0 || d.centred != nil {
+			ds = append(ds, d)
+		}
+	}
+	errs := make([]error, len(ds))
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, runtime.GOMAXPROCS(0))
+	for i, d := range ds {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			errs[i] = geo.LandCellsBesides(d.shape, known, w, pl.clip, func(c orb.Point) {
+				switch id, ok := pl.idx.Contains(c); {
+				case !ok:
+					d.none++
+				case pl.own[id] != nil:
+					d.in++
+				default:
+					d.other++
+				}
+			})
+		}()
+	}
+	wg.Wait()
+	for i, err := range errs {
+		if err != nil {
+			return fmt.Errorf("land cells of district r%d %s: %w", ds[i].osmID, ds[i].names.En, err)
+		}
+	}
 	return nil
 }
 
@@ -308,7 +386,7 @@ func (pl *regionPlan) provinceCells(ctx context.Context, d *db.DB, p *province, 
 	// order does not depend on what was imported first.
 	geo.HilbertSort(cells, p.shape.Bound())
 	p.land, p.held = len(cells), n
-	p.dcells = countDistrictCells(cells, pl.set.districts, p.shape.Bound())
+	p.dcells = countDistrictCells(cells, pl.candidates(), p.shape.Bound())
 	p.cells = make([]uint64, len(cells))
 	for i, c := range cells {
 		if p.cells[i], err = strconv.ParseUint(c.Cell, 16, 64); err != nil {

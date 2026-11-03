@@ -54,12 +54,20 @@ type district struct {
 	slug     string
 	stored   *db.StoredRegion
 
-	centred  *province         // the province holding its centre
+	centred  *province         // the province holding its centre, nil when none does
 	share    map[*province]int // its land cells by the run's province that holds them (landCells)
 	majority *province         // the parent a fresh import gives it (assignParents)
+
+	// its land cells (districtLand): in the run's provinces, in a province
+	// of another country (or a stored one not in the run), in none
+	in, other, none int
+	rescued         bool // kept by its land cells although no province holds its centre
 }
 
-// dropped counts the district relations a run leaves out.
+// dropped counts the district relations a run leaves out. Outside counts
+// those keepDistricts leaves out (most of their land cells outside the
+// run's provinces; without a land cell, their centre outside), and until it
+// has run those whose centre no province holds.
 type dropped struct {
 	NoEnglish, Outside, NotAssembled, OtherCountry, OutsideParent int
 }
@@ -68,7 +76,10 @@ type dropped struct {
 // is consulted.
 type regionSet struct {
 	provinces     []*province // by OSM id
-	districts     []*district // by OSM id
+	districts     []*district // by OSM id; until keepDistricts those whose centre a province holds
+	outside       []*district // until keepDistricts: those whose centre no province holds
+	landDropped   []*district // left out by keepDistricts although a province holds their centre
+	storedKept    []*district // stored for the country and kept, although keepDistricts would leave them out
 	notAssembled  []int64     // province-level relations in scope without geometry (check 6)
 	scopeUnknown  []int64     // province-level relations without geometry whose scope cannot be told (Parent)
 	partial       map[int64]osmfile.PartialInfo
@@ -82,9 +93,11 @@ type regionSet struct {
 // readRegions reads the provinces and districts of c from the OSM file
 // path: the relations that match the settings' levels (osmfile.MatchLevel,
 // Level.Parent), assembled by osmfile.Assemble, simplified with tol and
-// clipped to clip, with their names by the settings. Districts are kept
-// when their centre lies in one of the provinces read and they have an
-// English name. Slugs are set later (resolveSlugs), with the stored rows.
+// clipped to clip, with their names by the settings. Districts with an
+// English name are read into set.districts when their centre lies in one of
+// the provinces read, else into set.outside; which of them are kept is
+// decided by their land cells (keepDistricts). Slugs are set later
+// (resolveSlugs), with the stored rows.
 //
 // more are the neighbours' cuts (countries.Import.Neighbours): the
 // relations come from path alone, their member ways and nodes from path and
@@ -218,9 +231,12 @@ func readRegions(path string, more []string, c country, clip orb.Bound, tol floa
 		dcands = append(dcands, candidate{b, simple})
 	}
 
-	// Districts are kept when one of the run's provinces holds their centre
-	// (an index of this run's provinces only, as before the country import)
-	// and belong to it until assignParents decides by their land cells.
+	// A district whose centre one of the run's provinces holds (an index of
+	// this run's provinces only, as before the country import) belongs to
+	// it until assignParents decides by its land cells; one whose centre
+	// none holds waits in set.outside for keepDistricts. A district without
+	// an English name is counted as before: outside when no province holds
+	// its centre, else without English.
 	shapes := make([]geo.RegionShape, len(set.provinces))
 	for i, p := range set.provinces {
 		shapes[i] = geo.RegionShape{ID: i, Geometry: p.shape}
@@ -232,15 +248,21 @@ func readRegions(path string, more []string, c country, clip orb.Bound, tol floa
 		switch {
 		case !ok:
 			set.dropped.Outside++
-			continue
+			if n.En == "" {
+				continue
+			}
 		case n.En == "":
 			set.dropped.NoEnglish++
 			continue
 		}
-		p := set.provinces[pi]
 		d := &district{osmID: x.b.OSMID, level: adminLevel(x.b.Tags, dl), names: n,
-			kindName: n.KindName("district"), shape: x.shape, bound: x.shape.Bound(),
-			province: p, centred: p}
+			kindName: n.KindName("district"), shape: x.shape, bound: x.shape.Bound()}
+		if !ok {
+			set.outside = append(set.outside, d)
+			continue
+		}
+		p := set.provinces[pi]
+		d.province, d.centred = p, p
 		set.districts = append(set.districts, d)
 		p.districts = append(p.districts, d)
 	}
@@ -255,6 +277,50 @@ func centre(mp orb.MultiPolygon) orb.Point {
 		c = mp[0][0][0]
 	}
 	return c
+}
+
+// keepDistricts decides which districts the run imports, by their land
+// cells (districtLand: cells at plot resolution whose centre lies in the
+// district, not in water): a district is kept when more than half of them
+// are cells the combined index gives to one of the run's provinces. So a
+// district whose centre lies across a winding border is kept (Taiwan's
+// Dajia: its centroid lies in Da'an, the first vertex the centre falls back
+// to on the Taichung–Miaoli line, in no province), and a neighbour's
+// district that reaches into the run's provinces by a sliver is not (most
+// of its land lies in its own country's province, or in none when that is
+// not stored). A district without a land cell is kept when one of the
+// run's provinces holds its centre, as before. A district stored for c that
+// the rule leaves out stays when a province holds its centre, as it keeps
+// its parent and slug (storedKept, reported); otherwise one whose centre a
+// province holds is listed as dropped by its land (landDropped), and one
+// kept although no province holds its centre is rescued.
+func keepDistricts(set *regionSet, c country, stored map[int64]*db.StoredRegion) {
+	all := slices.Concat(set.districts, set.outside)
+	slices.SortFunc(all, func(a, b *district) int { return cmp.Compare(a.osmID, b.osmID) })
+	kept := all[:0]
+	for _, d := range all {
+		keep := d.centred != nil
+		if land := d.in + d.other + d.none; land > 0 {
+			keep = 2*d.in > land
+		}
+		s := stored[d.osmID]
+		switch {
+		case keep && d.centred == nil:
+			d.rescued = true
+			set.dropped.Outside--
+		case keep:
+		case d.centred != nil && s != nil && s.Country == c.Code:
+			keep = true
+			set.storedKept = append(set.storedKept, d)
+		case d.centred != nil:
+			set.dropped.Outside++
+			set.landDropped = append(set.landDropped, d)
+		}
+		if keep {
+			kept = append(kept, d)
+		}
+	}
+	set.districts, set.outside = kept, nil
 }
 
 // assignParents gives every district its province. The parent a fresh
@@ -278,7 +344,7 @@ func assignParents(set *regionSet, c country, stored map[int64]*db.StoredRegion,
 		d.majority = d.centred
 		best := 0
 		for p, n := range d.share {
-			if n > best || n == best && p.osmID < d.majority.osmID {
+			if n > best || n == best && (d.majority == nil || p.osmID < d.majority.osmID) {
 				d.majority, best = p, n
 			}
 		}

@@ -182,6 +182,9 @@ func PolygonCentres(outer [][2]float64, holes [][][2]float64, res int) ([][2]flo
 	return out, nil
 }
 
+// fillSlots bounds the polygon fills running at once.
+var fillSlots = make(chan struct{}, 3)
+
 func polygonToCells(outer [][2]float64, holes [][][2]float64, res int) ([]h3go.Cell, error) {
 	loop := func(r [][2]float64) h3go.GeoLoop {
 		l := make(h3go.GeoLoop, len(r))
@@ -194,6 +197,11 @@ func polygonToCells(outer [][2]float64, holes [][][2]float64, res int) ([]h3go.C
 	for _, h := range holes {
 		poly.Holes = append(poly.Holes, loop(h))
 	}
+	// The C code allocates two arrays of an estimate of the cells in the
+	// polygon's bounding box (and Go one more): a few at a time keeps the
+	// peak of an import of a big country independent of the core count.
+	fillSlots <- struct{}{}
+	defer func() { <-fillSlots }()
 	cells, err := h3go.PolygonToCells(poly, res)
 	if err != nil {
 		return nil, fmt.Errorf("h3: polygon to cells: %w", err)

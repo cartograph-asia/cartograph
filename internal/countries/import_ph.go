@@ -77,7 +77,13 @@ package countries
 //     and city centres (admin_level=6 on 1,491 and 149 nodes), village,
 //     quarter and suburb the barangays (admin_level=10 on 21,811, 5,742 and
 //     513), neighbourhood mostly puroks, sitios and subdivisions; the 11,584
-//     hamlets (sitios) stay out as in Thailand.
+//     hamlets (sitios) stay out as in Thailand. Strong, weak or not stored
+//     (WP L, PlaceReachKm 0 = the default 2 km): of the extract's 49,321,
+//     49,309 lie inside a province, 2 are weak (Maapon, 14.17 N 121.53 E, a
+//     Laguna neighbourhood before; Song Tử Tây, a Spratly village within
+//     2 km of a province's outline) and 10 lie farther away and are not stored
+//     (nine in the Spratlys, mapped by Vietnam and China, and Miangas,
+//     Indonesia).
 //
 // LandPlots: 380,500 = the scan's 367,912 (docs/countries/philippines.md,
 // scanned 2026-11-02 from the philippines-latest.osm.pbf downloaded

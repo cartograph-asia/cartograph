@@ -86,6 +86,27 @@ type Level struct {
 	Kind        string            // display word: "province", "prefecture", "state", "region", "district", "commune"
 	KindByAffix map[string]string // word by affix of the English or local name, matched before stripping ("市": "city", "縣": "county", "State": "state")
 	Strip       Affixes
+
+	// OfficialName lists tags, in order, that carry a relation's name with
+	// the word its plain name leaves out (Indonesia's "Bogor", official_name
+	// "Kota Bogor"; Malaysia's "Kuala Lumpur", official_name "Wilayah
+	// Persekutuan Kuala Lumpur"). Empty (the default): never read. They are
+	// read for two things only, never for the names stored otherwise:
+	//
+	//   - the kind word: when no KindByAffix affix matches the English or
+	//     local name, the first of these tags whose value carries one gives
+	//     it;
+	//   - decision 7: where the English (local) name carries no affix to
+	//     strip, the first of these tags whose value Strip turns into that
+	//     name is the form with its affix that a colliding sibling takes
+	//     ("Kota Bogor", slug …-kota-bogor). A tag is read for the English
+	//     name unless, without its "official_" prefix, it is one of the
+	//     Import's Local tags and not one of its English tags, and for the
+	//     local name likewise ("official_name:en" for English only,
+	//     "official_name:id" for Indonesian only, "official_name" for both).
+	//
+	// {"official_name:en", "official_name"} is the usual value.
+	OfficialName []string
 }
 
 // Affixes are the words stripped from names. Every entry is tried once, in

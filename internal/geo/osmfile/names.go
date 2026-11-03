@@ -161,6 +161,31 @@ func PlaceNames(t osm.Tags, imp countries.Import) (en, local string) {
 // affix must end at a word boundary ("State" does not match "Statesville");
 // in scripts without case ("市", "시") it may touch the name.
 func KindWord(en, local string, l countries.Level) string {
+	if w, ok := kindByAffix(l, en, local); ok {
+		return w
+	}
+	return l.Kind
+}
+
+// KindWordOf is KindWord for a relation with the tags t: when neither name
+// carries an affix, the values of l.OfficialName are tried in their order,
+// each with every affix, longer first, so "Surabaya" with official_name
+// "Kota Surabaya" is a city.
+func KindWordOf(t osm.Tags, en, local string, l countries.Level) string {
+	if w, ok := kindByAffix(l, en, local); ok {
+		return w
+	}
+	for _, k := range l.OfficialName {
+		if w, ok := kindByAffix(l, t.Find(k)); ok {
+			return w
+		}
+	}
+	return l.Kind
+}
+
+// kindByAffix returns the word of the first l.KindByAffix entry, longer
+// affixes first, that one of names starts or ends with.
+func kindByAffix(l countries.Level, names ...string) (string, bool) {
 	affixes := make([]string, 0, len(l.KindByAffix))
 	for a := range l.KindByAffix {
 		if a != "" {
@@ -173,13 +198,17 @@ func KindWord(en, local string, l countries.Level) string {
 		}
 		return affixes[i] < affixes[j]
 	})
-	en, local = strings.TrimSpace(en), strings.TrimSpace(local)
+	for i := range names {
+		names[i] = strings.TrimSpace(names[i])
+	}
 	for _, a := range affixes {
-		if hasAffix(en, a) || hasAffix(local, a) {
-			return l.KindByAffix[a]
+		for _, name := range names {
+			if hasAffix(name, a) {
+				return l.KindByAffix[a], true
+			}
 		}
 	}
-	return l.Kind
+	return "", false
 }
 
 // KindName is the value for regions.kind_name: KindWord, or "" when that is
@@ -188,6 +217,15 @@ func KindWord(en, local string, l countries.Level) string {
 func KindName(en, local string, l countries.Level, kind string) string {
 	if w := KindWord(en, local, l); w != kind {
 		return w
+	}
+	return ""
+}
+
+// KindName is the value for regions.kind_name of a relation whose names
+// LevelNames gave: n.Kind (KindWordOf), or "" when that is kind anyway.
+func (n Named) KindName(kind string) string {
+	if n.Kind != kind {
+		return n.Kind
 	}
 	return ""
 }
@@ -281,8 +319,13 @@ func PlaceKindsFor(imp countries.Import) map[string]bool {
 type Named struct {
 	RawEn, RawLocal string // NamesFor: before stripping (what ResolveSlugs restores)
 	En, Local       string // StripName, then DistinctLocal (where LatinLocal)
-	Kind            string // KindWord of the raw names
-	keepEqual       bool   // LatinLocal was false: a local name equal to En stays
+	Kind            string // KindWordOf: by the raw names, else by Level.OfficialName
+	// OfficialEn and OfficialLocal are the forms with an affix that
+	// Level.OfficialName gives where the raw name carries none ("Kota
+	// Bogor" for "Bogor"; officialForms), else "". ResolveSlugs restores
+	// them in place of the raw names.
+	OfficialEn, OfficialLocal string
+	keepEqual                 bool // LatinLocal was false: a local name equal to En stays
 }
 
 // local is DistinctLocal unless the settings keep equal names.
@@ -294,15 +337,73 @@ func (n Named) local(en, local string) string {
 }
 
 // LevelNames applies the name rules of level l in their order: NamesFor,
-// KindWord on the names as OSM has them, StripName, DistinctLocal (only
-// where LatinLocal holds).
+// KindWordOf on the names as OSM has them (then on l.OfficialName),
+// StripName, the official forms with their affixes (officialForms),
+// DistinctLocal (only where LatinLocal holds).
 func LevelNames(t osm.Tags, imp countries.Import, l countries.Level) Named {
 	n := Named{keepEqual: !LatinLocal(imp)}
 	n.RawEn, n.RawLocal = NamesFor(t, imp)
-	n.Kind = KindWord(n.RawEn, n.RawLocal, l)
+	n.Kind = KindWordOf(t, n.RawEn, n.RawLocal, l)
 	n.En, n.Local = StripName(n.RawEn, n.RawLocal, l)
+	n.OfficialEn, n.OfficialLocal = officialForms(t, imp, l, n)
 	n.Local = n.local(n.En, n.Local)
 	return n
+}
+
+// officialForms returns the English and local forms with an affix that
+// l.OfficialName gives for n, whose En and Local are the stripped names
+// (Local before DistinctLocal). A language has one only where its raw name
+// carries no affix (stripping left it as it was): the value of the first
+// listed tag read for that language (officialFor) that is not the name
+// itself but turns into it by l.Strip ("Kota Bogor" strips to "Bogor"). An
+// English value holds no letter of imp.EnglishNot; a local value of plain
+// "official_name" counts only if written in imp.LocalScripts, as plain
+// "name" does in NamesFor.
+func officialForms(t osm.Tags, imp countries.Import, l countries.Level, n Named) (en, local string) {
+	if len(l.OfficialName) == 0 {
+		return "", ""
+	}
+	find := func(name, raw string, english bool, suffixes, prefixes []string) string {
+		if name == "" || name != strings.TrimSpace(raw) {
+			return ""
+		}
+		for _, k := range l.OfficialName {
+			if !officialFor(k, imp, english) {
+				continue
+			}
+			v := strings.TrimSpace(t.Find(k))
+			switch {
+			case v == "" || v == name || strip(v, suffixes, prefixes) != name:
+				continue
+			case english && inScripts(v, imp.EnglishNot):
+				continue
+			case !english && k == "official_name" && len(imp.LocalScripts) > 0 && !inScripts(v, imp.LocalScripts):
+				continue
+			}
+			return v
+		}
+		return ""
+	}
+	return find(n.En, n.RawEn, true, l.Strip.EnSuffix, l.Strip.EnPrefix),
+		find(n.Local, n.RawLocal, false, l.Strip.LocalSuffix, l.Strip.LocalPrefix)
+}
+
+// officialFor reports whether the tag k of Level.OfficialName is read for
+// the English name (english) or for the local one: always, unless k without
+// its "official_" prefix is a tag of the other language's list only
+// (imp.English, imp.Local): "official_name:en" is English only,
+// "official_name:id" Indonesian only where Local holds "name:id",
+// "official_name" both where both lists hold "name".
+func officialFor(k string, imp countries.Import, english bool) bool {
+	plain, ok := strings.CutPrefix(k, "official_")
+	if !ok {
+		return true
+	}
+	own, other := imp.English, imp.Local
+	if !english {
+		own, other = other, own
+	}
+	return slices.Contains(own, plain) || !slices.Contains(other, plain)
 }
 
 // Sibling is one of the regions ResolveSlugs compares: the provinces of one
@@ -329,8 +430,9 @@ type Sibling struct {
 //
 //  1. Every sibling gets full(Slug(Names.En)).
 //  2. Where siblings share a slug, all of them keep their affixes: Names.En
-//     and Names.Local go back to the raw names (Local still NULL when
-//     equal), and they get full(Slug(raw En)).
+//     and Names.Local go back to the raw names, or to the official forms
+//     where a raw name carries no affix (Named.OfficialEn, OfficialLocal;
+//     Local still NULL when equal), and they get full(Slug(that En)).
 //  3. Siblings that still share a slug get the OSM id appended to the name
 //     part: full(Slug(En) + "-" + id).
 //
@@ -364,7 +466,7 @@ func ResolveSlugs(sibs []Sibling, full func(base string) string) {
 	n := shared()
 	for i := range sibs {
 		if n[fresh[i].slug] >= 2 {
-			fresh[i] = result{slug: full(Slug(sibs[i].Names.RawEn)), affixed: true}
+			fresh[i] = result{slug: full(Slug(sibs[i].Names.affixed().En)), affixed: true}
 		}
 	}
 	n = shared()
@@ -372,7 +474,7 @@ func ResolveSlugs(sibs []Sibling, full func(base string) string) {
 		if n[fresh[i].slug] >= 2 {
 			name := sibs[i].Names.En
 			if fresh[i].affixed {
-				name = sibs[i].Names.RawEn
+				name = sibs[i].Names.affixed().En
 			}
 			fresh[i].slug = full(fmt.Sprintf("%s-%d", Slug(name), sibs[i].OSMID))
 		}
@@ -401,10 +503,10 @@ func ResolveSlugs(sibs []Sibling, full func(base string) string) {
 		}
 		affixed, slug := fresh[i].affixed, fresh[i].slug
 		if taken[slug] && !affixed {
-			affixed, slug = true, full(Slug(s.Names.RawEn))
+			affixed, slug = true, full(Slug(s.Names.affixed().En))
 		}
 		if taken[slug] {
-			slug = full(fmt.Sprintf("%s-%d", Slug(s.Names.RawEn), s.OSMID))
+			slug = full(fmt.Sprintf("%s-%d", Slug(s.Names.affixed().En), s.OSMID))
 		}
 		if affixed {
 			s.Names = s.Names.affixed()
@@ -414,10 +516,19 @@ func ResolveSlugs(sibs []Sibling, full func(base string) string) {
 	}
 }
 
-// affixed returns n with the raw names in place of the stripped ones.
+// affixed returns n with the names that carry their affixes in place of the
+// stripped ones: the raw names, or the official form where a raw name
+// carries none (OfficialEn, OfficialLocal; Level.OfficialName).
 func (n Named) affixed() Named {
-	n.En = n.RawEn
-	n.Local = n.local(n.RawEn, n.RawLocal)
+	en, local := n.RawEn, n.RawLocal
+	if n.OfficialEn != "" {
+		en = n.OfficialEn
+	}
+	if n.OfficialLocal != "" {
+		local = n.OfficialLocal
+	}
+	n.En = en
+	n.Local = n.local(en, local)
 	return n
 }
 

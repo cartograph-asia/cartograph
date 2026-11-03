@@ -205,7 +205,7 @@ func readRegions(path string, more []string, c country, clip orb.Bound, tol floa
 			}
 			n := osmfile.LevelNames(b.Tags, imp, pl)
 			set.provinces = append(set.provinces, &province{osmID: b.OSMID, level: adminLevel(b.Tags, pl), names: n,
-				kindName: osmfile.KindName(n.RawEn, n.RawLocal, pl, "province"), shape: simple})
+				kindName: n.KindName("province"), shape: simple})
 			continue
 		}
 		if dParent != nil && !slices.Contains(dl.Include, b.OSMID) && !planar.MultiPolygonContains(dParent, centre(simple)) {
@@ -239,7 +239,7 @@ func readRegions(path string, more []string, c country, clip orb.Bound, tol floa
 		}
 		p := set.provinces[pi]
 		d := &district{osmID: x.b.OSMID, level: adminLevel(x.b.Tags, dl), names: n,
-			kindName: osmfile.KindName(n.RawEn, n.RawLocal, dl, "district"), shape: x.shape, bound: x.shape.Bound(),
+			kindName: n.KindName("district"), shape: x.shape, bound: x.shape.Bound(),
 			province: p, centred: p}
 		set.districts = append(set.districts, d)
 		p.districts = append(p.districts, d)

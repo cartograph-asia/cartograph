@@ -35,9 +35,9 @@ package countries
 //     centroid lies outside its own shape (in the sea between its islands)
 //     and the first vertex taken instead lies outside Nagasaki's simplified
 //     outline, 736 land plots without a district (docs/decisions.md,
-//     2026-11-03, Japan opened). The 20 designated
-//     cities (政令指定都市: Sapporo, Yokohama, Osaka, …) are level-7
-//     relations as a whole; their 172 wards (行政区) are level 8 and stay out:
+//     2026-11-03, "Japan, open for Adrian"). The 20 designated cities
+//     (政令指定都市: Sapporo, Yokohama, Osaka, …) are level-7 relations
+//     as a whole; their 172 wards (行政区) are level 8 and stay out:
 //     a ward lies inside its city, so taking both would overlap, and a plot
 //     named "…, Yokohama" says more than "…, Naka". Ward names repeat from
 //     city to city (Minami Ward 12 times, Nishi 11, Kita 9, Naka 4), so

@@ -47,6 +47,18 @@
 -- (oaza without an English name: 31,757 quarters and 50,796
 -- neighbourhoods have none and are not stored); Tokyo 96 %, Osaka, Kyoto,
 -- Hyogo, Okayama, Kagawa, Tottori 100 %.
+--
+-- The price of 5 km for the own-district rule: a quarter of the own
+-- municipality wins over a nearer neighbourhood, so 3.0 % of the plots
+-- named after a quarter (1,399 of 46,642) have a neighbourhood more than
+-- 1 km closer, mostly a chōme in a city whose machi are neighbourhoods
+-- (Namba in Osaka is "Abenosuji", 2.9 km south, not "Nanba 3-chōme").
+-- The alternative tried, 2 km for the own-district rule and then the
+-- nearest quarter, neighbourhood, town or village and city within 5 km as
+-- tiers, names as many plots (78.1 %) and halves that (573), but more
+-- plots carry a quarter or neighbourhood of another municipality (14.4 %
+-- against 10.6 % of those named after one) and more a numbered block
+-- (1,650 against 1,277).
 insert into place_naming (country, urban_kinds, urban_radius_km, kinds, radius_km, urban_regions) values
   ('jp', '{quarter,neighbourhood}', 5, '{village|town,city}', 5,
    '{aichi-japan,akita-japan,aomori-japan,chiba-japan,ehime-japan,fukui-japan,fukuoka-japan,fukushima-japan,gifu-japan,gunma-japan,hiroshima-japan,hokkaido-japan,hyogo-japan,ibaraki-japan,ishikawa-japan,iwate-japan,kagawa-japan,kagoshima-japan,kanagawa-japan,kochi-japan,kumamoto-japan,kyoto-japan,mie-japan,miyagi-japan,miyazaki-japan,nagano-japan,nagasaki-japan,nara-japan,niigata-japan,oita-japan,okayama-japan,okinawa-japan,osaka-japan,saga-japan,saitama-japan,shiga-japan,shimane-japan,shizuoka-japan,tochigi-japan,tokushima-japan,tokyo-japan,tottori-japan,toyama-japan,wakayama-japan,yamagata-japan,yamaguchi-japan,yamanashi-japan}');

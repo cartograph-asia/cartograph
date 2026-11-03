@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/paulmach/orb"
+	"github.com/paulmach/orb/simplify"
 )
 
 var fixtureWater = filepath.Join("..", "..", "testdata", "pattaya-water.shp")
@@ -168,5 +169,28 @@ func TestParseBound(t *testing.T) {
 		if _, err := ParseBound(bad); err == nil {
 			t.Errorf("%q accepted", bad)
 		}
+	}
+}
+
+// Simplify gives the coordinates the simplifier gives, in rings that do not
+// keep the unsimplified arrays alive, and drops collapsed rings.
+func TestSimplifyCompactRingsSameCoordinates(t *testing.T) {
+	var outer orb.Ring
+	for i := 0; i <= 1000; i++ {
+		outer = append(outer, orb.Point{float64(i) / 1000, 0.00001 * float64(i%2)})
+	}
+	outer = append(outer, orb.Point{1, 1}, orb.Point{0, 1}, outer[0])
+	hole := orb.Ring{{0.4, 0.4}, {0.40001, 0.4}, {0.4, 0.40001}, {0.4, 0.4}} // collapses at 0.0005
+	mp := orb.MultiPolygon{{outer, hole}, {{{5, 5}, {5, 5}, {5, 5}, {5, 5}}}}
+	want := simplify.DouglasPeucker(0.0005).MultiPolygon(mp.Clone())
+	got := Simplify(mp, 0.0005)
+	if len(got) != 1 || len(got[0]) != 1 {
+		t.Fatalf("polygons %d, rings %v", len(got), len(got[0]))
+	}
+	if !got[0][0].Equal(want[0][0]) {
+		t.Fatalf("coordinates differ: %d vs %d points", len(got[0][0]), len(want[0][0]))
+	}
+	if cap(got[0][0]) != len(got[0][0]) {
+		t.Errorf("ring keeps spare capacity: %d of %d", len(got[0][0]), cap(got[0][0]))
 	}
 }

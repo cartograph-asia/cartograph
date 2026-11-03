@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"slices"
 	"strconv"
 
 	"github.com/paulmach/orb"
@@ -23,18 +24,24 @@ const SimplifyTolerance = 0.0005
 // slivers between simplified neighbours and beaches cut off by the coastline.
 const NearTolerance = 0.01
 
-// Simplify returns mp simplified for storage; rings that collapse are dropped.
+// Simplify returns mp simplified for storage; rings that collapse are
+// dropped. The rings it returns are fresh slices of their own length, so
+// they do not keep mp's (or the simplifier's) larger arrays alive.
 func Simplify(mp orb.MultiPolygon, tol float64) orb.MultiPolygon {
-	s := simplify.DouglasPeucker(tol).MultiPolygon(mp.Clone())
+	dp := simplify.DouglasPeucker(tol)
 	var out orb.MultiPolygon
-	for _, p := range s {
-		if len(p) == 0 || len(p[0]) < 4 {
+	for _, p := range mp {
+		if len(p) == 0 {
 			continue
 		}
-		q := orb.Polygon{p[0]}
+		outer := dp.Ring(slices.Clone(p[0]))
+		if len(outer) < 4 {
+			continue
+		}
+		q := orb.Polygon{slices.Clone(outer)}
 		for _, h := range p[1:] {
-			if len(h) >= 4 {
-				q = append(q, h)
+			if h = dp.Ring(slices.Clone(h)); len(h) >= 4 {
+				q = append(q, slices.Clone(h))
 			}
 		}
 		out = append(out, q)

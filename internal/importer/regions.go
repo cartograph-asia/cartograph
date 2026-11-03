@@ -14,6 +14,7 @@ import (
 	"log/slog"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"slices"
 	"strconv"
 	"sync"
@@ -156,6 +157,9 @@ func planRegions(ctx context.Context, d *db.DB, o Options) (*regionPlan, error) 
 	if pl.set, err = readRegions(pl.in.Path, pl.nb.paths(), c, pl.clip, o.Tolerance); err != nil {
 		return nil, err
 	}
+	// The boundary store was the peak so far (millions of node positions);
+	// hand its pages back before the land cells need theirs.
+	debug.FreeOSMemory()
 	if err := pl.loadStored(ctx, d); err != nil {
 		return nil, err
 	}
@@ -270,6 +274,7 @@ func (pl *regionPlan) landCells(ctx context.Context, d *db.DB) error {
 	} else {
 		slog.Warn("no water polygons: sea counts as land")
 	}
+	debug.FreeOSMemory()
 	held := func(id int) bool {
 		_, mine := pl.own[id]
 		return !mine && pl.countryOf[id] != pl.c.Code

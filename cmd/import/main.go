@@ -26,6 +26,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"runtime/debug"
 	"strings"
 
 	"github.com/cartograph-asia/cartograph/internal/geo"
@@ -43,6 +44,11 @@ func main() {
 	flag.StringVar(&o.BBox, "bbox", "", "clip minLng,minLat,maxLng,maxLat (single country only; skips the count and size checks)")
 	flag.Float64Var(&o.Tolerance, "tolerance", geo.SimplifyTolerance, "boundary simplification in degrees")
 	flag.Parse()
+	// The live data of a big country is most of the peak; collect earlier
+	// rather than let the heap double (GOGC from the environment wins).
+	if os.Getenv("GOGC") == "" {
+		debug.SetGCPercent(40)
+	}
 	codes := split(list)
 	if err := validate(codes, o); err != nil {
 		slog.Error("import", "err", err)

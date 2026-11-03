@@ -670,7 +670,7 @@ func TestCountry(t *testing.T) {
 
 	// /regions: every country in the list, the open ones with their figures.
 	rl, err := v.Regions(ctx)
-	if err != nil || len(rl.Countries) < 17 || len(rl.Regions) != 2 {
+	if err != nil || len(rl.Countries) < 14 || len(rl.Regions) != 2 {
 		t.Fatalf("regions %+v %v", rl, err)
 	}
 	open := map[string]views.CountrySummary{}

@@ -4,6 +4,8 @@ Read `CLAUDE.md`, `docs/PRINCIPLES.md`, `docs/COUNTRY_PAGES_BRIEF.md` and the de
 
 The map already shows all of Southeast and East Asia, and since PR #26 every country in `internal/countries` has a page. Only Thailand is *open*: only Thailand has provinces, plot numbers and place names, so only there can a photo be uploaded. This brief builds the tools to open the other sixteen countries, one at a time, each as its own silo, without guessing at OSM data and without touching what Thailand already has.
 
+> **Scope changed 2026-11-03 (Adrian):** China, Mongolia and North Korea are no longer part of the import; the list is Southeast Asia plus Taiwan, South Korea and Japan (14 countries). Where this brief speaks of sixteen countries, of China and Mongolia last or of the large-country numbering for them, read `docs/COUNTRY_IMPORT_STAGE2_BRIEF.md`, decision 9.
+
 Adrian (2026-11-02): a toolkit that, per country, works out what OSM holds there and what rules follow from it, and runs for each country on its own.
 
 ## Where things stand

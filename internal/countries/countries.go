@@ -15,19 +15,16 @@ type Country struct {
 	Lang   string // BCP 47 language tag of Native, e.g. "th"
 }
 
-// All is the list, by English name. The area is that of the map: Southeast
-// and East Asia.
+// All is the list, by English name: Southeast Asia plus Taiwan, South Korea
+// and Japan (docs/decisions.md, 2026-11-03).
 var All = []Country{
 	{"bn", "brunei", "Brunei", "Brunei Darussalam", "ms"},
 	{"kh", "cambodia", "Cambodia", "កម្ពុជា", "km"},
-	{"cn", "china", "China", "中国", "zh"},
 	{"id", "indonesia", "Indonesia", "Indonesia", "id"},
 	{"jp", "japan", "Japan", "日本", "ja"},
 	{"la", "laos", "Laos", "ລາວ", "lo"},
 	{"my", "malaysia", "Malaysia", "Malaysia", "ms"},
-	{"mn", "mongolia", "Mongolia", "Монгол улс", "mn"},
 	{"mm", "myanmar", "Myanmar", "မြန်မာ", "my"},
-	{"kp", "north-korea", "North Korea", "조선민주주의인민공화국", "ko"},
 	{"ph", "philippines", "Philippines", "Pilipinas", "fil"},
 	{"sg", "singapore", "Singapore", "Singapore", "en"},
 	{"kr", "south-korea", "South Korea", "대한민국", "ko"},

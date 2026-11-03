@@ -48,7 +48,7 @@ func TestEveryCountryHasImportSettings(t *testing.T) {
 func TestExtracts(t *testing.T) {
 	for code, want := range map[string]string{
 		"th": "thailand", "tl": "east-timor", "my": "malaysia-singapore-brunei",
-		"bn": "malaysia-singapore-brunei", "sg": "malaysia-singapore-brunei", "kp": "north-korea",
+		"bn": "malaysia-singapore-brunei", "sg": "malaysia-singapore-brunei",
 	} {
 		if got := Imports[code].Extract; got != want {
 			t.Errorf("%s: extract %q, want %q", code, got, want)
@@ -116,14 +116,6 @@ func TestLegacyPlacesThailandOnly(t *testing.T) {
 		}
 		if imp.PlaceReachKm < 0 {
 			t.Errorf("%s: PlaceReachKm %v", code, imp.PlaceReachKm)
-		}
-	}
-}
-
-func TestChinaAndMongoliaHold(t *testing.T) {
-	for _, code := range []string{"cn", "mn"} {
-		if Imports[code].Hold == "" {
-			t.Errorf("%s does not open in the alpha, but has no Hold", code)
 		}
 	}
 }

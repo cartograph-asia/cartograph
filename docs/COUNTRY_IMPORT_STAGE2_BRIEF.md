@@ -12,14 +12,15 @@ Read `CLAUDE.md`, `docs/PRINCIPLES.md`, `docs/COUNTRY_IMPORT_BRIEF.md` (its deci
 
 ## Decisions (Adrian, 2026-11-02, "all as recommended")
 
-1. **Order:** Laos first (in the toolkit PR), then Cambodia, then Vietnam; then Timor-Leste, Malaysia + Brunei + Singapore, Philippines, South Korea, North Korea, Taiwan, Japan, Myanmar, Indonesia, Mongolia, China.
+1. **Order:** Laos first (in the toolkit PR), then Cambodia, then Vietnam; then Timor-Leste, Malaysia + Brunei + Singapore, Philippines, South Korea, Taiwan, Japan, Myanmar, Indonesia. North Korea, Mongolia and China are out of scope (decision 9).
 2. **Philippines:** provinces at admin_level 4 (82 with ISO `PH` plus the Special Geographic Area through `Include`), no district level for now.
 3. **Kind word:** a new nullable `regions.kind_name` holds the display word; `regions.kind` stays structural (`province`/`district`).
 4. **Taiwan:** districts are levels 7 and 8 together; the settings take a list of levels.
 5. **Myanmar:** provinces are the level-4 relations with ISO `MM` only (15); districts are the townships at level 7 (358).
 6. **Singapore:** the five level-5 regions are provinces, recognised by lying inside the country relation r536780 (no ISO codes), the 55 level-6 planning areas are districts. **Brunei:** its four level-4 districts are provinces (word "district"), no district level.
 7. **Duplicate slugs:** if stripping makes two siblings collide, both keep their affix (name and slug); if they still collide, the OSM id is appended. A stored slug never changes.
-8. **China:** in scope, Xizang included, imported last. The map's fallback box widens from 88,-12,150,55 to 73,-12,154,54, in the China package, not now. China and Mongolia do not open in the alpha (`Hold`).
+8. **China:** ~~in scope, Xizang included, imported last; the fallback box widens to 73,-12,154,54; China and Mongolia do not open in the alpha~~ – replaced by decision 9.
+9. **Scope (Adrian, 2026-11-03):** Cartograph covers Southeast Asia plus Taiwan, South Korea and Japan: Brunei, Cambodia, Indonesia, Laos, Malaysia, Myanmar, the Philippines, Singapore, Thailand, Timor-Leste, Vietnam, Taiwan, South Korea and Japan (14 countries). China, Mongolia and North Korea are not imported and not opened. Consequences: no `Hold` is needed, the BOUNDS change for China is dropped, the migration blocks 0220 (kp), 0270 (mn) and 0280 (cn) stay unused, and the Xizang/Xinjiang questions do not arise. Their scan reports in `docs/countries/` stay as they are; the base map's extracts and the country list in `internal/countries` are not changed by this decision (see the PR).
 
 ## Stage 2: settings
 
@@ -171,24 +172,24 @@ Figures from the scan reports (`docs/countries/`); stage-3 time and memory are t
 | 5 | Malaysia, Brunei, Singapore (`malaysia-singapore-brunei`) | MY L4 16; BN L4 4; SG L5 5 (`Parent`) | MY L6 130; BN none; SG L6 55 | 318,281; 7,864; 941 | 13 s; ~1 s; ~1 s | Sabah r3879783 (F); one cut for three countries | 0190 |
 | 6 | Philippines (`philippines`) | L4, PH, 82 + SGA | none | 367,912 | 15 s, 338 MiB | check how Metro Manila is held at level 4 | 0200 |
 | 7 | South Korea (`south-korea`) | L4, KR, 15 of 16 with ISO | L6, 229 | 191,458 | 7 s | the 16th needs `Include` (Jeonnam-Gwangju is a candidate) | 0210 |
-| 8 | North Korea (`north-korea`) | L4, KP, 13 | L6, 171 | 214,569 | 8 s | North Pyongan r356540 (F) | 0220 |
+| ~~8~~ | ~~North Korea~~ (`north-korea`), out of scope | L4, KP, 13 | L6, 171 | 214,569 | 8 s | North Pyongan r356540 (F) | 0220 |
 | 9 | Taiwan (`taiwan`) | L4, TW, 22 | L7 + L8, 328 | 51,028 | 2 s | Kaohsiung r2127079 (F); kind word from 縣/市, English city names have no suffix; hamlets | 0230 |
 | 10 | Japan (`japan`) | L4, JP, 47 | L7, 1,739 | 572,035 | 23 s, 525 MiB | 27 district names need folding; 12 duplicate district slugs | 0240 |
 | 11 | Myanmar (`myanmar`) | L4, MM, 15 | L7 townships, 358 | 804,966 | 33 s, 739 MiB | | 0250 |
 | 12 | Indonesia (`indonesia`) | L4, ID, 38 | L5, 502 | 2,316,624 | 96 s, 2.1 GiB | Riau Islands r3797244, North Kalimantan r5449460 (F); 6.3 M cells inside the outline (sea); measure here | 0260 |
-| 13 | Mongolia (`mongolia`) | L4, MN, 22 | L6, 340 | 2,225,456 | 92 s, 2.0 GiB | `Hold` until beta | 0270 |
-| 14 | China (`china`) | L4, CN, 31 | open: L5 316 or L6 2,674 | 11,976,594 (too low) | 500 s, 11 GiB | Xizang r153292, Fujian r553303, Hainan r2128285 (F); `Hold`; BOUNDS change | 0280 |
+| ~~13~~ | ~~Mongolia~~ (`mongolia`), out of scope | L4, MN, 22 | L6, 340 | 2,225,456 | 92 s, 2.0 GiB | `Hold` until beta | 0270 |
+| ~~14~~ | ~~China~~ (`china`), out of scope | L4, CN, 31 | open: L5 316 or L6 2,674 | 11,976,594 (too low) | 500 s, 11 GiB | Xizang r153292, Fujian r553303, Hainan r2128285 (F); `Hold`; BOUNDS change | 0280 |
 
 ## Risks
 
 - **Incomplete extracts:** nine province relations do not assemble (table above). Likely causes, to be confirmed in F: a border whose ways the neighbouring extract holds (Sabah/North Kalimantan, North Pyongan, Fujian, Xizang) → build from a merged cut of the extracts already in `map/data/`; sea claims (Spratlys in Khánh Hòa and Kaohsiung, Hainan's Sansha) → `Partial`. If Xizang needs India, Nepal or Bhutan, those extracts are read for boundaries only and never join the base map (South Asia stays out). China's outline misses all three provinces, so its `LandPlots` must come from a corrected scan.
 - **Memory and time:** the linear estimates give Indonesia 2.1 GiB and China 11 GiB; the largest Chinese province alone holds 1,958,373 land plots. Per-province processing and the cut input are what make this fit; measure after every country. Production api: `mem_limit` 1 GiB, `GOMEMLIMIT` 768 MiB; the district index grows (Vietnam 3,254, Japan 1,739, China up to 2,674), so the api's RSS is measured after every import.
-- **Storage:** 20.5 M land plots in all, 14.2 M of them China and Mongolia; `plot_numbers` and the backups grow with them. Indonesia's measurement decides whether large countries number all plots up front or on first claim (original brief, question 3).
+- **Storage:** with the scope of decision 9 about 6.1 M land plots remain (the 20.5 M of the full list, less China and Mongolia at 14.2 M and North Korea at 0.21 M); Indonesia is the largest country at 2.3 M. Before: 20.5 M in all, 14.2 M of them China and Mongolia; `plot_numbers` and the backups grow with them. Indonesia's measurement decides whether large countries number all plots up front or on first claim (original brief, question 3).
 - **Extract drift:** the scan, the import and production may read different Geofabrik dates. Each country PR re-scans and updates `LandPlots`; the 10 % check catches the rest.
 
 ## Out of scope
 
-Everything the original brief excludes (translation, per-country plot of the week and ranks, cities as regions, base-map changes, imports on production by an agent). Also: district pages; per-country plural headings ("Provinces" on country pages stays); opening China or Mongolia; the BOUNDS change before the China package (`ARCHIVE_BOUNDS` in `web/src/style.ts`, `HOME` in `web/src/main.ts`, the example box in `map/build.sh`).
+Everything the original brief excludes (translation, per-country plot of the week and ranks, cities as regions, base-map changes, imports on production by an agent). Also: district pages; per-country plural headings ("Provinces" on country pages stays); China, Mongolia and North Korea (decision 9). The BOUNDS change (`ARCHIVE_BOUNDS` in `web/src/style.ts`, `HOME` in `web/src/main.ts`, the example box in `map/build.sh`) is dropped with China; open: Japan's Minami-Torishima lies at about 154° E, outside the box 88,-12 – 150,55.
 
 ## Done means
 

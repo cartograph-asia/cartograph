@@ -27,8 +27,8 @@ import (
 
 // extracts maps a country to its Geofabrik extract in map/data (map/download.sh).
 var extracts = map[string]string{
-	"bn": "malaysia-singapore-brunei", "kh": "cambodia", "cn": "china", "id": "indonesia", "jp": "japan",
-	"la": "laos", "my": "malaysia-singapore-brunei", "mn": "mongolia", "mm": "myanmar", "kp": "north-korea",
+	"bn": "malaysia-singapore-brunei", "kh": "cambodia", "id": "indonesia", "jp": "japan",
+	"la": "laos", "my": "malaysia-singapore-brunei", "mm": "myanmar",
 	"ph": "philippines", "sg": "malaysia-singapore-brunei", "kr": "south-korea", "tw": "taiwan",
 	"th": "thailand", "tl": "east-timor", "vn": "vietnam",
 }
